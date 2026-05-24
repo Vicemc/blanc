@@ -605,7 +605,7 @@ function ActorChip({ actor, state, actorSt, onOpen, onRemove, onChange, onEvolve
         {actor.kind !== 'human' && <span>DEF: {displayDef}</span>}
         {displayArm > 0 && actor.kind !== 'human' && <span>ARM: {displayArm}</span>}
         {/* Eisuke: mostrar DEF apenas se > 0 (ativado via My Body as a Shield) */}
-        {actor.kind === 'human' && displayDef > 0 && <span style={{ color: 'var(--blue)' }}>DEF: {displayDef}</span>}
+        {actor.kind === 'human' && Number(displayDef) > 0 && <span style={{ color: 'var(--blue)' }}>DEF: {displayDef}</span>}
         {condCount > 0 && <span style={{ color: 'var(--coral)' }}>{condCount} cond.</span>}
       </div>
 
@@ -1589,6 +1589,10 @@ function PalcoView({ stage, state, onUpdate, onBack, isGM = false }: {
 
   const rt = getRuntime(stage)
 
+  const mutateStage = useCallback((fn: (s: Stage) => Stage) => {
+    onUpdate({ ...state, stages: state.stages.map(s => s.id === stage.id ? fn(s) : s) })
+  }, [state, stage.id, onUpdate])
+
   const addLog = useCallback((text: string, kind: 'auto' | 'manual' = 'auto') => {
     const entry: PalcoLogEntry = {
       id:        `log-${Date.now().toString(36)}`,
@@ -1599,10 +1603,6 @@ function PalcoView({ stage, state, onUpdate, onBack, isGM = false }: {
     }
     mutateStage(s => ({ ...s, log: [...((s as any).log ?? []), entry] } as Stage))
   }, [mutateStage, rt.roundCurrent])
-
-  const mutateStage = useCallback((fn: (s: Stage) => Stage) => {
-    onUpdate({ ...state, stages: state.stages.map(s => s.id === stage.id ? fn(s) : s) })
-  }, [state, stage.id, onUpdate])
 
   // Invoca um token no palco, no mesmo lado do tamer que usou a skill
   const spawnToken = useCallback((token: TokenSpawn) => {

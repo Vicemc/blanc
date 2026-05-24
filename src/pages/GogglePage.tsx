@@ -853,7 +853,7 @@ export default function GogglePage({ state, onUpdate, canEdit, isGM = false }: P
       )}
 
       {open && <SheetModal subject={open} state={state} onSaveState={onUpdate} onClose={() => setOpen(null)}
-        editable={canEdit ? canEdit() : true} />}}
+        editable={canEdit ? canEdit() : true} />}
       {modal === 'sector'    && <AddSectorModal    state={state} onSave={s=>{onUpdate(s);setModal(null)}} onClose={()=>setModal(null)} />}
       {modal === 'bugfolder' && <AddBugFolderModal state={state} onSave={s=>{onUpdate(s);setModal(null)}} onClose={()=>setModal(null)} />}
     </div>

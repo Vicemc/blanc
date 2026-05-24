@@ -11,6 +11,10 @@ import {
   SectorFolder, BugFolder, TokenDef,
   DEFAULT_SKILL_SET,
 } from '../types';
+import { idbLoad, idbLoadImage, idbListImageKeys, idbSave, idbSaveImage } from './persistence';
+export { idbLoadImage, idbListImageKeys, idbSaveImage } from './persistence';
+import { DIGIMON_DEFAULT_IMAGES, TAMER_DEFAULT_IMAGES } from './images';
+export { DIGIMON_DEFAULT_IMAGES, TAMER_DEFAULT_IMAGES } from './images';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Persistência — localStorage + IndexedDB (fallback duplo)
@@ -18,141 +22,6 @@ import {
 
 const STORAGE_KEY = 'digimon_survive';
 
-// Imagens default para cada tamer — servidas como assets estáticos em /tamers/
-// Usadas apenas se o tamer não tiver uma imagem personalizada salva pelo usuário
-export const TAMER_DEFAULT_IMAGES: Record<string, string> = {
-  't-naoki':   '/tamers/Naoki.png',
-  't-eisuke':  '/tamers/Eisuke.png',
-  't-miki':    '/tamers/Miki.png',
-  't-yuri':    '/tamers/Yurieta.png',
-  't-sachi':   '/tamers/Sachi.png',
-  't-mori':    '/tamers/Mori.png',
-  't-hare':    '/tamers/Hare.png',
-  't-kanade':  '/tamers/Kanade.png',
-  't-shinra':  '/tamers/Shinra.png',
-  't-kumo':    '/tamers/Kumo.png',
-  't-emi':     '/tamers/Emi.png',
-  't-hibito':  '/tamers/Hibito.png',
-};
-
-// Imagens default para digimons — chave: "digimonLineId:stageIndex"
-// Nomes de arquivo com espaço são válidos em URLs codificadas pelo Vite
-export const DIGIMON_DEFAULT_IMAGES: Record<string, string> = {
-  // Lvl 3 (Child)
-  'd-tinkermon-line:1':   '/lvl 3/Tinkermon.png',
-  'd-kudamon-line:1':     '/lvl 3/Kudamon.png',
-  'd-blucomon-line:1':    '/lvl 3/Blucomon.png',
-  'd-wormmon-line:2':     '/lvl 3/Wormmon.png',
-  'd-solarmon-line:1':    '/lvl 3/Solarmon.png',
-  'd-toyagumon-line:1':   '/lvl 3/ToyAgumon.png',
-  'd-penmon-line:1':      '/lvl 3/Penmon.png',
-  'd-floramon-line:1':    '/lvl 3/Floramon.png',
-  'd-hyokomon-line:1':    '/lvl 3/Hyokomon.png',
-  'd-ghostmon-line:1':    '/lvl 3/Ghostmon.png',
-  'd-betamon-line:1':     '/lvl 3/Betamon.png',
-  'd-sistermon-blanc:0':  '/lvl 3/Sistermon Blanc.png',
-  'd-pico-devimon:0':     '/lvl 3/PicoDevimon.png',
-  // Lvl 4 (Adult)
-  'd-tinkermon-line:2':   '/lvl 4/Witchmon.png',
-  'd-kudamon-line:2':     '/lvl 4/Reppamon.png',
-  'd-blucomon-line:2':    '/lvl 4/Paledramon.png',
-  'd-solarmon-line:2':    '/lvl 4/Guardromon.png',
-  'd-toyagumon-line:2':   '/lvl 4/Omekamon.png',
-  'd-penmon-line:2':      '/lvl 4/Swanmon.png',
-  'd-floramon-line:2':    '/lvl 4/Coatlmon.png',
-  'd-ghostmon-line:2':    '/lvl 4/FlaWizarmon.png',
-  'd-betamon-line:2':     '/lvl 4/Coelamon.png',
-  'd-sistermon-noir:0':   '/lvl 4/Sistermon Noir.png',
-  'd-sistermon-ciel:0':   '/lvl 4/Sistermon Ciel.png',
-  'd-greymon:0':          '/lvl 4/Greymon.png',
-  // Armor (Lvl 4 alternativo)
-  // índices: tinkermon/kudamon/blucomon/solarmon = 3, wormmon = 4, toyagumon = 3
-  // placeholder com adult até os nomes/imagens serem definidos
-  'd-tinkermon-line:3':   '/lvl 4/Witchmon.png',
-  'd-kudamon-line:3':     '/lvl 4/Reppamon.png',
-  'd-blucomon-line:3':    '/lvl 4/Paledramon.png',
-  'd-wormmon-line:4':     '/lvl 3/Wormmon.png',
-  'd-solarmon-line:3':    '/lvl 4/Guardromon.png',
-  'd-toyagumon-line:3':   '/lvl 4/Yoyomon.png',
-};
-const IDB_DB      = 'digimon_survive_db';
-const IDB_STORE   = 'state';
-const IDB_KEY     = 'appstate';
-const IDB_IMG_STORE = 'images';
-
-// ── IndexedDB helpers ────────────────────────────────────────────────────────
-
-function idbOpen(): Promise<IDBDatabase> {
-  return new Promise((resolve, reject) => {
-    const req = indexedDB.open(IDB_DB, 2);
-    req.onupgradeneeded = (e) => {
-      const db = (e.target as IDBOpenDBRequest).result;
-      if (!db.objectStoreNames.contains(IDB_STORE))   db.createObjectStore(IDB_STORE);
-      if (!db.objectStoreNames.contains(IDB_IMG_STORE)) db.createObjectStore(IDB_IMG_STORE);
-    };
-    req.onsuccess = () => resolve(req.result);
-    req.onerror   = () => reject(req.error);
-  });
-}
-
-export async function idbSaveImage(key: string, dataUrl: string): Promise<void> {
-  try {
-    const db = await idbOpen();
-    return new Promise((resolve, reject) => {
-      const tx  = db.transaction(IDB_IMG_STORE, 'readwrite');
-      const req = tx.objectStore(IDB_IMG_STORE).put(dataUrl, key);
-      req.onsuccess = () => resolve();
-      req.onerror   = () => reject(req.error);
-    });
-  } catch { /* silencioso */ }
-}
-
-export async function idbLoadImage(key: string): Promise<string | null> {
-  try {
-    const db = await idbOpen();
-    return new Promise((resolve) => {
-      const req = db.transaction(IDB_IMG_STORE, 'readonly').objectStore(IDB_IMG_STORE).get(key);
-      req.onsuccess = () => resolve(req.result ?? null);
-      req.onerror   = () => resolve(null);
-    });
-  } catch { return null; }
-}
-
-export async function idbListImageKeys(): Promise<string[]> {
-  try {
-    const db = await idbOpen();
-    return new Promise((resolve) => {
-      const req = db.transaction(IDB_IMG_STORE, 'readonly').objectStore(IDB_IMG_STORE).getAllKeys();
-      req.onsuccess = () => resolve(req.result as string[]);
-      req.onerror   = () => resolve([]);
-    });
-  } catch { return []; }
-}
-
-export async function idbSave(s: AppState): Promise<void> {
-  try {
-    const db = await idbOpen();
-    return new Promise((resolve, reject) => {
-      const tx  = db.transaction(IDB_STORE, 'readwrite');
-      const req = tx.objectStore(IDB_STORE).put(JSON.stringify(s), IDB_KEY);
-      req.onsuccess = () => resolve();
-      req.onerror   = () => reject(req.error);
-    });
-  } catch { /* silencioso — localStorage já foi salvo */ }
-}
-
-export async function idbLoad(): Promise<AppState | null> {
-  try {
-    const db = await idbOpen();
-    return new Promise((resolve) => {
-      const req = db.transaction(IDB_STORE, 'readonly').objectStore(IDB_STORE).get(IDB_KEY);
-      req.onsuccess = () => resolve(req.result ? JSON.parse(req.result) as AppState : null);
-      req.onerror   = () => resolve(null);
-    });
-  } catch { return null; }
-}
-
-// ── Export / Import de arquivo JSON ─────────────────────────────────────────
 
 // Coleta imagens do estado para incluir no pacote de export
 async function collectImagesForExport(s: AppState): Promise<ExportedImage[]> {
@@ -657,6 +526,17 @@ export function makeBug(
   };
 }
 
+export function makeSign(id: string, code: string, name: string): Sign {
+  return {
+    id, code, name,
+    lore: '',
+    image: null,
+    status: { HP: 0, Deslocamento: 0, Iniciativa: 0, Defesa: 0, Armadura: 0 },
+    attributes: makeDefaultAttributes(),
+    weakness: {}, affinity: {}, skills: [],
+  };
+}
+
 export function makeStage(id: string): Stage {
   return {
     id, title: 'Novo Palco', subtitle: '',
@@ -736,15 +616,6 @@ export function setVisibility(
     ...state,
     visibility: { ...state.visibility, [visKey(type, id)]: visible },
   }
-}
-  return {
-    id, code, name,
-    lore: '',
-    image: null,
-    status: { HP: 0, Deslocamento: 0, Iniciativa: 0, Defesa: 0, Armadura: 0 },
-    attributes: makeDefaultAttributes(),
-    weakness: {}, affinity: {}, skills: [],
-  };
 }
 
 export function makeSkillTreePhase(

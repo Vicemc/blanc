@@ -7,6 +7,7 @@ import type { UserProfile } from '../lib/auth'
 import { useAuth } from '../components/AuthProvider'
 import type { AppState, SkillTreePhase, TamerSkill } from '../types'
 import { saveStateToDB } from '../lib/db'
+import { supabase } from '../lib/supabase'
 import { SheetModal } from '../components/Sheet'
 import type { SheetSubject } from '../components/Sheet'
 
@@ -27,7 +28,7 @@ const TAMER_OPTIONS = [
 
 // ── Seção: Usuários ────────────────────────────────────────────────────────────
 
-function UsersSection({ state }: { state: AppState }) {
+function UsersSection({ state, onUpdate }: { state: AppState; onUpdate: (s: AppState) => void }) {
   const [profiles, setProfiles]   = useState<UserProfile[]>([])
   const [loading,  setLoading]    = useState(true)
   const [saving,   setSaving]     = useState<string | null>(null)
@@ -51,7 +52,6 @@ function UsersSection({ state }: { state: AppState }) {
     )
     // Atualizar display_name se mudou
     if (displayName !== profile.display_name) {
-      const { supabase } = await import('../lib/supabase')
       await supabase?.from('profiles')
         .update({ display_name: displayName })
         .eq('id', profile.id)

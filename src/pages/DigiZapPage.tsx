@@ -118,7 +118,7 @@ export default function DigiZapPage({ state, profile, isGM }: Props) {
       })
       .subscribe()
 
-    return () => { supabase.removeChannel(channel) }
+    return () => { supabase?.removeChannel(channel) }
   }, [activeGroupId])
 
   // ── Auto-scroll ──────────────────────────────────────────────────────────

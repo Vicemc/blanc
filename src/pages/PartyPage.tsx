@@ -8,7 +8,11 @@ import { SheetModal } from '../components/Sheet'
 import type { SheetSubject } from '../components/Sheet'
 import styles from './PartyPage.module.css'
 
-interface Props { state: AppState; onUpdate: (s: AppState) => void }
+interface Props {
+  state: AppState
+  onUpdate: (s: AppState) => void
+  canEdit?: (tamerId?: string) => boolean
+}
 
 function exportJson(data: unknown, filename: string) {
   const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' })

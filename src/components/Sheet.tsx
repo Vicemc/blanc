@@ -1,6 +1,6 @@
 import type {
   AppState, Tamer, DigimonLine, DigimonStage, Bug, Sign,
-  AttributeKey, SkillSet, TamerSkill, DigimonSkill, DigimonStageStatus, PassiveToggleBonus,
+  AttributeKey, Attributes, SkillSet, TamerSkill, DigimonSkill, DigimonStageStatus, PassiveToggleBonus,
   SkillTreePhase
 } from '../types'
 import { ATTRIBUTE_GROUPS, ATTRIBUTE_KEYS, AFFINITY_KEYS, PORTRAIT_LIST, BUG_COLORS } from '../types'
@@ -146,7 +146,7 @@ function pendingCost(pending: Record<string, number>, base: Attributes | Record<
   let total = 0
   for (const [k, delta] of Object.entries(pending)) {
     if (delta <= 0) continue
-    const cur = base[k] ?? 0
+    const cur = (base as Record<string, number>)[k] ?? 0
     for (let i = 1; i <= delta; i++) {
       total += isAttr ? xpCostAttribute(cur + i) : xpCostSkill(cur + i)
     }
@@ -1892,7 +1892,8 @@ function DigimonStageView({ line, stageIdx, tamer, editable, onSaveLine, onSaveT
             {(() => {
               // Prioridade: imagem do estágio > imagem default > imagem da line
               const imgKey = `${line.id}:${stageIdx}`
-              const img = stage.image ?? (DIGIMON_DEFAULT_IMAGES?.[imgKey] ?? null) ?? line.image ?? null
+              const defaultImg = DIGIMON_DEFAULT_IMAGES[imgKey] ?? null
+              const img: string | null = stage.image ?? defaultImg ?? line.image ?? null
               return img ? <img src={img} alt={stage.stageName} style={{ position:'absolute', inset:0, width:'100%', height:'100%', objectFit:'cover' }} /> : null
             })()}
           </div>
