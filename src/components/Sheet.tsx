@@ -167,9 +167,10 @@ function AttributeGrid({ attrs, editable, pending, onPend, onUnpend, onFreeEdit,
 }) {
   const [freeModeInternal, setFreeModeInternal] = useState(false)
   const freeMode = freeModeExternal !== undefined ? freeModeExternal : freeModeInternal
-  const setFreeMode = (v: boolean) => {
-    setFreeModeInternal(v)
-    onFreeModeChange?.(v)
+  const setFreeMode = (v: boolean | ((prev: boolean) => boolean)) => {
+    const next = typeof v === 'function' ? v(freeMode) : v
+    setFreeModeInternal(next)
+    onFreeModeChange?.(next)
   }
   return (
     <div>
