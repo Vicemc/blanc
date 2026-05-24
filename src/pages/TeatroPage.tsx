@@ -131,14 +131,14 @@ function actorKey(a: ActorRef): string {
 
 function resolveActor(state: AppState, a: ActorRef, tokenMeta?: Record<string, { name: string; level: string }>): {
   title: string; type: string; portrait: string; image: string | null
-  stats: [string, string|number][]; subject: SheetSubject
+  stats: [string, number][]; subject: SheetSubject
 } {
   if (a.kind === 'human') {
     const t = findTamer(state, a.id)
     return {
       title: t?.name ?? '?', type: 'Tamer', portrait: t?.portrait ?? 'sage',
       image: t?.image ?? null,
-      stats: [['HP', t?.status.HP.v ?? '?']],
+      stats: [['HP', t?.status.HP.v ?? 0]],
       subject: { kind: 'tamer', id: a.id },
     }
   }
@@ -151,9 +151,8 @@ function resolveActor(state: AppState, a: ActorRef, tokenMeta?: Record<string, {
     return {
       title: s?.stageName ?? d?.name ?? '?',
       type: `${s?.level ?? '?'} · ${s?.type ?? '?'}`,
-      portrait: s?.portrait ?? 'sage',
-      image,
-      stats: [['HP', s?.status.HP ?? '?'], ['DEF', s?.status.Defesa ?? '?'], ['ARM', s?.status.Armadura ?? 0]],
+      portrait: s?.portrait ?? 'sage', image,
+      stats: [['HP', s?.status.HP ?? 0], ['DEF', s?.status.Defesa ?? 0], ['ARM', s?.status.Armadura ?? 0]],
       subject: { kind: 'pair', tamerId: a.tamerId, digimonId: a.digimonId, stage: stageIdx },
     }
   }
@@ -161,18 +160,13 @@ function resolveActor(state: AppState, a: ActorRef, tokenMeta?: Record<string, {
     const meta = tokenMeta?.[a.id]
     if (meta) {
       const label = meta.level ? `${meta.name} (${meta.level})` : meta.name
-      return {
-        title: label, type: 'Token', portrait: 'teal', image: null,
-        stats: [['HP', 0]],
-        subject: { kind: 'wild', id: a.id },
-      }
+      return { title: label, type: 'Token', portrait: 'teal', image: null, stats: [['HP', 0]], subject: { kind: 'wild', id: a.id } }
     }
     const d = findDigimon(state, a.id); const s = d?.stages[0]
     const wildImg = s?.image ?? DIGIMON_DEFAULT_IMAGES[`${a.id}:0`] ?? d?.image ?? null
     return {
-      title: d?.name ?? '?', type: s?.type ?? '?', portrait: s?.portrait ?? 'sage',
-      image: wildImg,
-      stats: [['HP', s?.status.HP ?? '?'], ['DEF', s?.status.Defesa ?? '?']],
+      title: d?.name ?? '?', type: s?.type ?? '?', portrait: s?.portrait ?? 'sage', image: wildImg,
+      stats: [['HP', s?.status.HP ?? 0], ['DEF', s?.status.Defesa ?? 0]],
       subject: { kind: 'wild', id: a.id },
     }
   }
@@ -180,7 +174,7 @@ function resolveActor(state: AppState, a: ActorRef, tokenMeta?: Record<string, {
   return {
     title: b?.name ?? '?', type: `${b?.class ?? '?'}.${b?.color ?? '?'}`,
     portrait: `bug-${b?.color ?? 'red'}`, image: b?.image ?? null,
-    stats: [['HP', b?.status.HP ?? '?'], ['DEF', b?.status.Defesa ?? '?']],
+    stats: [['HP', b?.status.HP ?? 0], ['DEF', b?.status.Defesa ?? 0]],
     subject: { kind: 'bug', id: a.id },
   }
 }
@@ -1641,7 +1635,7 @@ function PalcoView({ stage, state, onUpdate, onBack, isGM = false }: {
         actorStates: { ...(s as any).actorStates, ...newStates },
         tokenMeta: {
           ...(s as any).tokenMeta ?? {},
-          ...Object.fromEntries(newRefs.map(r => [r.id, { name: token.name, level: token.level }])),
+          ...Object.fromEntries(newRefs.map(r => [(r as { kind: 'wild'; id: string }).id, { name: token.name, level: token.level }])),
         },
       } as Stage
     })

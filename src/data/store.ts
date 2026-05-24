@@ -816,7 +816,7 @@ export function pendingCost(
 ): number {
   let total = 0;
   for (const [key, delta] of Object.entries(pending)) {
-    const base = (current as Record<string, number>)[key] ?? 0;
+    const base = (current as unknown as Record<string, number>)[key] ?? 0;
     for (let i = 1; i <= delta; i++) total += xpCostAttribute(base + i);
   }
   return total;

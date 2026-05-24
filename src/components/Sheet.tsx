@@ -142,7 +142,7 @@ function StatRow({ entries }: { entries: StatEntry[] }) {
 
 // ── XP Staging (pendente + confirmar) ─────────────────────────────
 // Retorna quantos pontos de XP custará a compra pendente
-function pendingCost(pending: Record<string, number>, base: Record<string, number>, isAttr: boolean) {
+function pendingCost(pending: Record<string, number>, base: Attributes | Record<string, number>, isAttr: boolean) {
   let total = 0
   for (const [k, delta] of Object.entries(pending)) {
     if (delta <= 0) continue
@@ -156,7 +156,7 @@ function pendingCost(pending: Record<string, number>, base: Record<string, numbe
 
 // ── AttributeGrid editável com staging ────────────────────────────
 function AttributeGrid({ attrs, editable, pending, onPend, onUnpend, onFreeEdit, freeMode: freeModeExternal, onFreeModeChange }: {
-  attrs: Record<string, number>
+  attrs: Attributes | Record<string, number>
   editable?: boolean
   pending?: Record<string, number>
   onPend?: (k: AttributeKey) => void
@@ -2206,8 +2206,7 @@ export function FullSheet({ subject, state, onSaveState, editable = false, onSpa
           <h2 className={styles.headName}>{headName}</h2>
           <div className={styles.headMeta}>{headMeta}</div>
           {tamer?.tagline && <div style={{ fontFamily:'var(--font-serif)', fontStyle:'italic', fontSize:17, color:'var(--ink-soft)', marginTop:4 }}>~ {tamer.tagline} ~</div>}
-          {bug?.lore     && <div style={{ fontFamily:'var(--font-serif)', fontStyle:'italic', fontSize:15, color:'var(--ink-soft)', marginTop:4 }}>~ {bug.lore} ~</div>}
-          {line && !tamer && <div style={{ fontFamily:'var(--font-mono)', fontSize:11, color:'var(--ink-mute)', marginTop:6 }}>XP: {line.xp} livre · {line.xpSpent} gasto</div>}
+          {bug?.lore && <div style={{ fontFamily:'var(--font-serif)', fontStyle:'italic', fontSize:15, color:'var(--ink-soft)', marginTop:4 }}>~ {bug.lore} ~</div>}
         </div>
       </div>
 

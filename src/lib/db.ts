@@ -264,7 +264,7 @@ export function subscribeToState(
     )
     .subscribe()
 
-  return () => { supabase.removeChannel(channel) }
+  return () => { supabase?.removeChannel(channel) }
 }
 
 export function subscribeToStages(
@@ -278,14 +278,13 @@ export function subscribeToStages(
       'postgres_changes',
       { event: '*', schema: 'public', table: 'stages' },
       async () => {
-        // Re-fetch completo ao detectar mudança
         const data = await loadStagesFromDB()
         if (data) onUpdate(data)
       },
     )
     .subscribe()
 
-  return () => { supabase.removeChannel(channel) }
+  return () => { supabase?.removeChannel(channel) }
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -371,7 +370,7 @@ export async function migrateLocalToSupabase(): Promise<{
       // Hidratar estágios
       const stages = await Promise.all(d.stages.map(async (st, i) => {
         if (!st.image && !st.imageKey) return { ...st, image: null }
-        const stPath = await uploadEntityImage(`${d.id}-stage-${i}`, st.image)
+        const stPath = await uploadEntityImage(`${d.id}-stage-${i}`, st.image ?? null)
         return { ...st, image: null, imageKey: stPath ?? st.imageKey ?? null }
       }))
       return { ...d, image: null, imageKey: path ?? d.imageKey ?? null, stages }
