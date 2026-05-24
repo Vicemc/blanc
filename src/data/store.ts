@@ -328,18 +328,17 @@ export function calcDigimonDerived(
   size = 3,
   speed = 5,
   evolutionBonus = 0,
-  tamerHP?: number,         // HP base do tamer (Vigor + 5)
-  stagesAboveChild = 0,     // quantos estágios acima do Child (0=Child, 1=Adult, 2=Perfect, 3=Ultimate)
+  tamerHP?: number,
+  level = 'Child (Lvl 3)',
 ) {
-  // HP do digimon parceiro:
-  //   Child  = HP_tamer + 5
-  //   Adult  = HP_tamer + 10
-  //   Perfect= HP_tamer + 15
-  //   Ultimate = HP_tamer + 20
-  // Se não tiver tamer vinculado, usa Vigor + size como fallback (digimons selvagens/bugs)
-  const HP = tamerHP != null
-    ? tamerHP + 5 * (stagesAboveChild + 1)
-    : attrs.Vigor + size;
+  // HP por estágio: Child+5 | Armor+13 | Adult+15 | Perfect+20 | Ultimate+25
+  // Sem tamer vinculado: Vigor + size (selvagens/bugs)
+  const hpBonus = level.startsWith('Armor')    ? 13
+    : level.startsWith('Adult')                ? 15
+    : level.startsWith('Perfect')              ? 20
+    : level.startsWith('Ultimate')             ? 25
+    : 5;
+  const HP = tamerHP != null ? tamerHP + hpBonus : attrs.Vigor + size;
   return {
     HP,
     Defesa:       Math.min(attrs.Destreza, attrs.Raciocínio) + evolutionBonus,
@@ -1256,6 +1255,7 @@ export function buildDefaultState(): AppState {
           {
             type: 'passive', keyword: 'Passiva', title: 'Sturdy',
             effect: 'Blucomon recebe +5 de HP.',
+            alwaysOn: { statusBonus: { HP: 5 }, inheritable: true },
           },
         ] as DigimonSkill[],
       },
@@ -1638,6 +1638,7 @@ export function buildDefaultState(): AppState {
           {
             type: 'passive', keyword: 'Passiva', title: 'Sturdy',
             effect: 'Solarmon recebe +5 de HP.',
+            alwaysOn: { statusBonus: { HP: 5 }, inheritable: true },
           },
         ] as DigimonSkill[],
       },
@@ -1870,7 +1871,7 @@ export function buildDefaultState(): AppState {
   const kanade: Tamer = {
     id: 't-kanade',
     name: 'KANADE', surname: 'Hankei',
-    portrait: 'blue', image: null,
+    portrait: 'wheat', image: null,
     age: 17, height: 157,
     sign: 'Peixes', birthday: '19 de Fevereiro',
     voice: 'Kana Asumi',
@@ -1913,7 +1914,8 @@ export function buildDefaultState(): AppState {
       { type: 'passive', keyword: 'Domain of Suffocation', title: 'Breath Control',
         effect: 'No início do Round, caso o HP de um Digimon aliado esteja acima da metade, Memory +1 para Kanade e todos os aliados humanos dentro do Domain.' },
       { type: 'passive', keyword: 'Domain of Suffocation', title: 'A Glimmer in the Ocean',
-        effect: 'Libera a afinidade [Cura] para Kanade. Adiciona [Cura] a todas as rolagens que recuperem HP.' },
+        effect: 'Libera a afinidade [Cura] para Kanade. Adiciona [Cura] a todas as rolagens que recuperem HP.',
+        alwaysOn: { affinityBonus: { Cura: 1 } } },
     ] as TamerSkill[],
     digimonId: 'd-penmon-line',
   };
@@ -2053,7 +2055,7 @@ export function buildDefaultState(): AppState {
   const hibito: Tamer = {
     id: 't-hibito',
     name: 'HIBITO', surname: 'Akugetsu',
-    portrait: 'indigo', image: null,
+    portrait: 'blue', image: null,
     age: 14, height: 161,
     sign: 'Câncer', birthday: '4 de Julho',
     voice: 'Chiwa Saito',
@@ -2196,6 +2198,7 @@ export function buildDefaultState(): AppState {
           {
             type: 'passive', keyword: 'Passiva', title: 'Sturdy',
             effect: 'ToyAgumon recebe +5 de HP.',
+            alwaysOn: { statusBonus: { HP: 5 }, inheritable: true },
           },
         ] as DigimonSkill[] },
       { stageName: 'Omekamon', level: 'Adult (Lvl 4)', cost: '-2 Memory', type: 'Puppet', portrait: 'orange', size: 3, speed: 5, locked: false,
@@ -2237,9 +2240,9 @@ export function buildDefaultState(): AppState {
     sectors: [], image: null, currentStage: 1,
     line: '??? ↔ Penmon ↔ Swanmon ↔ ??? ↔ ???',
     stages: [
-      { stageName: '???', level: 'In-Training (Lvl 2)', cost: '0', type: '???', portrait: 'blue', size: 1, speed: 5, locked: true,
+      { stageName: '???', level: 'In-Training (Lvl 2)', cost: '0', type: '???', portrait: 'wheat', size: 1, speed: 5, locked: true,
         status: { HP: 0, Deslocamento: 0, Iniciativa: 0, Defesa: 0, Armadura: 0 }, attributes: { ...kanadeAttrs }, weakness: {}, affinity: {}, skills: [] },
-      { stageName: 'Penmon', level: 'Child (Lvl 3)', cost: '0', type: 'Bird', portrait: 'blue', size: 3, speed: 5, locked: false,
+      { stageName: 'Penmon', level: 'Child (Lvl 3)', cost: '0', type: 'Bird', portrait: 'wheat', size: 3, speed: 5, locked: false,
         status: { HP: 13, Deslocamento: 10, Iniciativa: 6, Defesa: 3, Armadura: 0 }, attributes: { ...kanadeAttrs },
         weakness: { 'Letal (+2)': 'Data', 'Agravado (+3)': 'Fogo, Madeira', 'Resistente (-2)': 'Vírus' },
         affinity: { Gelo: 3, Físico: 3, Resistência: 3 },
@@ -2248,7 +2251,7 @@ export function buildDefaultState(): AppState {
             effect: 'Se a afinidade Físico de Penmon for menor que 3, reduz -3 dados da rolagem.' },
           { type: 'action', keyword: 'Ataque', title: 'Ice Prism', alcance: 'projétil 5m', custo: 'Nenhum', dados: 'Inteligência + Gelo', effect: 'Nenhum.' },
         ] as DigimonSkill[] },
-      { stageName: 'Swanmon', level: 'Adult (Lvl 4)', cost: '-2 Memory', type: 'Bird', portrait: 'blue', size: 3, speed: 5, locked: false,
+      { stageName: 'Swanmon', level: 'Adult (Lvl 4)', cost: '-2 Memory', type: 'Bird', portrait: 'wheat', size: 3, speed: 5, locked: false,
         status: { HP: 18, Deslocamento: 10, Iniciativa: 6, Defesa: 4, Armadura: 0 }, attributes: { ...kanadeAttrs },
         weakness: { 'Letal (+2)': 'Data', 'Agravado (+3)': 'Fogo, Terra', 'Resistente (-2)': 'Vírus, Gelo, Vento' },
         affinity: { Vento: 1, Gelo: 4, Físico: 3, Resistência: 3 },
@@ -2260,9 +2263,9 @@ export function buildDefaultState(): AppState {
             effect: 'Swanmon tem cargas infinitas de [Flight]. Caso seja derrubada, pode voltar a voar como Ação Livre. Swanmon pode carregar 1 acompanhante em suas costas.' },
         ] as DigimonSkill[] },
 
-      { stageName: '???', level: 'Perfect (Lvl 5)', cost: '-3 Memory', type: '???', portrait: 'blue', size: 3, speed: 5, locked: true,
+      { stageName: '???', level: 'Perfect (Lvl 5)', cost: '-3 Memory', type: '???', portrait: 'wheat', size: 3, speed: 5, locked: true,
         status: { HP: 0, Deslocamento: 0, Iniciativa: 0, Defesa: 0, Armadura: 0 }, attributes: { ...kanadeAttrs }, weakness: {}, affinity: {}, skills: [] },
-      { stageName: '???', level: 'Ultimate (Lvl 6)', cost: '-3 Memory', type: '???', portrait: 'blue', size: 3, speed: 5, locked: true,
+      { stageName: '???', level: 'Ultimate (Lvl 6)', cost: '-3 Memory', type: '???', portrait: 'wheat', size: 3, speed: 5, locked: true,
         status: { HP: 0, Deslocamento: 0, Iniciativa: 0, Defesa: 0, Armadura: 0 }, attributes: { ...kanadeAttrs }, weakness: {}, affinity: {}, skills: [] },
     ],
   };
@@ -2340,9 +2343,9 @@ export function buildDefaultState(): AppState {
     sectors: [], image: null, currentStage: 1,
     line: '??? ↔ Ghostmon ↔ Fla Wizarmon ↔ ??? ↔ ???',
     stages: [
-      { stageName: '???', level: 'In-Training (Lvl 2)', cost: '0', type: '???', portrait: 'indigo', size: 1, speed: 5, locked: true,
+      { stageName: '???', level: 'In-Training (Lvl 2)', cost: '0', type: '???', portrait: 'blue', size: 1, speed: 5, locked: true,
         status: { HP: 0, Deslocamento: 0, Iniciativa: 0, Defesa: 0, Armadura: 0 }, attributes: { ...hibitoAttrs }, weakness: {}, affinity: {}, skills: [] },
-      { stageName: 'Ghostmon', level: 'Child (Lvl 3)', cost: '0', type: 'Ghost', portrait: 'indigo', size: 3, speed: 5, locked: false,
+      { stageName: 'Ghostmon', level: 'Child (Lvl 3)', cost: '0', type: 'Ghost', portrait: 'blue', size: 3, speed: 5, locked: false,
         status: { HP: 12, Deslocamento: 11, Iniciativa: 7, Defesa: 3, Armadura: 0 }, attributes: { ...hibitoAttrs },
         weakness: { 'Letal (+2)': 'Vacina', 'Agravado (+3)': 'Água, Gelo', 'Resistente (-2)': 'Data' },
         affinity: { Luz: 2, Trevas: 1, Resistência: 1 },
@@ -2355,7 +2358,7 @@ export function buildDefaultState(): AppState {
           { type: 'passive', keyword: 'Passiva', title: "Will-o'-the-Wisp",
             effect: 'Altera o efeito de [Burn] para que recupere o HP do alvo ao invés de reduzir.' },
         ] as DigimonSkill[] },
-      { stageName: 'Fla Wizarmon', level: 'Adult (Lvl 4)', cost: '-2 Memory', type: 'Demon Man', portrait: 'indigo', size: 3, speed: 5, locked: false,
+      { stageName: 'Fla Wizarmon', level: 'Adult (Lvl 4)', cost: '-2 Memory', type: 'Demon Man', portrait: 'blue', size: 3, speed: 5, locked: false,
         status: { HP: 17, Deslocamento: 11, Iniciativa: 7, Defesa: 4, Armadura: 0 }, attributes: { ...hibitoAttrs },
         weakness: { 'Letal (+2)': 'Vacina', 'Agravado (+3)': 'Água, Terra', 'Resistente (-2)': 'Data, Fogo, Trevas' },
         affinity: { Fogo: 2, Luz: 2, Trevas: 1, Resistência: 1 },
@@ -2368,9 +2371,9 @@ export function buildDefaultState(): AppState {
             effect: 'Quando cargas de [Burn] forem ser aplicadas em Fla Wizarmon, pode redirecionar para um de seus dois fósforos (se o fósforo não tiver cargas). Cargas nos fósforos não contam para o relógio. Ao usar ataque com [Fogo] ou [Intense Sunlight] no texto, pode gastar todas as cargas de um fósforo para reduzir o custo em -1 ou aumentar a rolagem em +2 dados.' },
         ] as DigimonSkill[] },
 
-      { stageName: '???', level: 'Perfect (Lvl 5)', cost: '-3 Memory', type: '???', portrait: 'indigo', size: 3, speed: 5, locked: true,
+      { stageName: '???', level: 'Perfect (Lvl 5)', cost: '-3 Memory', type: '???', portrait: 'blue', size: 3, speed: 5, locked: true,
         status: { HP: 0, Deslocamento: 0, Iniciativa: 0, Defesa: 0, Armadura: 0 }, attributes: { ...hibitoAttrs }, weakness: {}, affinity: {}, skills: [] },
-      { stageName: '???', level: 'Ultimate (Lvl 6)', cost: '-3 Memory', type: '???', portrait: 'indigo', size: 3, speed: 5, locked: true,
+      { stageName: '???', level: 'Ultimate (Lvl 6)', cost: '-3 Memory', type: '???', portrait: 'blue', size: 3, speed: 5, locked: true,
         status: { HP: 0, Deslocamento: 0, Iniciativa: 0, Defesa: 0, Armadura: 0 }, attributes: { ...hibitoAttrs }, weakness: {}, affinity: {}, skills: [] },
     ],
   };

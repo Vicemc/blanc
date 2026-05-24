@@ -23,6 +23,7 @@ const DIGIVICES = [
   { body:'#cccccc', trim:'#888', screen:'#1a1a1a', accent:'#bbb' },   // prata
   // linha 5
   { body:'#1a1a1a', trim:'#555', screen:'#1a1a1a', accent:'#666' },   // preto
+  { body:'#888888', trim:'#555', screen:'#1a1a1a', accent:'#aaa' },   // cinza
 ]
 
 function DigiviceSVG({ dv }: { dv: typeof DIGIVICES[0] }) {

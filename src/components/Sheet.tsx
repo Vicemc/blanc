@@ -1662,7 +1662,7 @@ function TamerView({ tamer, line, editable, onSave, onSaveLine, onSaveAll, state
 
   const derived = useMemo(() => calcTamerDerived(tamer.attributes), [tamer.attributes])
 
-  // Bônus acumulados de passivas de tamer ativas
+  // Bônus acumulados de passivas de tamer ativas (toggle)
   const tamerActiveBonus = tamer.tamerSkills.reduce((acc, sk, idx) => {
     if (!sk.toggleBonus?.statusBonus) return acc
     const t = passiveToggles[idx]
@@ -1674,15 +1674,25 @@ function TamerView({ tamer, line, editable, onSave, onSaveLine, onSaveAll, state
     return acc
   }, {} as Record<string, number>)
 
-  const maxHP      = derived.HP  + (tamerActiveBonus['HP'] ?? 0)
-  const maxDigisoul = derived.Digisoul
+  // alwaysOn: afinidades permanentes do tamer (ex: A Glimmer in the Ocean → Cura)
+  const tamerAlwaysOnAffinity = tamer.tamerSkills.reduce((acc, sk) => {
+    if (!sk.alwaysOn?.affinityBonus) return acc
+    for (const [k, v] of Object.entries(sk.alwaysOn.affinityBonus)) acc[k] = (acc[k] ?? 0) + (v ?? 0)
+    return acc
+  }, {} as Record<string, number>)
+  const hasTamerAffinity = Object.values(tamerAlwaysOnAffinity).some(v => v > 0)
+
+  const maxHP       = derived.HP       + (tamer.status.hpMaxBonus       ?? 0) + (tamerActiveBonus['HP'] ?? 0)
+  const maxDigisoul = derived.Digisoul + (tamer.status.digisoulMaxBonus  ?? 0)
 
   const statusEntries: StatEntry[] = [
     ['HP',
       `${tamer.status.HP.v}/${maxHP}`,
       (v: number) => onSave({ ...tamer, status: { ...tamer.status, HP: { ...tamer.status.HP, v: Math.max(0, Math.min(v, maxHP)) } } })
     ],
-    ['Memory', `${tamer.status.Memory.v}/10`],
+    ['Memory', `${tamer.status.Memory.v}/${tamer.status.Memory.max}`,
+      (v: number) => onSave({ ...tamer, status: { ...tamer.status, Memory: { ...tamer.status.Memory, v: Math.max(0, Math.min(v, tamer.status.Memory.max)) } } })
+    ],
     ['Digisoul',
       `${tamer.status.Digisoul.v}/${maxDigisoul}`,
       (v: number) => onSave({ ...tamer, status: { ...tamer.status, Digisoul: { ...tamer.status.Digisoul, v: Math.max(0, Math.min(v, maxDigisoul)) } } })
@@ -1717,6 +1727,24 @@ function TamerView({ tamer, line, editable, onSave, onSaveLine, onSaveAll, state
       )}
 
       <StatRow entries={statusEntries} />
+
+      {editable && freeMode && (
+        <div style={{ display:'flex', flexWrap:'wrap', gap:12, padding:'8px 0 4px',
+          fontFamily:'var(--font-mono)', fontSize:11, color:'var(--ink-mute)' }}>
+          {([
+            ['HP máx',      maxHP,      (d: number) => onSave({ ...tamer, status: { ...tamer.status, hpMaxBonus:      (tamer.status.hpMaxBonus       ?? 0) + d } })],
+            ['DS máx',      maxDigisoul,(d: number) => onSave({ ...tamer, status: { ...tamer.status, digisoulMaxBonus: (tamer.status.digisoulMaxBonus  ?? 0) + d } })],
+            ['Mem máx',     tamer.status.Memory.max,   (d: number) => onSave({ ...tamer, status: { ...tamer.status, Memory: { ...tamer.status.Memory, max: tamer.status.Memory.max + d } } })],
+          ] as [string, number, (d: number) => void][]).map(([label, val, adj]) => (
+            <div key={label} style={{ display:'flex', alignItems:'center', gap:4 }}>
+              <span>{label}:</span>
+              <button className={styles.attrFreeBtn} onClick={() => adj(-1)}>−</button>
+              <span style={{ minWidth:24, textAlign:'center', color:'var(--ink)' }}>{val}</span>
+              <button className={styles.attrFreeBtn} onClick={() => adj(+1)}>+</button>
+            </div>
+          ))}
+        </div>
+      )}
 
       {editable && editInfo && (
         <>
@@ -1760,6 +1788,13 @@ function TamerView({ tamer, line, editable, onSave, onSaveLine, onSaveAll, state
       />
       {showAdd && <AddSkillForm isTamer onAdd={sk => { onSave({ ...tamer, tamerSkills: [...tamer.tamerSkills, sk as TamerSkill] }); setShowAdd(false); msg('Skill adicionada!') }} onCancel={() => setShowAdd(false)} />}
 
+      {hasTamerAffinity && (
+        <>
+          <SectionTitle>Afinidades</SectionTitle>
+          <AffinityGrid affinity={tamerAlwaysOnAffinity} />
+        </>
+      )}
+
       {/* Skill Tree — fases liberadas pelo GM */}
       <SkillTreeSection tamer={tamer} state={state} onSave={onSave} onSaveState={onSaveState} msg={msg} />
     </div>
@@ -1779,6 +1814,7 @@ function DigimonStageView({ line, stageIdx, tamer, editable, onSaveLine, onSaveT
   const [pendAttr, setPendAttr] = useState<Record<string, number>>({})
   // toggles das passivas: chave = índice da skill no array original, valor = { active, x }
   const [passiveToggles, setPassiveToggles] = useState<Record<number, { active: boolean; x: number }>>({})
+  const [freeMode, setFreeMode] = useState(false)
   const pendCost = useMemo(() => pendingCost(pendAttr, stage?.attributes ?? {}, true), [pendAttr, stage])
   const hasPending = pendCost > 0
   const msg = (m: string) => setToast(m)
@@ -1797,11 +1833,9 @@ function DigimonStageView({ line, stageIdx, tamer, editable, onSaveLine, onSaveT
   // Para digimons parceiros: derivar HP a partir do tamer (regra do sistema)
   // Para selvagens e bugs: usar os valores absolutos do status — sem cálculo
   const isDerived = !!tamer
-  const childStageIdx = line.stages.findIndex(s => !s.locked && (s.level.includes('Lvl 3') || s.level.includes('Child')))
-  const stagesAboveChild = stageIdx <= childStageIdx ? 0 : stageIdx - childStageIdx
   const tamerHP = tamer ? tamer.attributes.Vigor + 5 : undefined
   const derived = isDerived
-    ? calcDigimonDerived(stage.attributes, stage.size, stage.speed, evBonus, tamerHP, stagesAboveChild)
+    ? calcDigimonDerived(stage.attributes, stage.size, stage.speed, evBonus, tamerHP, stage.level)
     : {
         HP:           stage.status.HP,
         Defesa:       stage.status.Defesa,
@@ -1809,7 +1843,7 @@ function DigimonStageView({ line, stageIdx, tamer, editable, onSaveLine, onSaveT
         Deslocamento: stage.status.Deslocamento,
       }
 
-  // Calcular bônus acumulados de todas as passivas ativas
+  // Calcular bônus acumulados de todas as passivas ativas (toggle)
   const activeStatusBonus = stage.skills.reduce((acc, sk, idx) => {
     if (!sk.toggleBonus?.statusBonus) return acc
     const t = passiveToggles[idx]
@@ -1821,7 +1855,24 @@ function DigimonStageView({ line, stageIdx, tamer, editable, onSaveLine, onSaveT
     return acc
   }, {} as Record<string, number>)
 
-  const maxHPDigi = derived.HP + (activeStatusBonus['HP'] ?? 0)
+  // alwaysOn: sempre ativo, sem toggle — inclui herança do Child para evoluções acima dele
+  const childStageIdx = line.stages.findIndex(s => !s.locked && (s.level.includes('Lvl 3') || s.level.includes('Child')))
+  const alwaysOnBonus = (() => {
+    const acc: Record<string, number> = {}
+    for (const sk of stage.skills) {
+      if (!sk.alwaysOn?.statusBonus) continue
+      for (const [k, v] of Object.entries(sk.alwaysOn.statusBonus)) acc[k] = (acc[k] ?? 0) + (v ?? 0)
+    }
+    if (childStageIdx >= 0 && stageIdx > childStageIdx) {
+      for (const sk of line.stages[childStageIdx].skills) {
+        if (!sk.alwaysOn?.statusBonus || !sk.alwaysOn.inheritable) continue
+        for (const [k, v] of Object.entries(sk.alwaysOn.statusBonus)) acc[k] = (acc[k] ?? 0) + (v ?? 0)
+      }
+    }
+    return acc
+  })()
+
+  const maxHPDigi = derived.HP + (stage.status.hpMaxBonus ?? 0) + (activeStatusBonus['HP'] ?? 0) + (alwaysOnBonus['HP'] ?? 0)
   const saveStageStatus = (patch: Partial<typeof stage.status>) => {
     const newStages = line.stages.map((s,i) => i===stageIdx ? { ...s, status: { ...s.status, ...patch } } : s)
     onSaveLine({ ...line, stages: newStages })
@@ -1832,10 +1883,10 @@ function DigimonStageView({ line, stageIdx, tamer, editable, onSaveLine, onSaveT
       `${stage.status.HP}/${maxHPDigi}`,
       (v: number) => saveStageStatus({ HP: Math.max(0, Math.min(v, maxHPDigi)) })
     ],
-    ['Deslocamento', derived.Deslocamento + (activeStatusBonus['Deslocamento'] ?? 0)],
-    ['Iniciativa', derived.Iniciativa + (activeStatusBonus['Iniciativa'] ?? 0)],
-    ['Defesa', derived.Defesa + (activeStatusBonus['Defesa'] ?? 0)],
-    ['Armadura', stage.status.Armadura + (activeStatusBonus['Armadura'] ?? 0)],
+    ['Deslocamento', derived.Deslocamento + (activeStatusBonus['Deslocamento'] ?? 0) + (alwaysOnBonus['Deslocamento'] ?? 0)],
+    ['Iniciativa',   derived.Iniciativa   + (activeStatusBonus['Iniciativa']   ?? 0) + (alwaysOnBonus['Iniciativa']   ?? 0)],
+    ['Defesa',       derived.Defesa       + (activeStatusBonus['Defesa']       ?? 0) + (alwaysOnBonus['Defesa']       ?? 0)],
+    ['Armadura',     stage.status.Armadura + (activeStatusBonus['Armadura']    ?? 0) + (alwaysOnBonus['Armadura']     ?? 0)],
     ...(activeStatusBonus['SecurityAttack'] ? [['Security Attack', `+${activeStatusBonus['SecurityAttack']}`] as [string,string]] : []),
     ...(tamer ? [['XP (tamer)', tamer.xp] as [string, number]] : []),
   ]
@@ -1949,8 +2000,29 @@ function DigimonStageView({ line, stageIdx, tamer, editable, onSaveLine, onSaveT
       )}
 
       <StatRow entries={statusEntries} />
+
+      {editable && freeMode && (
+        <div style={{ display:'flex', flexWrap:'wrap', gap:12, padding:'8px 0 4px',
+          fontFamily:'var(--font-mono)', fontSize:11, color:'var(--ink-mute)' }}>
+          <div style={{ display:'flex', alignItems:'center', gap:4 }}>
+            <span>HP máx:</span>
+            <button className={styles.attrFreeBtn} onClick={() => saveStageStatus({ hpMaxBonus: (stage.status.hpMaxBonus ?? 0) - 1 })}>−</button>
+            <span style={{ minWidth:24, textAlign:'center', color:'var(--ink)' }}>{maxHPDigi}</span>
+            <button className={styles.attrFreeBtn} onClick={() => saveStageStatus({ hpMaxBonus: (stage.status.hpMaxBonus ?? 0) + 1 })}>+</button>
+          </div>
+          <div style={{ display:'flex', alignItems:'center', gap:4 }}>
+            <span>Armadura:</span>
+            <button className={styles.attrFreeBtn} onClick={() => saveStageStatus({ Armadura: Math.max(0, stage.status.Armadura - 1) })}>−</button>
+            <span style={{ minWidth:24, textAlign:'center', color:'var(--ink)' }}>{stage.status.Armadura}</span>
+            <button className={styles.attrFreeBtn} onClick={() => saveStageStatus({ Armadura: stage.status.Armadura + 1 })}>+</button>
+          </div>
+        </div>
+      )}
+
       <SectionTitle>Atributos</SectionTitle>
-      <AttributeGrid attrs={stage.attributes} editable={editable} pending={pendAttr} onPend={pendAttrUp} onUnpend={pendAttrDown} onFreeEdit={(k, delta) => { onSaveLine({ ...line, stages: line.stages.map((s,i) => i===stageIdx ? { ...s, attributes: { ...s.attributes, [k]: Math.max(1, Math.min(10, s.attributes[k] + delta)) } } : s) }) }} />
+      <AttributeGrid attrs={stage.attributes} editable={editable} pending={pendAttr} onPend={pendAttrUp} onUnpend={pendAttrDown}
+        freeMode={freeMode} onFreeModeChange={setFreeMode}
+        onFreeEdit={(k, delta) => { onSaveLine({ ...line, stages: line.stages.map((s,i) => i===stageIdx ? { ...s, attributes: { ...s.attributes, [k]: Math.max(1, Math.min(10, s.attributes[k] + delta)) } } : s) }) }} />
       {hasPending && <XpConfirmBar cost={pendCost} xpAvail={xpAvail} onConfirm={confirmXp} onCancel={cancelXp} />}
 
       <SectionTitle>Weakness & Resistance</SectionTitle>

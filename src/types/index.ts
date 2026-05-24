@@ -92,6 +92,14 @@ export interface PassiveToggleBonus {
   durationRounds?: number;
 }
 
+// Bônus sempre ativo (sem toggle). affinityBonus se aplica ao tamer/digimon permanentemente.
+// inheritable: se true, evoluções herdam o bônus de statusBonus.
+export interface AlwaysOnBonus {
+  statusBonus?:  Partial<Record<'HP' | 'Defesa' | 'Deslocamento' | 'Iniciativa' | 'Armadura' | 'Digisoul' | 'SecurityAttack', number>>;
+  affinityBonus?: Partial<Affinity>;
+  inheritable?: boolean;
+}
+
 export interface TamerSkill {
   type: SkillCardType;
   keyword: string;
@@ -101,6 +109,7 @@ export interface TamerSkill {
   dados?: string;
   effect: string;
   toggleBonus?: PassiveToggleBonus;
+  alwaysOn?: AlwaysOnBonus;
 }
 
 // ---------- Digimon Skill ----------
@@ -115,6 +124,7 @@ export interface DigimonSkill {
   meta?: string;
   effect: string;
   toggleBonus?: PassiveToggleBonus;
+  alwaysOn?: AlwaysOnBonus;
 }
 
 // ---------- Affinity ----------
@@ -151,6 +161,7 @@ export interface DigimonStageStatus {
   Iniciativa:   number;
   Defesa:       number;
   Armadura:     number;
+  hpMaxBonus?:  number;  // delta de HP máximo definido pelo GM
 }
 
 export interface DigimonStage {
@@ -195,6 +206,8 @@ export interface TamerStatus {
   Deslocamento: number;
   Autoridade:   number;
   Iniciativa:   number;
+  hpMaxBonus?:       number;  // delta de HP máximo definido pelo GM
+  digisoulMaxBonus?: number;  // delta de Digisoul máximo definido pelo GM
 }
 
 export interface Tamer {

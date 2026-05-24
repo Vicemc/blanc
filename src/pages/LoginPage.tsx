@@ -22,9 +22,15 @@ export default function LoginPage({ onSuccess }: Props) {
     setLoading(false)
 
     if (error) {
-      setError(error === 'Invalid login credentials'
-        ? 'Email ou senha incorretos.'
-        : error)
+      const msg =
+        error.toLowerCase().includes('invalid login credentials')
+          ? 'Email ou senha incorretos.'
+          : error.toLowerCase().includes('email not confirmed')
+          ? 'Email ainda não confirmado. Verifique sua caixa de entrada e clique no link enviado pelo Supabase.'
+          : error.toLowerCase().includes('failed to fetch') || error.toLowerCase().includes('networkerror')
+          ? 'Erro de conexão. Verifique sua internet ou as configurações do Supabase.'
+          : error
+      setError(msg)
       return
     }
 

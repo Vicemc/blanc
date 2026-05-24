@@ -86,6 +86,14 @@ function AppInner() {
 
   const sharedProps = { state, onUpdate }
 
+  // Mostrar banner de setup quando Supabase está configurado mas profile não foi carregado
+  // (indica que o schema SQL ainda não foi executado no Supabase)
+  const showSetupBanner = isSupabaseReady && session && !profile && !localMode
+
+  // Digivice e DigiZap: apenas GM ou players com tamer vinculado
+  const canSeeDigivice = localMode || isGM || !!profile?.tamer_id
+  const canSeeDigizap  = localMode || isGM || !!profile?.tamer_id
+
   const pageFallback = (
     <div style={{ minHeight: '100vh', display: 'flex', alignItems: 'center',
       justifyContent: 'center', fontFamily: 'var(--font-mono)',
@@ -103,8 +111,12 @@ function AppInner() {
         <NavLink to="/goggle"       className={({ isActive }) => isActive ? styles.active : ''}>Goggle Girl</NavLink>
         <NavLink to="/teatro"       className={({ isActive }) => isActive ? styles.active : ''}>Teatro</NavLink>
         <NavLink to="/sistema"      className={({ isActive }) => isActive ? styles.active : ''}>Sistema</NavLink>
-        <NavLink to="/digivice"     className={({ isActive }) => isActive ? styles.active : ''}>Digivice</NavLink>
-        <NavLink to="/digizap"      className={({ isActive }) => isActive ? styles.active : ''}>Digi-Zap</NavLink>
+        {canSeeDigivice && (
+          <NavLink to="/digivice"   className={({ isActive }) => isActive ? styles.active : ''}>Digivice</NavLink>
+        )}
+        {canSeeDigizap && (
+          <NavLink to="/digizap"    className={({ isActive }) => isActive ? styles.active : ''}>Digi-Zap</NavLink>
+        )}
         {isGM && (
           <NavLink to="/backstage"  className={({ isActive }) => isActive ? styles.active : ''}>Backstage</NavLink>
         )}
@@ -136,6 +148,15 @@ function AppInner() {
           <button className={styles.navBtn} onClick={signOut}>Sair</button>
         )}
       </nav>
+
+      {showSetupBanner && (
+        <div style={{ padding: '10px 24px', fontFamily: 'var(--font-mono)', fontSize: 11,
+          background: 'rgba(196,51,33,0.08)', color: 'var(--coral)',
+          borderBottom: '1px solid var(--line-soft)',
+          display: 'flex', alignItems: 'center', gap: 12 }}>
+          <strong>Setup necessário:</strong> Execute o arquivo <code>supabase_schema.sql</code> no SQL Editor do Supabase para criar as tabelas necessárias.
+        </div>
+      )}
 
       {migrateResult && (
         <div style={{ padding: '10px 24px', fontFamily: 'var(--font-mono)', fontSize: 11,
