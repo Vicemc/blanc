@@ -1971,14 +1971,16 @@ export default function TeatroPage({ state, onUpdate, isGM = false }: Props) {
     <div>
       <PageHead title="Teatro" tag="crie o palco, chame os atores" />
       <div className={styles.index}>
-        <div className={`${styles.stageCard} ${styles.newCard}`} onClick={newStage}>
-          <span className={styles.plus}>Abrir novo palco</span>
-        </div>
+        {isGM && (
+          <div className={`${styles.stageCard} ${styles.newCard}`} onClick={newStage}>
+            <span className={styles.plus}>Abrir novo palco</span>
+          </div>
+        )}
         {[...state.stages].reverse().map(s => {
           const rt = getRuntime(s)
           return (
             <div key={s.id} className={styles.stageCard} onClick={() => setOpenStage(s.id)}>
-              <button className={styles.delCard} onClick={e => deleteStage(s.id,e)}>×</button>
+              {isGM && <button className={styles.delCard} onClick={e => deleteStage(s.id,e)}>×</button>}
               <h3 className={styles.stageTitle}>{s.title}</h3>
               <div className={styles.stageSub}>~ {s.subtitle || 'sem subtítulo'} ~</div>
               <div className={styles.stageCounts}>

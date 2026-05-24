@@ -12,6 +12,7 @@ interface Props {
   state: AppState
   onUpdate: (s: AppState) => void
   canEdit?: (tamerId?: string) => boolean
+  isGM?: boolean
 }
 
 function exportJson(data: unknown, filename: string) {
@@ -202,7 +203,7 @@ function AddTamerModal({ state, onSave, onClose }: { state: AppState; onSave: (s
 }
 
 // ── PartyPage ──────────────────────────────────────────────────────
-export default function PartyPage({ state, onUpdate }: Props) {
+export default function PartyPage({ state, onUpdate, canEdit, isGM }: Props) {
   const [open, setOpen]       = useState<SheetSubject | null>(null)
   const [showAdd, setShowAdd] = useState(false)
   const [compactGrid, setCompactGrid] = useState(false)
@@ -227,14 +228,16 @@ export default function PartyPage({ state, onUpdate }: Props) {
             title="Alternar entre grid compacto (6 colunas) e grid normal">
             {compactGrid ? '⊞ Compacto' : '⊟ Normal'}
           </button>
-          <button className={styles.btnGhost} onClick={() => setShowAdd(true)}>+ Novo Tamer</button>
+          {isGM && <button className={styles.btnGhost} onClick={() => setShowAdd(true)}>+ Novo Tamer</button>}
         </div>
       </div>
 
       {/* Painel XP global */}
-      <div style={{ padding:'0 56px 16px' }}>
-        <XpGlobalPanel state={state} onUpdate={onUpdate} />
-      </div>
+      {isGM && (
+        <div style={{ padding:'0 56px 16px' }}>
+          <XpGlobalPanel state={state} onUpdate={onUpdate} />
+        </div>
+      )}
 
       <div className={compactGrid ? styles.gridCompact : styles.grid}>
         {state.tamers.map(t => {
@@ -285,10 +288,11 @@ export default function PartyPage({ state, onUpdate }: Props) {
             </div>
           )
         })}
-        <div className={styles.addCard} onClick={() => setShowAdd(true)}>+ Novo Tamer</div>
+        {isGM && <div className={styles.addCard} onClick={() => setShowAdd(true)}>+ Novo Tamer</div>}
       </div>
 
-      {open && <SheetModal subject={open} state={state} onSaveState={onUpdate} onClose={() => setOpen(null)} editable />}
+      {open && <SheetModal subject={open} state={state} onSaveState={onUpdate} onClose={() => setOpen(null)}
+        editable={canEdit ? canEdit(open.kind === 'tamer' ? open.id : undefined) : true} />}
       {showAdd && <AddTamerModal state={state} onSave={s => { onUpdate(s); setShowAdd(false) }} onClose={() => setShowAdd(false)} />}
     </div>
   )

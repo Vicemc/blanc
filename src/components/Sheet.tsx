@@ -1778,6 +1778,29 @@ function TamerView({ tamer, line, editable, onSave, onSaveLine, onSaveAll, state
         <XpConfirmBar cost={pendCost} xpAvail={tamer.xp} onConfirm={confirmXp} onCancel={cancelXp} />
       )}
 
+      {hasTamerAffinity && (
+        <>
+          <SectionTitle>Afinidades</SectionTitle>
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px 16px', padding: '4px 0 12px' }}>
+            {Object.entries(tamerAlwaysOnAffinity).filter(([, v]) => v > 0).map(([k, v]) => (
+              <div key={k} className={styles.affinityRow} style={{ width: 'auto', minWidth: 90 }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 6, flex: 1 }}>
+                  <span className={styles.affinityIcon}>
+                    {AFFINITY_ICONS[k]
+                      ? <img src={AFFINITY_ICONS[k]} alt={k} style={{ width: '100%', height: '100%', objectFit: 'contain', display: 'block', padding: 1 }} />
+                      : <span style={{ fontSize: 12 }}>{k}</span>
+                    }
+                    <span className={styles.affinityTooltip}>{k}</span>
+                  </span>
+                  <span style={{ fontFamily: 'var(--font-body)', fontSize: 13, color: 'var(--ink-soft)' }}>{k}</span>
+                </div>
+                <span style={{ fontFamily: 'var(--font-mono)', fontWeight: 700, fontSize: 15, marginLeft: 8 }}>{v}</span>
+              </div>
+            ))}
+          </div>
+        </>
+      )}
+
       <SectionTitle action={editable && !showAdd && (
         <button className={styles.btnGhost} style={{ fontSize:11 }} onClick={() => setShowAdd(true)}>+ Nova Skill</button>
       )}>Tamer Skills</SectionTitle>
@@ -1787,13 +1810,6 @@ function TamerView({ tamer, line, editable, onSave, onSaveLine, onSaveAll, state
         onSave={onSave} msg={msg} onSpawnToken={onSpawnToken}
       />
       {showAdd && <AddSkillForm isTamer onAdd={sk => { onSave({ ...tamer, tamerSkills: [...tamer.tamerSkills, sk as TamerSkill] }); setShowAdd(false); msg('Skill adicionada!') }} onCancel={() => setShowAdd(false)} />}
-
-      {hasTamerAffinity && (
-        <>
-          <SectionTitle>Afinidades</SectionTitle>
-          <AffinityGrid affinity={tamerAlwaysOnAffinity} />
-        </>
-      )}
 
       {/* Skill Tree — fases liberadas pelo GM */}
       <SkillTreeSection tamer={tamer} state={state} onSave={onSave} onSaveState={onSaveState} msg={msg} />

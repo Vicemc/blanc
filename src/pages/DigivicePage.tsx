@@ -96,9 +96,18 @@ function useDigivice(characterId: string | null) {
     supabase.from('digivices')
       .select('*')
       .eq('character_id', characterId)
-      .single()
+      .maybeSingle()
       .then(({ data }) => {
-        setDigivice(data as Digivice ?? null)
+        if (data) {
+          setDigivice({
+            ...data,
+            inventory: data.inventory ?? [],
+            records:   data.records   ?? [],
+            maps:      data.maps      ?? [],
+          } as Digivice)
+        } else {
+          setDigivice(null)
+        }
         setLoading(false)
       })
   }, [characterId])

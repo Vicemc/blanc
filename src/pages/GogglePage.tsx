@@ -32,13 +32,13 @@ function importJson<T>(onLoad: (data: T) => void) {
 
 // ── Cards ─────────────────────────────────────────────────────────────────────
 function DigiCard({ d, onClick, onDelete, onExport, onImport }: {
-  d: DigimonLine; onClick: () => void; onDelete: (e: React.MouseEvent) => void
+  d: DigimonLine; onClick: () => void; onDelete?: (e: React.MouseEvent) => void
   onExport: (e: React.MouseEvent) => void; onImport: (e: React.MouseEvent) => void
 }) {
   const s = d.stages[d.currentStage ?? 0] ?? d.stages[0]
   return (
     <div className={styles.card} onClick={onClick}>
-      <button className={styles.cardDel} onClick={onDelete} title="Remover">×</button>
+      {onDelete && <button className={styles.cardDel} onClick={onDelete} title="Remover">×</button>}
       <div className={styles.cardActions}>
         <button className={styles.cardActionBtn} onClick={onExport} title="Exportar">↓</button>
         <button className={styles.cardActionBtn} onClick={onImport} title="Importar">↑</button>
@@ -57,12 +57,12 @@ function DigiCard({ d, onClick, onDelete, onExport, onImport }: {
 }
 
 function BugCard({ b, onClick, onDelete, onExport, onImport }: {
-  b: Bug; onClick: () => void; onDelete: (e: React.MouseEvent) => void
+  b: Bug; onClick: () => void; onDelete?: (e: React.MouseEvent) => void
   onExport: (e: React.MouseEvent) => void; onImport: (e: React.MouseEvent) => void
 }) {
   return (
     <div className={styles.card} onClick={onClick}>
-      <button className={styles.cardDel} onClick={onDelete} title="Remover">×</button>
+      {onDelete && <button className={styles.cardDel} onClick={onDelete} title="Remover">×</button>}
       <div className={styles.cardActions}>
         <button className={styles.cardActionBtn} onClick={onExport} title="Exportar">↓</button>
         <button className={styles.cardActionBtn} onClick={onImport} title="Importar">↑</button>
@@ -81,12 +81,12 @@ function BugCard({ b, onClick, onDelete, onExport, onImport }: {
 }
 
 function SignCard({ sg, onClick, onDelete, onExport, onImport }: {
-  sg: Sign; onClick: () => void; onDelete: (e: React.MouseEvent) => void
+  sg: Sign; onClick: () => void; onDelete?: (e: React.MouseEvent) => void
   onExport: (e: React.MouseEvent) => void; onImport: (e: React.MouseEvent) => void
 }) {
   return (
     <div className={styles.card} onClick={onClick}>
-      <button className={styles.cardDel} onClick={onDelete} title="Remover">×</button>
+      {onDelete && <button className={styles.cardDel} onClick={onDelete} title="Remover">×</button>}
       <div className={styles.cardActions}>
         <button className={styles.cardActionBtn} onClick={onExport} title="Exportar">↓</button>
         <button className={styles.cardActionBtn} onClick={onImport} title="Importar">↑</button>
@@ -314,10 +314,10 @@ function AddBugFolderModal({ state, onSave, onClose }: { state: AppState; onSave
 }
 
 // ── Pasta de Setor ────────────────────────────────────────────────────────────
-function SectorFolderComp({ sector, digimons, state, onUpdate, onOpen, onDeleteFolder }: {
+function SectorFolderComp({ sector, digimons, state, onUpdate, onOpen, onDeleteFolder, isGM }: {
   sector: SectorFolder; digimons: DigimonLine[];
   state: AppState; onUpdate: (s: AppState) => void;
-  onOpen: (s: SheetSubject) => void; onDeleteFolder: () => void
+  onOpen: (s: SheetSubject) => void; onDeleteFolder: () => void; isGM?: boolean
 }) {
   const [expanded, setExpanded] = useState(false)
   const [addWild, setAddWild]   = useState(false)
@@ -339,16 +339,16 @@ function SectorFolderComp({ sector, digimons, state, onUpdate, onOpen, onDeleteF
       {expanded && (
         <div className={styles.folderBody}>
           <div className={styles.folderToolbar}>
-            <button className={styles.btnGhost} style={{fontSize:11}} onClick={e=>{e.stopPropagation();setAddWild(true)}}>+ Digimon</button>
+            {isGM && <button className={styles.btnGhost} style={{fontSize:11}} onClick={e=>{e.stopPropagation();setAddWild(true)}}>+ Digimon</button>}
             <button className={styles.btnGhost} style={{fontSize:11}} onClick={e=>{e.stopPropagation();const f=document.createElement('input');f.type='file';f.accept='.json';f.onchange=()=>{const file=f.files?.[0];if(!file)return;const r=new FileReader();r.onload=ev=>{try{const d=JSON.parse(ev.target?.result as string) as DigimonLine;const id=`d-wild-${Date.now().toString(36)}`;const nd={...d,id,tamerId:null,sectors:[...new Set([...d.sectors,sector.n])]};onUpdate({...state,bestiary:[...state.bestiary,nd]})}catch{alert('Arquivo inválido.')}};r.readAsText(file)};f.click()}}>↑ Importar</button>
-            <button className={styles.btnGhost} style={{fontSize:11,marginLeft:'auto',color:'var(--coral)'}} onClick={e=>{e.stopPropagation();if(!confirm(`Remover a pasta do Setor ${sector.n}? Os digimons do setor não serão apagados.`))return;onDeleteFolder()}}>× Pasta</button>
+            {isGM && <button className={styles.btnGhost} style={{fontSize:11,marginLeft:'auto',color:'var(--coral)'}} onClick={e=>{e.stopPropagation();if(!confirm(`Remover a pasta do Setor ${sector.n}? Os digimons do setor não serão apagados.`))return;onDeleteFolder()}}>× Pasta</button>}
           </div>
           {digimons.length === 0 && <div className={styles.empty}>~ nenhum digimon neste setor ~</div>}
           <div className={styles.cardGrid}>
             {digimons.map(d => (
               <DigiCard key={d.id} d={d}
                 onClick={() => onOpen(d.tamerId ? { kind:'digimon', id: d.id } : { kind:'wild', id: d.id })}
-                onDelete={(e) => deleteWild(d.id, e)}
+                onDelete={isGM ? (e) => deleteWild(d.id, e) : undefined}
                 onExport={(e) => { e.stopPropagation(); exportJson(d, `digimon-${d.id}-${new Date().toISOString().slice(0,10)}.json`) }}
                 onImport={(e) => { e.stopPropagation(); importJson<DigimonLine>(imported => {
                   onUpdate({ ...state, bestiary: state.bestiary.map(x => x.id === d.id ? { ...imported, id: d.id } : x) })
@@ -363,10 +363,10 @@ function SectorFolderComp({ sector, digimons, state, onUpdate, onOpen, onDeleteF
 }
 
 // ── Pasta de BUG ─────────────────────────────────────────────────────────────
-function BugFolderComp({ folder, bugs, state, onUpdate, onOpen, onDeleteFolder }: {
+function BugFolderComp({ folder, bugs, state, onUpdate, onOpen, onDeleteFolder, isGM }: {
   folder: BugFolderType; bugs: Bug[];
   state: AppState; onUpdate: (s: AppState) => void;
-  onOpen: (s: SheetSubject) => void; onDeleteFolder: () => void
+  onOpen: (s: SheetSubject) => void; onDeleteFolder: () => void; isGM?: boolean
 }) {
   const [expanded, setExpanded] = useState(false)
   const [addBug, setAddBug]     = useState(false)
@@ -388,16 +388,16 @@ function BugFolderComp({ folder, bugs, state, onUpdate, onOpen, onDeleteFolder }
       {expanded && (
         <div className={styles.folderBody}>
           <div className={styles.folderToolbar}>
-            <button className={styles.btnGhost} style={{fontSize:11}} onClick={e=>{e.stopPropagation();setAddBug(true)}}>+ BUG</button>
+            {isGM && <button className={styles.btnGhost} style={{fontSize:11}} onClick={e=>{e.stopPropagation();setAddBug(true)}}>+ BUG</button>}
             <button className={styles.btnGhost} style={{fontSize:11}} onClick={e=>{e.stopPropagation();const f=document.createElement('input');f.type='file';f.accept='.json';f.onchange=()=>{const file=f.files?.[0];if(!file)return;const r=new FileReader();r.onload=ev=>{try{const b=JSON.parse(ev.target?.result as string) as Bug;const id=`b-${folder.cls}-${Date.now().toString(36)}`;onUpdate({...state,bugs:[...state.bugs,{...b,id,class:folder.cls,color:folder.color}]})}catch{alert('Arquivo inválido.')}};r.readAsText(file)};f.click()}}>↑ Importar</button>
-            <button className={styles.btnGhost} style={{fontSize:11,marginLeft:'auto',color:'var(--coral)'}} onClick={e=>{e.stopPropagation();if(!confirm(`Remover a pasta ${folder.cls}.${folder.color}? Os BUGs não serão apagados.`))return;onDeleteFolder()}}>× Pasta</button>
+            {isGM && <button className={styles.btnGhost} style={{fontSize:11,marginLeft:'auto',color:'var(--coral)'}} onClick={e=>{e.stopPropagation();if(!confirm(`Remover a pasta ${folder.cls}.${folder.color}? Os BUGs não serão apagados.`))return;onDeleteFolder()}}>× Pasta</button>}
           </div>
           {bugs.length === 0 && <div className={styles.empty}>~ nenhum bug desta classe registrado ~</div>}
           <div className={styles.cardGrid}>
             {bugs.map(b => (
               <BugCard key={b.id} b={b}
                 onClick={() => onOpen({ kind:'bug', id: b.id })}
-                onDelete={(e) => deleteBug(b.id, e)}
+                onDelete={isGM ? (e) => deleteBug(b.id, e) : undefined}
                 onExport={(e) => { e.stopPropagation(); exportJson(b, `bug-${b.id}-${new Date().toISOString().slice(0,10)}.json`) }}
                 onImport={(e) => { e.stopPropagation(); importJson<Bug>(imported => {
                   onUpdate({ ...state, bugs: state.bugs.map(x => x.id === b.id ? { ...imported, id: b.id } : x) })
@@ -412,7 +412,7 @@ function BugFolderComp({ folder, bugs, state, onUpdate, onOpen, onDeleteFolder }
 }
 
 // ── Aba SIGNs ─────────────────────────────────────────────────────────────────
-function SignsTab({ state, onUpdate, onOpen }: { state: AppState; onUpdate: (s: AppState) => void; onOpen: (s: SheetSubject) => void }) {
+function SignsTab({ state, onUpdate, onOpen, isGM }: { state: AppState; onUpdate: (s: AppState) => void; onOpen: (s: SheetSubject) => void; isGM?: boolean }) {
   const [addSign, setAddSign] = useState(false)
   const signs = state.signs ?? []
 
@@ -429,9 +429,9 @@ function SignsTab({ state, onUpdate, onOpen }: { state: AppState; onUpdate: (s: 
       </div>
 
       <div style={{ display:'flex', gap:8, marginBottom:16 }}>
-        <button className={styles.btnGhost} style={{fontSize:12}} onClick={() => setAddSign(true)}>
+        {isGM && <button className={styles.btnGhost} style={{fontSize:12}} onClick={() => setAddSign(true)}>
           + Novo SIGN
-        </button>
+        </button>}
         <button className={styles.btnGhost} style={{fontSize:12}} onClick={() => {
           const f = document.createElement('input')
           f.type = 'file'; f.accept = '.json'
@@ -462,7 +462,7 @@ function SignsTab({ state, onUpdate, onOpen }: { state: AppState; onUpdate: (s: 
         {signs.map(sg => (
           <SignCard key={sg.id} sg={sg}
             onClick={() => onOpen({ kind: 'sign', id: sg.id })}
-            onDelete={(e) => deleteSign(sg.id, e)}
+            onDelete={isGM ? (e) => deleteSign(sg.id, e) : undefined}
             onExport={(e) => { e.stopPropagation(); exportJson(sg, `sign-${sg.id}-${new Date().toISOString().slice(0,10)}.json`) }}
             onImport={(e) => { e.stopPropagation(); importJson<Sign>(imported => {
               onUpdate({ ...state, signs: signs.map(x => x.id === sg.id ? { ...imported, id: sg.id } : x) })
@@ -807,8 +807,8 @@ export default function GogglePage({ state, onUpdate, canEdit, isGM = false }: P
           </button>
         </div>
         <div className={styles.actions}>
-          {tab === 'setores' && <button className={styles.btnGhost} style={{fontSize:12}} onClick={()=>setModal('sector')}>+ Pasta de Setor</button>}
-          {tab === 'bugs'    && <button className={styles.btnGhost} style={{fontSize:12}} onClick={()=>setModal('bugfolder')}>+ Pasta de BUG</button>}
+          {isGM && tab === 'setores' && <button className={styles.btnGhost} style={{fontSize:12}} onClick={()=>setModal('sector')}>+ Pasta de Setor</button>}
+          {isGM && tab === 'bugs'    && <button className={styles.btnGhost} style={{fontSize:12}} onClick={()=>setModal('bugfolder')}>+ Pasta de BUG</button>}
         </div>
       </div>
 
@@ -821,7 +821,7 @@ export default function GogglePage({ state, onUpdate, canEdit, isGM = false }: P
             <SectorFolderComp key={s.n} sector={s}
               digimons={digimonsBySetor.get(s.n) ?? []}
               state={state} onUpdate={onUpdate} onOpen={setOpen}
-              onDeleteFolder={() => deleteSector(s.n)} />
+              onDeleteFolder={() => deleteSector(s.n)} isGM={isGM} />
           ))}
           {sectors.length === 0 && (
             <div className={styles.emptyState}>~ nenhuma pasta de setor criada ~<br/><small>Use "+ Pasta de Setor" para começar.</small></div>
@@ -836,7 +836,7 @@ export default function GogglePage({ state, onUpdate, canEdit, isGM = false }: P
             <BugFolderComp key={`${f.cls}.${f.color}`} folder={f}
               bugs={bugsByFolder.get(`${f.cls}.${f.color}`) ?? []}
               state={state} onUpdate={onUpdate} onOpen={setOpen}
-              onDeleteFolder={() => deleteBugFolder(f.cls, f.color)} />
+              onDeleteFolder={() => deleteBugFolder(f.cls, f.color)} isGM={isGM} />
           ))}
           {bugFolders.length === 0 && (
             <div className={styles.emptyState}>~ nenhuma pasta de BUG criada ~<br/><small>Use "+ Pasta de BUG" para começar.</small></div>
@@ -845,7 +845,7 @@ export default function GogglePage({ state, onUpdate, canEdit, isGM = false }: P
       )}
 
       {tab === 'signs' && (
-        <SignsTab state={state} onUpdate={onUpdate} onOpen={setOpen} />
+        <SignsTab state={state} onUpdate={onUpdate} onOpen={setOpen} isGM={isGM} />
       )}
 
       {tab === 'tokens' && (

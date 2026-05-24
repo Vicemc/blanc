@@ -175,7 +175,7 @@ function AppInner() {
         <Suspense fallback={pageFallback}>
           <Routes>
             <Route path="/"          element={<HomePage />} />
-            <Route path="/party"     element={<PartyPage    {...sharedProps} canEdit={canEdit} />} />
+            <Route path="/party"     element={<PartyPage    {...sharedProps} canEdit={canEdit} isGM={isGM} />} />
             <Route path="/goggle"    element={<GogglePage   {...sharedProps} canEdit={canEdit} isGM={isGM} />} />
             <Route path="/teatro"    element={<TeatroPage   {...sharedProps} isGM={isGM} />} />
             <Route path="/sistema"   element={<SistemaPage state={state} onUpdate={onUpdate} isGM={isGM} />} />
