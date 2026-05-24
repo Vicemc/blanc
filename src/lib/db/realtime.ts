@@ -1,5 +1,5 @@
 import { supabase, isSupabaseReady } from '../supabase'
-import { loadStagesFromDB } from './state'
+import { loadStagesFromDB, hydrateImagesFromStorage } from './state'
 import type { AppState } from '../../types'
 
 export function subscribeToState(
@@ -13,7 +13,9 @@ export function subscribeToState(
       'postgres_changes',
       { event: 'UPDATE', schema: 'public', table: 'app_state' },
       payload => {
-        if (payload.new?.state) onUpdate(payload.new.state as AppState)
+        if (payload.new?.state) {
+          hydrateImagesFromStorage(payload.new.state as AppState).then(onUpdate)
+        }
       },
     )
     .subscribe()

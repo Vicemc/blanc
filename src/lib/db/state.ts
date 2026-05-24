@@ -35,7 +35,7 @@ export async function loadStateFromDB(): Promise<AppState> {
 
 // Hidrata imagens do Supabase Storage usando imageKey como path.
 // Para imagens sem imageKey, cai para os assets est├íticos (TAMER_DEFAULT_IMAGES, etc.)
-async function hydrateImagesFromStorage(s: AppState): Promise<AppState> {
+export async function hydrateImagesFromStorage(s: AppState): Promise<AppState> {
   if (!supabase) return s
 
   const storageUrl = (bucket: string, key: string) => {

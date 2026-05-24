@@ -7,7 +7,7 @@ import type { User, Session } from '@supabase/supabase-js'
 
 // ── Tipos ─────────────────────────────────────────────────────────────────────
 
-export type UserRole = 'gm' | 'player'
+export type UserRole = 'gm' | 'player' | 'guest'
 
 export interface UserProfile {
   id:              string

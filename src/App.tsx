@@ -26,7 +26,11 @@ function AppInner() {
   const [appReady, setAppReady] = useState(false)
   const [migrating, setMigrating] = useState(false)
   const [migrateResult, setMigrateResult] = useState<string | null>(null)
+  const [isDirty, setIsDirty] = useState(false)
+  const [isSaving, setIsSaving] = useState(false)
   const realtimeUnsub = useRef<(() => void) | null>(null)
+
+  const isGuest = !localMode && profile?.role === 'guest'
 
   useEffect(() => {
     if (loading) return
@@ -41,14 +45,40 @@ function AppInner() {
     return () => { realtimeUnsub.current?.() }
   }, [session])
 
+  // Avisa sobre mudanças não salvas ao fechar a aba
+  useEffect(() => {
+    if (!isDirty) return
+    const handler = (e: BeforeUnloadEvent) => { e.preventDefault() }
+    window.addEventListener('beforeunload', handler)
+    return () => window.removeEventListener('beforeunload', handler)
+  }, [isDirty])
+
+  // Auto-save para Teatro/Palco (combate em tempo real)
   const onUpdate = useCallback((s: AppState) => {
     setState(s)
     saveStateToDB(s)
   }, [])
 
+  // Edição local — só marca dirty, não salva no banco
+  const onUpdateLocal = useCallback((s: AppState) => {
+    setState(s)
+    setIsDirty(true)
+  }, [])
+
+  const handleSave = useCallback(async () => {
+    if (!isDirty) return
+    setIsSaving(true)
+    await saveStateToDB(state)
+    setIsDirty(false)
+    setIsSaving(false)
+  }, [isDirty, state])
+
   const handleImport = async () => {
     const imported = await importStateFromFile()
-    if (imported) onUpdate(imported)
+    if (imported) {
+      setState(imported)
+      await saveStateToDB(imported)
+    }
   }
 
   const handleMigrate = async () => {
@@ -60,14 +90,14 @@ function AppInner() {
       : `✗ Erro: ${error}`)
   }
 
-  // ── Controle de acesso ────────────────────────────────────────────────────
-  // GM pode editar qualquer ficha. Player só edita o próprio tamer.
+  // GM pode editar qualquer ficha. Player só edita o próprio tamer. Guest não edita nada.
   const canEdit = useCallback((tamerId?: string) => {
     if (localMode) return true
     if (isGM) return true
+    if (isGuest) return false
     if (!tamerId) return false
     return canEditTamer(profile, tamerId)
-  }, [localMode, isGM, profile])
+  }, [localMode, isGM, isGuest, profile])
 
   if (loading || !appReady) {
     return (
@@ -84,15 +114,12 @@ function AppInner() {
     return <LoginPage onSuccess={refresh} />
   }
 
-  const sharedProps = { state, onUpdate }
-
-  // Mostrar banner de setup quando Supabase está configurado mas profile não foi carregado
-  // (indica que o schema SQL ainda não foi executado no Supabase)
   const showSetupBanner = isSupabaseReady && session && !profile && !localMode
 
-  // Digivice e DigiZap: apenas GM ou players com tamer vinculado
-  const canSeeDigivice = localMode || isGM || !!profile?.tamer_id
-  const canSeeDigizap  = localMode || isGM || !!profile?.tamer_id
+  // Digivice e DigiZap: apenas GM ou players com tamer vinculado (não guests)
+  const canSeeDigivice = !isGuest && (localMode || isGM || !!profile?.tamer_id)
+  const canSeeDigizap  = !isGuest && (localMode || isGM || !!profile?.tamer_id)
+  const canSeeTeatro   = !isGuest
 
   const pageFallback = (
     <div style={{ minHeight: '100vh', display: 'flex', alignItems: 'center',
@@ -109,7 +136,9 @@ function AppInner() {
         <NavLink to="/"         end className={({ isActive }) => isActive ? styles.active : ''}>Início</NavLink>
         <NavLink to="/party"        className={({ isActive }) => isActive ? styles.active : ''}>Party</NavLink>
         <NavLink to="/goggle"       className={({ isActive }) => isActive ? styles.active : ''}>Goggle Girl</NavLink>
-        <NavLink to="/teatro"       className={({ isActive }) => isActive ? styles.active : ''}>Teatro</NavLink>
+        {canSeeTeatro && (
+          <NavLink to="/teatro"     className={({ isActive }) => isActive ? styles.active : ''}>Teatro</NavLink>
+        )}
         <NavLink to="/sistema"      className={({ isActive }) => isActive ? styles.active : ''}>Sistema</NavLink>
         {canSeeDigivice && (
           <NavLink to="/digivice"   className={({ isActive }) => isActive ? styles.active : ''}>Digivice</NavLink>
@@ -130,8 +159,21 @@ function AppInner() {
             background: isGM ? 'var(--ink)' : 'var(--paper-deep)',
             color: isGM ? 'var(--paper)' : 'var(--ink-mute)',
             border: '1px solid var(--line)' }}>
-            {isGM ? 'GM' : profile.display_name}
+            {isGM ? 'GM' : isGuest ? `${profile.display_name} ·  convidado` : profile.display_name}
           </span>
+        )}
+
+        {/* Botão salvar — visível quando há mudanças não salvas (exceto guests) */}
+        {!isGuest && isSupabaseReady && (isDirty || isSaving) && (
+          <button
+            className={styles.navBtn}
+            onClick={handleSave}
+            disabled={isSaving || !isDirty}
+            style={{ background: isDirty ? 'var(--coral)' : undefined,
+              color: isDirty ? 'var(--paper)' : undefined,
+              borderColor: isDirty ? 'var(--coral)' : undefined }}>
+            {isSaving ? 'Salvando...' : '● Salvar'}
+          </button>
         )}
 
         {isGM && isSupabaseReady && (
@@ -141,8 +183,12 @@ function AppInner() {
           </button>
         )}
 
-        <button className={styles.navBtn} onClick={async () => exportStateToFile(state)}>↓ Backup</button>
-        <button className={styles.navBtn} onClick={handleImport}>↑ Importar</button>
+        {!isGuest && (
+          <>
+            <button className={styles.navBtn} onClick={async () => exportStateToFile(state)}>↓ Backup</button>
+            <button className={styles.navBtn} onClick={handleImport}>↑ Importar</button>
+          </>
+        )}
 
         {isSupabaseReady && session && (
           <button className={styles.navBtn} onClick={signOut}>Sair</button>
@@ -175,12 +221,12 @@ function AppInner() {
         <Suspense fallback={pageFallback}>
           <Routes>
             <Route path="/"          element={<HomePage />} />
-            <Route path="/party"     element={<PartyPage    {...sharedProps} canEdit={canEdit} isGM={isGM} />} />
-            <Route path="/goggle"    element={<GogglePage   {...sharedProps} canEdit={canEdit} isGM={isGM} />} />
-            <Route path="/teatro"    element={<TeatroPage   {...sharedProps} isGM={isGM} />} />
-            <Route path="/sistema"   element={<SistemaPage state={state} onUpdate={onUpdate} isGM={isGM} />} />
-            <Route path="/backstage" element={<BackstagePage {...sharedProps} />} />
-            <Route path="/digivice"  element={<DigivicePage  {...sharedProps} profile={profile} isGM={isGM} />} />
+            <Route path="/party"     element={<PartyPage    state={state} onUpdate={onUpdateLocal} canEdit={canEdit} isGM={isGM} />} />
+            <Route path="/goggle"    element={<GogglePage   state={state} onUpdate={onUpdateLocal} canEdit={canEdit} isGM={isGM} />} />
+            <Route path="/teatro"    element={<TeatroPage   state={state} onUpdate={onUpdate}      isGM={isGM} />} />
+            <Route path="/sistema"   element={<SistemaPage  state={state} onUpdate={onUpdateLocal} isGM={isGM} />} />
+            <Route path="/backstage" element={<BackstagePage state={state} onUpdate={onUpdateLocal} />} />
+            <Route path="/digivice"  element={<DigivicePage  state={state} onUpdate={onUpdateLocal} profile={profile} isGM={isGM} />} />
             <Route path="/digizap"   element={<DigiZapPage   state={state} profile={profile} isGM={isGM} />} />
             <Route path="/view"      element={<ViewerPage    state={state} />} />
           </Routes>
