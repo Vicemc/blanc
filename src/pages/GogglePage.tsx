@@ -1,14 +1,14 @@
 import React, { useState, useMemo } from 'react'
-import type { AppState, DigimonLine, Bug, Sign, SectorFolder, BugFolder as BugFolderType } from '../types'
+import type { AppState, DigimonLine, Bug, Sign, SectorFolder, BugFolder as BugFolderType, TokenDef } from '../types'
 import { BUG_COLORS, PORTRAIT_LIST } from '../types'
-import { makeWildDigimon, makeBug, makeSign } from '../data/store'
+import { makeWildDigimon, makeBug, makeSign, DEFAULT_TOKEN_DEFS } from '../data/store'
 import { PageHead } from '../components/PageHead'
 import { GrainFill } from '../components/GrainFill'
 import { SheetModal } from '../components/Sheet'
 import type { SheetSubject } from '../components/Sheet'
 import styles from './GogglePage.module.css'
 
-interface Props { state: AppState; onUpdate: (s: AppState) => void }
+interface Props { state: AppState; onUpdate: (s: AppState) => void; canEdit?: (tamerId?: string) => boolean; isGM?: boolean }
 
 function exportJson(data: unknown, filename: string) {
   const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' })
@@ -476,11 +476,283 @@ function SignsTab({ state, onUpdate, onOpen }: { state: AppState; onUpdate: (s: 
   )
 }
 
+// ── Aba Tokens ────────────────────────────────────────────────────────────────
+
+function TokensTab({ state, onUpdate, isGM }: {
+  state: AppState; onUpdate: (s: AppState) => void; isGM: boolean
+}) {
+  const [adding, setAdding] = useState(false)
+  const [editing, setEditing] = useState<string | null>(null)
+  const [draft, setDraft] = useState<Partial<TokenDef>>({
+    name: '', level: '', origin: '', hp: 1, defesa: 0, armadura: 0,
+    deslocamento: '', type: 'Digimon', attribute: 'No Data',
+    alcance: 'Corpo a Corpo - 1 Metro', dados: '', dano: 0, securityAttack: 0,
+    effect: '', autoConditions: [], visible: false,
+  })
+
+  const tokens = state.tokenDefs ?? DEFAULT_TOKEN_DEFS
+  const visible = isGM ? tokens : tokens.filter(t => t.visible)
+
+  const saveToken = () => {
+    if (!draft.name?.trim()) return
+    const tok: TokenDef = {
+      id:             editing ?? `token-${Date.now().toString(36)}`,
+      name:           draft.name.trim(),
+      level:          draft.level ?? '',
+      origin:         draft.origin ?? '',
+      hp:             draft.hp ?? 1,
+      defesa:         draft.defesa ?? 0,
+      armadura:       draft.armadura ?? 0,
+      deslocamento:   draft.deslocamento ?? '',
+      type:           draft.type ?? 'Digimon',
+      attribute:      draft.attribute ?? 'No Data',
+      alcance:        draft.alcance ?? '',
+      dados:          draft.dados ?? '',
+      dano:           draft.dano ?? 0,
+      securityAttack: draft.securityAttack ?? 0,
+      effect:         draft.effect ?? '',
+      autoConditions: draft.autoConditions ?? [],
+      visible:        draft.visible ?? false,
+    }
+    const existing = tokens.find(t => t.id === tok.id)
+    const newDefs = existing
+      ? tokens.map(t => t.id === tok.id ? tok : t)
+      : [...tokens, tok]
+    onUpdate({ ...state, tokenDefs: newDefs })
+    setAdding(false); setEditing(null)
+    setDraft({ name: '', level: '', origin: '', hp: 1, defesa: 0, armadura: 0,
+      deslocamento: '', type: 'Digimon', attribute: 'No Data',
+      alcance: 'Corpo a Corpo - 1 Metro', dados: '', dano: 0, securityAttack: 0,
+      effect: '', autoConditions: [], visible: false })
+  }
+
+  const toggleVisible = (id: string) => {
+    onUpdate({ ...state, tokenDefs: tokens.map(t => t.id === id ? { ...t, visible: !t.visible } : t) })
+  }
+
+  const deleteToken = (id: string) => {
+    if (!confirm('Remover este token?')) return
+    onUpdate({ ...state, tokenDefs: tokens.filter(t => t.id !== id) })
+  }
+
+  const COND_COLORS = ['coral','orange','blue','purple','teal','green','gold','indigo'] as const
+
+  const inp = (label: string, val: string | number, set: (v: string) => void, ph = '') => (
+    <div style={{ marginBottom: 8 }}>
+      <div style={{ fontFamily: 'var(--font-mono)', fontSize: 10, letterSpacing: '0.1em',
+        textTransform: 'uppercase', color: 'var(--ink-mute)', marginBottom: 3 }}>{label}</div>
+      <input value={val} onChange={e => set(e.target.value)} placeholder={ph}
+        style={{ width: '100%', border: '1px solid var(--line)', borderRadius: 8,
+          padding: '7px 12px', fontFamily: 'var(--font-body)', fontSize: 13,
+          background: 'var(--paper)', color: 'var(--ink)' }} />
+    </div>
+  )
+
+  return (
+    <div className={styles.section}>
+      <div className={styles.sectionNote}>
+        {visible.length} token{visible.length !== 1 ? 's' : ''} definido{visible.length !== 1 ? 's' : ''}
+      </div>
+
+      {isGM && !adding && !editing && (
+        <button className={styles.btnGhost} style={{ fontSize: 12, marginBottom: 16 }}
+          onClick={() => setAdding(true)}>+ Novo Token</button>
+      )}
+
+      {/* Form de criação/edição */}
+      {(adding || editing) && (
+        <div style={{ border: '1px solid var(--line)', borderRadius: 12, padding: '20px',
+          background: 'var(--paper-deep)', marginBottom: 20 }}>
+          <div style={{ fontFamily: 'var(--font-display)', fontSize: 16, textTransform: 'uppercase',
+            marginBottom: 16 }}>{editing ? 'Editar Token' : 'Novo Token'}</div>
+
+          <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr', gap: 10 }}>
+            {inp('Nome *', draft.name ?? '', v => setDraft(p => ({ ...p, name: v })), 'Silhouette Token')}
+            {inp('Nível', draft.level ?? '', v => setDraft(p => ({ ...p, level: v })), 'Lv.3')}
+          </div>
+          {inp('Origem', draft.origin ?? '', v => setDraft(p => ({ ...p, origin: v })), 'Sachi — Puppet Theater')}
+
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4,1fr)', gap: 8 }}>
+            {(['hp','defesa','armadura','dano'] as const).map(f => (
+              <div key={f}>
+                <div style={{ fontFamily: 'var(--font-mono)', fontSize: 10, letterSpacing: '0.1em',
+                  textTransform: 'uppercase', color: 'var(--ink-mute)', marginBottom: 3 }}>{f}</div>
+                <input type="number" min={0} value={draft[f] ?? 0}
+                  onChange={e => setDraft(p => ({ ...p, [f]: parseInt(e.target.value) || 0 }))}
+                  style={{ width: '100%', border: '1px solid var(--line)', borderRadius: 8,
+                    padding: '7px 12px', fontFamily: 'var(--font-mono)', fontSize: 13,
+                    background: 'var(--paper)', color: 'var(--ink)' }} />
+              </div>
+            ))}
+          </div>
+
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, marginTop: 8 }}>
+            {inp('Deslocamento', draft.deslocamento ?? '', v => setDraft(p => ({ ...p, deslocamento: v })), 'Igual ao de Sachi')}
+            {inp('Alcance', draft.alcance ?? '', v => setDraft(p => ({ ...p, alcance: v })), 'Corpo a Corpo - 1 Metro')}
+          </div>
+          {inp('Dados', draft.dados ?? '', v => setDraft(p => ({ ...p, dados: v })), 'Expressão de Sachi + Físico')}
+
+          <div style={{ marginBottom: 8 }}>
+            <div style={{ fontFamily: 'var(--font-mono)', fontSize: 10, letterSpacing: '0.1em',
+              textTransform: 'uppercase', color: 'var(--ink-mute)', marginBottom: 3 }}>Efeito</div>
+            <textarea value={draft.effect ?? ''} onChange={e => setDraft(p => ({ ...p, effect: e.target.value }))}
+              rows={2} style={{ width: '100%', border: '1px solid var(--line)', borderRadius: 8,
+                padding: '7px 12px', fontFamily: 'var(--font-body)', fontSize: 13,
+                background: 'var(--paper)', color: 'var(--ink)', resize: 'vertical' }} />
+          </div>
+
+          {/* Condições automáticas */}
+          <div style={{ marginBottom: 12 }}>
+            <div style={{ fontFamily: 'var(--font-mono)', fontSize: 10, letterSpacing: '0.1em',
+              textTransform: 'uppercase', color: 'var(--ink-mute)', marginBottom: 6 }}>
+              Condições automáticas ao invocar
+            </div>
+            {(draft.autoConditions ?? []).map((c, i) => (
+              <div key={i} style={{ display: 'flex', gap: 6, marginBottom: 6, alignItems: 'center' }}>
+                <input value={c.label} onChange={e => setDraft(p => ({ ...p, autoConditions: (p.autoConditions??[]).map((x,j)=>j===i?{...x,label:e.target.value}:x) }))}
+                  placeholder="Blocker" style={{ flex:2, border:'1px solid var(--line)', borderRadius:6, padding:'5px 8px', fontFamily:'var(--font-body)', fontSize:12, background:'var(--paper)' }} />
+                <input type="number" min={1} max={20} value={c.filled} onChange={e => setDraft(p => ({ ...p, autoConditions: (p.autoConditions??[]).map((x,j)=>j===i?{...x,filled:parseInt(e.target.value)||1}:x) }))}
+                  style={{ width:44, border:'1px solid var(--line)', borderRadius:6, padding:'5px 6px', fontFamily:'var(--font-mono)', fontSize:12, background:'var(--paper)', textAlign:'center' }} />
+                <span style={{ fontFamily:'var(--font-mono)', fontSize:10, color:'var(--ink-mute)' }}>/</span>
+                <input type="number" min={1} max={20} value={c.max} onChange={e => setDraft(p => ({ ...p, autoConditions: (p.autoConditions??[]).map((x,j)=>j===i?{...x,max:parseInt(e.target.value)||3}:x) }))}
+                  style={{ width:44, border:'1px solid var(--line)', borderRadius:6, padding:'5px 6px', fontFamily:'var(--font-mono)', fontSize:12, background:'var(--paper)', textAlign:'center' }} />
+                <select value={c.color} onChange={e => setDraft(p => ({ ...p, autoConditions: (p.autoConditions??[]).map((x,j)=>j===i?{...x,color:e.target.value}:x) }))}
+                  style={{ flex:1, border:'1px solid var(--line)', borderRadius:6, padding:'5px 8px', fontSize:12, background:'var(--paper)' }}>
+                  {COND_COLORS.map(col => <option key={col} value={col}>{col}</option>)}
+                </select>
+                <button onClick={() => setDraft(p => ({ ...p, autoConditions: (p.autoConditions??[]).filter((_,j)=>j!==i) }))}
+                  style={{ background:'transparent', border:'none', cursor:'pointer', color:'var(--coral)', fontSize:16 }}>×</button>
+              </div>
+            ))}
+            <button onClick={() => setDraft(p => ({ ...p, autoConditions: [...(p.autoConditions??[]), { label:'', filled:1, max:3, color:'coral' }] }))}
+              style={{ fontFamily:'var(--font-mono)', fontSize:10, letterSpacing:'0.1em', textTransform:'uppercase', background:'transparent', border:'1px dashed var(--line)', borderRadius:6, padding:'3px 10px', cursor:'pointer', color:'var(--ink-mute)' }}>
+              + condição
+            </button>
+          </div>
+
+          <label style={{ display:'flex', alignItems:'center', gap:8, fontFamily:'var(--font-mono)', fontSize:11, color:'var(--ink-mute)', letterSpacing:'0.08em', marginBottom:14, cursor:'pointer' }}>
+            <input type="checkbox" checked={draft.visible ?? false} onChange={e => setDraft(p => ({ ...p, visible: e.target.checked }))} />
+            Visível para players
+          </label>
+
+          <div style={{ display:'flex', gap:8 }}>
+            <button className={styles.btnSolid} onClick={saveToken}>
+              {editing ? 'Salvar' : 'Criar'}
+            </button>
+            <button className={styles.btnGhost} onClick={() => { setAdding(false); setEditing(null) }}>Cancelar</button>
+          </div>
+        </div>
+      )}
+
+      {/* Lista de tokens */}
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+        {visible.map(t => (
+          <div key={t.id} style={{ border: `1px solid ${t.visible ? 'var(--line)' : 'var(--line-soft)'}`,
+            borderRadius: 12, padding: '16px 20px', background: 'var(--paper)',
+            opacity: t.visible ? 1 : 0.65 }}>
+            <div style={{ display: 'flex', alignItems: 'flex-start', gap: 12 }}>
+              <div style={{ flex: 1 }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4, flexWrap: 'wrap' }}>
+                  <span style={{ fontFamily: 'var(--font-display)', fontSize: 17, textTransform: 'uppercase' }}>
+                    {t.name}
+                  </span>
+                  {t.level && (
+                    <span style={{ fontFamily: 'var(--font-mono)', fontSize: 10, letterSpacing: '0.08em',
+                      padding: '1px 7px', borderRadius: 999, background: 'var(--paper-deep)',
+                      border: '1px solid var(--line)', color: 'var(--ink-mute)' }}>{t.level}</span>
+                  )}
+                  {isGM && !t.visible && (
+                    <span style={{ fontFamily: 'var(--font-mono)', fontSize: 9, letterSpacing: '0.1em',
+                      textTransform: 'uppercase', padding: '1px 7px', borderRadius: 999,
+                      background: 'rgba(196,51,33,0.1)', color: 'var(--coral)',
+                      border: '1px solid var(--coral)' }}>oculto</span>
+                  )}
+                </div>
+                {t.origin && (
+                  <div style={{ fontFamily: 'var(--font-mono)', fontSize: 10, color: 'var(--teal)',
+                    letterSpacing: '0.06em', marginBottom: 10 }}>↳ {t.origin}</div>
+                )}
+
+                {/* Stats */}
+                <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 10 }}>
+                  {[['HP', t.hp], ['DEF', t.defesa], ['ARM', t.armadura], ['DANO', t.dano], ['SEC', t.securityAttack]].map(([k, v]) => (
+                    <div key={k as string} style={{ fontFamily: 'var(--font-mono)', fontSize: 11,
+                      padding: '3px 10px', borderRadius: 6, background: 'var(--paper-deep)',
+                      border: '1px solid var(--line-soft)' }}>
+                      <span style={{ fontSize: 9, color: 'var(--ink-mute)', letterSpacing: '0.08em',
+                        textTransform: 'uppercase' }}>{k} </span>
+                      <span style={{ fontWeight: 700 }}>{v}</span>
+                    </div>
+                  ))}
+                  <div style={{ fontFamily: 'var(--font-mono)', fontSize: 11, padding: '3px 10px',
+                    borderRadius: 6, background: 'var(--paper-deep)', border: '1px solid var(--line-soft)',
+                    color: 'var(--ink-mute)' }}>
+                    🏃 {t.deslocamento}
+                  </div>
+                </div>
+
+                {t.dados && (
+                  <div style={{ fontFamily: 'var(--font-mono)', fontSize: 11, color: 'var(--ink-soft)',
+                    marginBottom: 6 }}>📊 {t.dados} · alcance {t.alcance}</div>
+                )}
+
+                {t.effect && (
+                  <div style={{ fontSize: 13, color: 'var(--ink-soft)', lineHeight: 1.55 }}>{t.effect}</div>
+                )}
+
+                {t.autoConditions.length > 0 && (
+                  <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginTop: 8 }}>
+                    {t.autoConditions.map((c, i) => (
+                      <span key={i} style={{ fontFamily: 'var(--font-mono)', fontSize: 10, fontWeight: 700,
+                        padding: '2px 8px', borderRadius: 999, letterSpacing: '0.06em',
+                        background: `rgba(var(--${c.color}-rgb, 100,100,100), 0.12)`,
+                        color: `var(--${c.color})`, border: `1px solid var(--${c.color})` }}>
+                        {c.label} ({c.filled}/{c.max})
+                      </span>
+                    ))}
+                  </div>
+                )}
+              </div>
+
+              {/* Ações GM */}
+              {isGM && (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 6, flexShrink: 0 }}>
+                  <button onClick={() => toggleVisible(t.id)}
+                    style={{ padding: '4px 10px', borderRadius: 999, cursor: 'pointer',
+                      fontFamily: 'var(--font-mono)', fontSize: 9, letterSpacing: '0.08em',
+                      textTransform: 'uppercase',
+                      border: `1px solid ${t.visible ? 'var(--teal)' : 'var(--line)'}`,
+                      background: t.visible ? 'var(--teal)' : 'transparent',
+                      color: t.visible ? '#f6f2e9' : 'var(--ink-mute)' }}>
+                    {t.visible ? '👁 visível' : '👁 oculto'}
+                  </button>
+                  <button onClick={() => { setEditing(t.id); setDraft({ ...t }) }}
+                    style={{ padding: '4px 10px', borderRadius: 999, cursor: 'pointer',
+                      fontFamily: 'var(--font-mono)', fontSize: 9, letterSpacing: '0.08em',
+                      border: '1px solid var(--line)', background: 'transparent', color: 'var(--ink-mute)' }}>
+                    ✎ editar
+                  </button>
+                  <button onClick={() => deleteToken(t.id)}
+                    style={{ padding: '4px 10px', borderRadius: 999, cursor: 'pointer',
+                      fontFamily: 'var(--font-mono)', fontSize: 9, letterSpacing: '0.08em',
+                      border: '1px solid var(--line)', background: 'transparent', color: 'var(--coral)' }}>
+                    × remover
+                  </button>
+                </div>
+              )}
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  )
+}
+
 // ── Main ──────────────────────────────────────────────────────────────────────
-export default function GogglePage({ state, onUpdate }: Props) {
+export default function GogglePage({ state, onUpdate, canEdit, isGM = false }: Props) {
   const [open,  setOpen]  = useState<SheetSubject | null>(null)
   const [modal, setModal] = useState<'sector'|'bugfolder'|null>(null)
-  const [tab,   setTab]   = useState<'setores'|'bugs'|'signs'>('setores')
+  const [tab,   setTab]   = useState<'setores'|'bugs'|'signs'|'tokens'>('setores')
 
   const sectors    = state.sectors    ?? []
   const bugFolders = state.bugFolders ?? []
@@ -530,6 +802,9 @@ export default function GogglePage({ state, onUpdate }: Props) {
           <button className={`${styles.tabBtn} ${tab==='signs'?styles.tabActive:''}`} onClick={()=>setTab('signs')}>
             SIGNs <span className={styles.tabCount}>{signs.length}</span>
           </button>
+          <button className={`${styles.tabBtn} ${tab==='tokens'?styles.tabActive:''}`} onClick={()=>setTab('tokens')}>
+            Tokens <span className={styles.tabCount}>{(state.tokenDefs ?? []).length}</span>
+          </button>
         </div>
         <div className={styles.actions}>
           {tab === 'setores' && <button className={styles.btnGhost} style={{fontSize:12}} onClick={()=>setModal('sector')}>+ Pasta de Setor</button>}
@@ -573,7 +848,12 @@ export default function GogglePage({ state, onUpdate }: Props) {
         <SignsTab state={state} onUpdate={onUpdate} onOpen={setOpen} />
       )}
 
-      {open && <SheetModal subject={open} state={state} onSaveState={onUpdate} onClose={() => setOpen(null)} editable />}
+      {tab === 'tokens' && (
+        <TokensTab state={state} onUpdate={onUpdate} isGM={isGM} />
+      )}
+
+      {open && <SheetModal subject={open} state={state} onSaveState={onUpdate} onClose={() => setOpen(null)}
+        editable={canEdit ? canEdit() : true} />}}
       {modal === 'sector'    && <AddSectorModal    state={state} onSave={s=>{onUpdate(s);setModal(null)}} onClose={()=>setModal(null)} />}
       {modal === 'bugfolder' && <AddBugFolderModal state={state} onSave={s=>{onUpdate(s);setModal(null)}} onClose={()=>setModal(null)} />}
     </div>

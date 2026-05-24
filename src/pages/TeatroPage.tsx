@@ -7,9 +7,17 @@ import { SheetModal } from '../components/Sheet'
 import type { SheetSubject, TokenSpawn } from '../components/Sheet'
 import styles from './TeatroPage.module.css'
 
-interface Props { state: AppState; onUpdate: (s: AppState) => void }
+interface Props { state: AppState; onUpdate: (s: AppState) => void; isGM?: boolean }
 
-// ── Climas ────────────────────────────────────────────────────────────────────
+// ── Tipos de estado em tempo real do palco ───────────────────────────────────
+
+// ── Stats padrão de tokens conhecidos ─────────────────────────────────────────
+// Usado pelo spawnToken para inicializar ActorState corretamente.
+const TOKEN_STATS: Record<string, Partial<ActorState>> = {
+  'Silhouette Token': { hp: 1, hp_max: 1, defesa: 0, defesa_base: 0, armadura: 0 },
+  'Puppet Token':     { hp: 1, hp_max: 1, defesa: 1, defesa_base: 1, armadura: 0 },
+  'Enhanced Puppet Token': { hp: 3, hp_max: 3, defesa: 3, defesa_base: 3, armadura: 0 },
+}
 
 interface Clima {
   id:      string
@@ -86,7 +94,16 @@ interface StageRuntime {
   roundCurrent: number
   actorStates:  Record<string, ActorState>
   clocks:       Clock[]
-  clima:        string | null   // id do clima ativo (null = sem clima definido)
+  clima:        string | null
+  log:          PalcoLogEntry[]
+}
+
+interface PalcoLogEntry {
+  id:        string
+  timestamp: number
+  kind:      'auto' | 'manual'
+  text:      string
+  round?:    number
 }
 
 function getRuntime(stage: Stage): StageRuntime & { tokenMeta: Record<string, { name: string; level: string }> } {
@@ -96,6 +113,7 @@ function getRuntime(stage: Stage): StageRuntime & { tokenMeta: Record<string, { 
     actorStates:  s.actorStates  ?? {},
     clocks:       s.clocks       ?? [],
     clima:        (s as any).clima ?? null,
+    log:          (s as any).log   ?? [],
     tokenMeta:    s.tokenMeta    ?? {},
   }
 }
@@ -1187,12 +1205,14 @@ function ConditionShortcutsPanel({ actors, actorStates, onChange }: {
   )
 }
 
-function ClimaPanel({ climaId, onChange }: {
-  climaId: string | null
-  onChange: (id: string | null) => void
+function ClimaPanel({ climaId, onChange, customClimas = [] }: {
+  climaId:      string | null
+  onChange:     (id: string | null) => void
+  customClimas: import('../types').ClimaEntry[]
 }) {
   const [open, setOpen] = useState(false)
-  const active = CLIMAS.find(c => c.id === climaId) ?? null
+  const allClimas = [...CLIMAS, ...customClimas]
+  const active = allClimas.find(c => c.id === climaId) ?? null
 
   return (
     <div style={{ margin: '12px 0', border: '1px solid var(--line)', borderRadius: 'var(--radius)',
@@ -1281,6 +1301,140 @@ function ClimaPanel({ climaId, onChange }: {
               {c.name}
             </button>
           ))}
+        </div>
+      )}
+    </div>
+  )
+}
+
+// ── Painel de Log do Palco (GM only) ─────────────────────────────────────────
+
+function PalcoLogPanel({ log, round, isGM, onChange }: {
+  log:      PalcoLogEntry[]
+  round:    number
+  isGM:     boolean
+  onChange: (log: PalcoLogEntry[]) => void
+}) {
+  const [open,  setOpen]  = useState(false)
+  const [input, setInput] = useState('')
+
+  if (!isGM) return null
+
+  const addManual = () => {
+    if (!input.trim()) return
+    const entry: PalcoLogEntry = {
+      id:        `log-${Date.now().toString(36)}`,
+      timestamp: Date.now(),
+      kind:      'manual',
+      text:      input.trim(),
+      round,
+    }
+    onChange([...log, entry])
+    setInput('')
+  }
+
+  const copyAll = () => {
+    const text = log.map(e => {
+      const time = new Date(e.timestamp).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })
+      return `[R${e.round ?? '?'} · ${time}] ${e.text}`
+    }).join('\n')
+    navigator.clipboard.writeText(text)
+  }
+
+  const clearLog = () => {
+    if (!confirm('Limpar todo o log?')) return
+    onChange([])
+  }
+
+  return (
+    <div style={{ margin: '12px 0', border: '1px solid var(--indigo)', borderRadius: 'var(--radius)',
+      overflow: 'hidden', background: 'var(--paper)' }}>
+      {/* Header */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 16px',
+        background: 'rgba(59,58,94,0.06)', cursor: 'pointer',
+        borderBottom: open ? '1px solid var(--line-soft)' : 'none' }}
+        onClick={() => setOpen(p => !p)}>
+        <span style={{ fontSize: 14 }}>📋</span>
+        <span style={{ fontFamily: 'var(--font-display)', fontSize: 14, textTransform: 'uppercase',
+          letterSpacing: '-0.01em', flex: 1 }}>Log do Palco</span>
+        <span style={{ fontFamily: 'var(--font-mono)', fontSize: 9, letterSpacing: '0.1em',
+          textTransform: 'uppercase', color: 'var(--indigo)', padding: '1px 7px',
+          borderRadius: 999, border: '1px solid var(--indigo)', background: 'rgba(59,58,94,0.08)' }}>
+          GM only
+        </span>
+        <span style={{ fontFamily: 'var(--font-mono)', fontSize: 9, letterSpacing: '0.1em',
+          textTransform: 'uppercase', color: 'var(--ink-mute)' }}>
+          {log.length} entrada{log.length !== 1 ? 's' : ''}
+        </span>
+        <span style={{ fontFamily: 'var(--font-mono)', fontSize: 14, color: 'var(--ink-mute)',
+          transition: 'transform 0.2s', display: 'inline-block',
+          transform: open ? 'rotate(90deg)' : 'none' }}>›</span>
+      </div>
+
+      {open && (
+        <div style={{ padding: '14px 16px' }}>
+          {/* Ações */}
+          <div style={{ display: 'flex', gap: 8, marginBottom: 12 }}>
+            <button onClick={copyAll}
+              style={{ fontFamily: 'var(--font-mono)', fontSize: 10, letterSpacing: '0.08em',
+                textTransform: 'uppercase', padding: '4px 12px', borderRadius: 999,
+                border: '1px solid var(--line)', background: 'transparent',
+                cursor: 'pointer', color: 'var(--ink-soft)' }}>
+              📋 Copiar tudo
+            </button>
+            <button onClick={clearLog}
+              style={{ fontFamily: 'var(--font-mono)', fontSize: 10, letterSpacing: '0.08em',
+                textTransform: 'uppercase', padding: '4px 12px', borderRadius: 999,
+                border: '1px solid var(--line)', background: 'transparent',
+                cursor: 'pointer', color: 'var(--coral)' }}>
+              × Limpar
+            </button>
+          </div>
+
+          {/* Entradas */}
+          <div style={{ maxHeight: 280, overflowY: 'auto', marginBottom: 12,
+            border: '1px solid var(--line-soft)', borderRadius: 8, background: 'var(--paper-deep)' }}>
+            {log.length === 0 ? (
+              <div style={{ padding: '20px', fontFamily: 'var(--font-serif)', fontStyle: 'italic',
+                fontSize: 13, color: 'var(--ink-mute)', textAlign: 'center' }}>
+                ~ nenhuma entrada ainda ~
+              </div>
+            ) : (
+              log.map(e => {
+                const time = new Date(e.timestamp).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })
+                return (
+                  <div key={e.id} style={{ padding: '7px 12px', borderBottom: '1px solid var(--line-soft)',
+                    display: 'flex', gap: 10, alignItems: 'baseline' }}>
+                    <span style={{ fontFamily: 'var(--font-mono)', fontSize: 9, letterSpacing: '0.06em',
+                      color: e.kind === 'manual' ? 'var(--indigo)' : 'var(--ink-mute)',
+                      flexShrink: 0, minWidth: 70 }}>
+                      R{e.round ?? '?'} {time}
+                    </span>
+                    <span style={{ fontSize: 12, color: 'var(--ink-soft)', lineHeight: 1.5,
+                      fontStyle: e.kind === 'manual' ? 'italic' : 'normal' }}>
+                      {e.kind === 'manual' ? '✎ ' : ''}{e.text}
+                    </span>
+                  </div>
+                )
+              })
+            )}
+          </div>
+
+          {/* Input manual */}
+          <div style={{ display: 'flex', gap: 8 }}>
+            <input value={input} onChange={e => setInput(e.target.value)}
+              onKeyDown={e => e.key === 'Enter' && addManual()}
+              placeholder="Escrever entrada manual no log..."
+              style={{ flex: 1, border: '1px solid var(--line)', borderRadius: 8,
+                padding: '8px 12px', fontFamily: 'var(--font-body)', fontSize: 13,
+                background: 'var(--paper)', color: 'var(--ink)' }} />
+            <button onClick={addManual}
+              style={{ padding: '8px 16px', borderRadius: 8, cursor: 'pointer',
+                border: '1px solid var(--indigo)', background: 'var(--indigo)',
+                color: '#f6f2e9', fontFamily: 'var(--font-body)', fontWeight: 600, fontSize: 12 }}>
+              Registrar
+            </button>
+          </div>
         </div>
       )}
     </div>
@@ -1426,8 +1580,8 @@ function ClocksPanel({ clocks, actors, onChange }: {
 
 // ── PalcoView ─────────────────────────────────────────────────────────────────
 
-function PalcoView({ stage, state, onUpdate, onBack }: {
-  stage: Stage; state: AppState; onUpdate: (s: AppState) => void; onBack: () => void
+function PalcoView({ stage, state, onUpdate, onBack, isGM = false }: {
+  stage: Stage; state: AppState; onUpdate: (s: AppState) => void; onBack: () => void; isGM?: boolean
 }) {
   const [open, setOpen]             = useState<SheetSubject | null>(null)
   const [openSide, setOpenSide]     = useState<'allies'|'enemies'>('allies')
@@ -1441,6 +1595,17 @@ function PalcoView({ stage, state, onUpdate, onBack }: {
 
   const rt = getRuntime(stage)
 
+  const addLog = useCallback((text: string, kind: 'auto' | 'manual' = 'auto') => {
+    const entry: PalcoLogEntry = {
+      id:        `log-${Date.now().toString(36)}`,
+      timestamp: Date.now(),
+      kind,
+      text,
+      round:     rt.roundCurrent,
+    }
+    mutateStage(s => ({ ...s, log: [...((s as any).log ?? []), entry] } as Stage))
+  }, [mutateStage, rt.roundCurrent])
+
   const mutateStage = useCallback((fn: (s: Stage) => Stage) => {
     onUpdate({ ...state, stages: state.stages.map(s => s.id === stage.id ? fn(s) : s) })
   }, [state, stage.id, onUpdate])
@@ -1453,7 +1618,21 @@ function PalcoView({ stage, state, onUpdate, onBack }: {
         kind: 'wild' as const,
         id: i === 0 ? tokenId : `${tokenId}-${i}`,
       }))
-      const tokenState: ActorState = { hp: 0, hp_max: 0, defesa: 0, defesa_base: 0, armadura: 0, conditions: [] }
+      const TOKEN_CONDITIONS: Record<string, { label: string; filled: number; max: number; color: string }[]> = {
+        'Silhouette Token': [
+          { label: 'Blocker', filled: 1, max: 1, color: 'teal' },
+          { label: 'Jamming', filled: 1, max: 1, color: 'indigo' },
+        ],
+      }
+      const baseConditions = (TOKEN_CONDITIONS[token.name] ?? []).map(c => ({
+        ...c, id: `cond-${c.label}-${Date.now().toString(36)}`,
+      }))
+      const baseStats = TOKEN_STATS[token.name] ?? {}
+      const tokenState: ActorState = {
+        hp: baseStats.hp ?? 0, hp_max: baseStats.hp_max ?? 0,
+        defesa: baseStats.defesa ?? 0, defesa_base: baseStats.defesa_base ?? 0,
+        armadura: baseStats.armadura ?? 0, conditions: baseConditions,
+      }
       const newStates: Record<string, ActorState> = {}
       newRefs.forEach(r => { newStates[actorKey(r)] = { ...tokenState } })
       return {
@@ -1681,14 +1860,27 @@ function PalcoView({ stage, state, onUpdate, onBack }: {
             <div style={{ fontSize:22, fontWeight:700, lineHeight:1 }}>{rt.roundCurrent}</div>
           </div>
           <button onClick={() => mutateStage(s => {
-            // Avança round e restaura Defesa de todos os atores para o valor base
+            const newRound = ((s as any).roundCurrent ?? 0) + 1
             const states = (s as any).actorStates ?? {}
             const newActorStates: Record<string, ActorState> = {}
             Object.entries(states).forEach(([k, v]) => {
               const a = v as ActorState
               newActorStates[k] = { ...a, defesa: a.defesa_base ?? 0 }
             })
-            return { ...s, roundCurrent: ((s as any).roundCurrent ?? 0) + 1, actorStates: newActorStates } as Stage
+            // Auto-log
+            const logEntry: PalcoLogEntry = {
+              id:        `log-${Date.now().toString(36)}`,
+              timestamp: Date.now(),
+              kind:      'auto',
+              text:      `Round ${newRound} iniciado. Defesa de todos os atores restaurada.`,
+              round:     newRound,
+            }
+            return {
+              ...s,
+              roundCurrent: newRound,
+              actorStates: newActorStates,
+              log: [...((s as any).log ?? []), logEntry],
+            } as Stage
           })}
             style={{ ...btnStyle, borderColor:'var(--ink)', color:'var(--ink)' }}>+</button>
         </div>
@@ -1704,6 +1896,7 @@ function PalcoView({ stage, state, onUpdate, onBack }: {
       <ClimaPanel
         climaId={rt.clima}
         onChange={id => mutateStage(s => ({ ...s, clima: id } as Stage))}
+        customClimas={state.customClimas ?? []}
       />
 
       <ConditionShortcutsPanel
@@ -1742,6 +1935,13 @@ function PalcoView({ stage, state, onUpdate, onBack }: {
         actors={actorList}
         onChange={clocks => mutateStage(s => ({ ...s, clocks } as Stage))} />
 
+      <PalcoLogPanel
+        log={rt.log}
+        round={rt.roundCurrent}
+        isGM={isGM}
+        onChange={log => mutateStage(s => ({ ...s, log } as Stage))}
+      />
+
       <div className={styles.notes}>
         <label className={styles.notesLabel}>Notas do palco</label>
         <textarea className={styles.notesArea} value={stage.notes ?? ''} placeholder="Domínios ativos, modificadores de terreno..."
@@ -1756,7 +1956,7 @@ function PalcoView({ stage, state, onUpdate, onBack }: {
 
 // ── Main ──────────────────────────────────────────────────────────────────────
 
-export default function TeatroPage({ state, onUpdate }: Props) {
+export default function TeatroPage({ state, onUpdate, isGM = false }: Props) {
   const [openStage, setOpenStage] = useState<string|null>(null)
   const stage = openStage ? state.stages.find(s => s.id === openStage) ?? null : null
 
@@ -1771,7 +1971,7 @@ export default function TeatroPage({ state, onUpdate }: Props) {
     onUpdate({ ...state, stages: state.stages.filter(s => s.id !== id) })
   }
 
-  if (stage) return <PalcoView stage={stage} state={state} onUpdate={onUpdate} onBack={() => setOpenStage(null)} />
+  if (stage) return <PalcoView stage={stage} state={state} onUpdate={onUpdate} onBack={() => setOpenStage(null)} isGM={isGM} />
 
   return (
     <div>
