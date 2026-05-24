@@ -8,7 +8,7 @@ import {
   AppState, Tamer, TamerStatus, DigimonLine, DigimonStage,
   Attributes, SkillSet, TamerSkill, DigimonSkill,
   Affinity, Bug, Stage, Sign, SkillTreePhase, ExportedImage, ExportPackage,
-  SectorFolder, BugFolder,
+  SectorFolder, BugFolder, TokenDef,
   DEFAULT_SKILL_SET,
 } from '../types';
 
@@ -253,11 +253,15 @@ function mergeWithDefaults(saved: AppState, defaults: AppState): AppState {
 
   return {
     ...saved,
-    stages:     saved.stages     ?? [],
-    sectors:    saved.sectors    ?? defaults.sectors,
-    bugFolders: saved.bugFolders ?? defaults.bugFolders,
-    signs:      saved.signs      ?? defaults.signs,
-    skillTree:  saved.skillTree  ?? defaults.skillTree,
+    stages:         saved.stages         ?? [],
+    sectors:        saved.sectors        ?? defaults.sectors,
+    bugFolders:     saved.bugFolders     ?? defaults.bugFolders,
+    signs:          saved.signs          ?? defaults.signs,
+    skillTree:      saved.skillTree      ?? defaults.skillTree,
+    customClimas:   saved.customClimas   ?? [],
+    customKeywords: saved.customKeywords ?? [],
+    tokenDefs:      saved.tokenDefs      ?? [],
+    visibility:     saved.visibility     ?? {},
 
     // Tamers: preserva dados de runtime, sempre usa tamerSkills do código
     tamers: defaults.tamers.map(defaultTamer => {
@@ -662,7 +666,77 @@ export function makeStage(id: string): Stage {
   };
 }
 
-export function makeSign(id: string, code: string, name: string): Sign {
+export const DEFAULT_TOKEN_DEFS: TokenDef[] = [
+  {
+    id: 'token-silhouette', name: 'Silhouette Token', level: '', visible: true,
+    origin: 'Hibito — Soul Ablaze / Twilight Memories',
+    hp: 1, defesa: 0, armadura: 0, deslocamento: 'Igual ao de Hibito',
+    type: 'Digimon', attribute: 'No Data',
+    alcance: 'Corpo a Corpo - 1 Metro',
+    dados: 'Perseverança de Hare + Fogo de Ghostmon', dano: 6, securityAttack: 0,
+    effect: '[Jamming], [Blocker].',
+    autoConditions: [
+      { label: 'Blocker', filled: 1, max: 1, color: 'teal' },
+      { label: 'Jamming', filled: 1, max: 1, color: 'indigo' },
+    ],
+  },
+  {
+    id: 'token-puppet', name: 'Puppet Token', level: 'Lv.3', visible: true,
+    origin: 'Sachi — Puppet Theater',
+    hp: 1, defesa: 1, armadura: 0, deslocamento: 'Igual ao de Sachi',
+    type: 'Digimon', attribute: 'No Data',
+    alcance: 'Corpo a Corpo - 1 Metro',
+    dados: 'Expressão de Sachi + Físico de Black Tailmon', dano: 1, securityAttack: 1,
+    effect: 'Ao ser invocado, imediatamente faça uma ação de movimento e ataque um alvo válido. Deletado no início do próximo turno de Sachi.',
+    autoConditions: [],
+  },
+  {
+    id: 'token-enhanced-puppet', name: 'Enhanced Puppet Token', level: 'Lv.4', visible: true,
+    origin: 'Sachi — Catharsis',
+    hp: 3, defesa: 3, armadura: 0, deslocamento: 'Igual ao de Sachi +3',
+    type: 'Digimon', attribute: 'No Data',
+    alcance: 'Corpo a Corpo - 3 Metros',
+    dados: 'Expressão de Sachi + Físico de Black Tailmon + 3d10', dano: 3, securityAttack: 2,
+    effect: 'Ao ser invocado, imediatamente faça uma ação de movimento e ataque um alvo válido. Deletado no início do próximo turno de Sachi.',
+    autoConditions: [],
+  },
+]
+
+// ── Helpers de visibilidade ────────────────────────────────────────────────────
+// Chave: 'tipo:id', ex: 'stage:stage-abc', 'bestiary:d-wild-xyz'
+
+export function visKey(type: string, id: string): string {
+  return `${type}:${id}`
+}
+
+export function isVisible(
+  state: AppState,
+  type: string,
+  id: string,
+  isGM: boolean,
+): boolean {
+  if (isGM) return true
+  const key = visKey(type, id)
+  // Se não está no mapa, usa default por tipo
+  if (!(key in state.visibility)) {
+    // Stages são visíveis por padrão; skill phases, evoluções e entradas do bestiário são ocultas por padrão
+    if (type === 'stage') return true
+    return false
+  }
+  return state.visibility[key] === true
+}
+
+export function setVisibility(
+  state: AppState,
+  type: string,
+  id: string,
+  visible: boolean,
+): AppState {
+  return {
+    ...state,
+    visibility: { ...state.visibility, [visKey(type, id)]: visible },
+  }
+}
   return {
     id, code, name,
     lore: '',
@@ -2693,5 +2767,9 @@ export function buildDefaultState(): AppState {
     bugFolders: defaultBugFolders,
     signs: [],
     skillTree: [],
+    customClimas: [],
+    customKeywords: [],
+    tokenDefs: DEFAULT_TOKEN_DEFS,
+    visibility: {},
   };
 }

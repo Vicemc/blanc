@@ -285,14 +285,20 @@ export interface BugFolder {
 }
 
 export interface AppState {
-  tamers:          Tamer[];
-  bestiary:        DigimonLine[];
-  bugs:            Bug[];
-  signs:           Sign[];           // nova aba da Goggle Girl
-  stages:          Stage[];
-  sectors:         SectorFolder[];
-  bugFolders:      BugFolder[];
-  skillTree:       SkillTreePhase[]; // fases de Skill Tree por tamer
+  tamers:      Tamer[];
+  bestiary:    DigimonLine[];
+  bugs:        Bug[];
+  signs:       Sign[];
+  stages:      Stage[];
+  sectors:     SectorFolder[];
+  bugFolders:  BugFolder[];
+  skillTree:   SkillTreePhase[];
+  // Extensões pelo GM
+  customClimas:   ClimaEntry[];    // climas adicionados pelo GM (mesclados com os padrão)
+  customKeywords: KeywordEntry[];  // keywords adicionadas pelo GM
+  tokenDefs:      TokenDef[];      // tokens definidos (aba Tokens da Goggle Girl)
+  // Controle de visibilidade (GM only)
+  visibility:  VisibilityMap;      // chave: 'tipo:id', valor: true = visível para players
 }
 
 // ---------- Sector ----------
@@ -318,7 +324,64 @@ export const PORTRAIT_LIST: Portrait[] = [
   'sage','wheat','rose','indigo','gold','coral','orange','red','pink','green','blue','purple','teal','black',
 ];
 
-// ---------- Sign (Goggle Girl — aba SIGNs) ----------
+// ---------- Clima (extensível pelo GM) ----------
+
+export interface ClimaEntry {
+  id:      string
+  name:    string
+  type:    'Natural' | 'Especial'
+  color:   string   // CSS var name (ex: 'gold', 'blue')
+  icon:    string   // emoji
+  effects: { tag: string; desc: string; color: string }[]
+  gm_only: boolean  // se true, só GM vê no seletor de clima do palco
+}
+
+// ---------- Keyword (extensível pelo GM) ----------
+
+export interface KeywordEntry {
+  id:      string
+  keyword: string
+  desc:    string
+  type:    'wound' | 'stack' | 'positive' | 'neg' | 'reaction' | 'neutral'
+  resist?: string
+}
+
+// ---------- Token definition (Goggle Girl aba Tokens) ----------
+
+export interface TokenDef {
+  id:         string
+  name:       string
+  level:      string   // ex: 'Lv.3', 'Lv.4', ou ''
+  origin:     string   // ex: 'Sachi — Puppet Theater'
+  hp:         number
+  defesa:     number
+  armadura:   number
+  deslocamento: string // ex: 'Igual ao de Sachi', '5'
+  type:       string   // ex: 'Digimon', 'Humano'
+  attribute:  string   // ex: 'No Data'
+  alcance:    string   // ex: 'Corpo a Corpo - 1 Metro'
+  dados:      string   // ex: 'Expressão de Sachi + Físico de Black Tailmon'
+  dano:       number
+  securityAttack: number
+  effect:     string
+  autoConditions: { label: string; filled: number; max: number; color: string }[]
+  visible:    boolean  // GM controla visibilidade para players
+}
+
+// ---------- Palco Log ----------
+
+export interface PalcoLogEntry {
+  id:        string
+  timestamp: number
+  kind:      'auto' | 'manual'   // auto = gerado pelo sistema; manual = escrito pelo GM
+  text:      string
+  round?:    number
+}
+
+// ---------- Visibility control ----------
+// Chave: entidade + id (ex: 'stage:stage-abc123', 'bestiary:d-wild-xyz', 'skill_phase:stp-...')
+// Valor: true = visível para players; false = oculto (só GM vê)
+export type VisibilityMap = Record<string, boolean>
 
 export interface Sign {
   id:         string;

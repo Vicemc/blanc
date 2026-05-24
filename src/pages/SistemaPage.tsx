@@ -1,4 +1,5 @@
 import React, { useState } from 'react'
+import type { AppState, ClimaEntry, KeywordEntry } from '../types'
 import { PageHead } from '../components/PageHead'
 import styles from './SistemaPage.module.css'
 
@@ -189,8 +190,40 @@ function RegraTab() {
   )
 }
 
+// ── Estilos compartilhados ────────────────────────────────────────────────────
+const fldStyle: React.CSSProperties = {
+  border: '1px solid var(--line)', borderRadius: 8, padding: '7px 12px',
+  fontFamily: 'var(--font-body)', fontSize: 13, background: 'var(--paper)', color: 'var(--ink)',
+}
+
 // ── Aba Climas ────────────────────────────────────────────────────────────────
-function ClimasTab() {
+function ClimasTab({ state, onUpdate, isGM }: { state?: AppState; onUpdate?: (s: AppState) => void; isGM: boolean }) {
+  const [addingClima, setAddingClima] = useState(false)
+  const [draft, setDraft] = useState({ name: '', type: 'Natural' as 'Natural'|'Especial', color: 'teal', icon: '🌀', effects: '' })
+
+  const customClimas = state?.customClimas ?? []
+
+  const saveClima = () => {
+    if (!draft.name.trim() || !state || !onUpdate) return
+    const c: ClimaEntry = {
+      id:      `clima-${Date.now().toString(36)}`,
+      name:    draft.name.trim(),
+      type:    draft.type,
+      color:   draft.color,
+      icon:    draft.icon,
+      effects: draft.effects.trim()
+        ? draft.effects.split('\n').filter(Boolean).map(l => {
+            const [tag, ...rest] = l.split(':')
+            return { tag: tag.trim(), desc: rest.join(':').trim(), color: 'ink-soft' }
+          })
+        : [{ tag: 'Neutro', desc: 'Sem efeitos adicionais.', color: 'ink-mute' }],
+      gm_only: false,
+    }
+    onUpdate({ ...state, customClimas: [...customClimas, c] })
+    setDraft({ name: '', type: 'Natural', color: 'teal', icon: '🌀', effects: '' })
+    setAddingClima(false)
+  }
+
   return (
     <div className={styles.page} style={{ maxWidth: 820 }}>
       <section className={styles.rule}>
@@ -214,9 +247,70 @@ function ClimasTab() {
             Dano de ataques de <b>Água +2</b>. Dano de ataques de <b>Fogo −2</b>. Ações de <b>Trovão</b> recebem <b>+1 sucesso</b>. Ações que apliquem <Tip label="Paralysis">−3 dados em todas as rolagens. No fim do turno remove 1 carga. Resistir: Perseverança + Resistência.</Tip> aplicam <b>+2 cargas extras</b>.
           </WeatherCard>
         </div>
+
+        {/* Climas customizados */}
+        {customClimas.length > 0 && (
+          <div style={{ marginTop: 24 }}>
+            <h3 className={styles.ruleH3}>Climas Especiais</h3>
+            <div className={styles.kwGrid}>
+              {customClimas.map(c => (
+                <WeatherCard key={c.id} icon={c.icon} title={c.name} variant="">
+                  {c.effects.map((e, i) => (
+                    <span key={i}><b>{e.tag}:</b> {e.desc} </span>
+                  ))}
+                  {isGM && (
+                    <button onClick={() => onUpdate?.({ ...state!, customClimas: customClimas.filter(x => x.id !== c.id) })}
+                      style={{ display:'block', marginTop:8, fontFamily:'var(--font-mono)', fontSize:9,
+                        letterSpacing:'0.08em', textTransform:'uppercase', background:'transparent',
+                        border:'1px solid var(--coral)', borderRadius:999, padding:'2px 8px',
+                        cursor:'pointer', color:'var(--coral)' }}>× remover</button>
+                  )}
+                </WeatherCard>
+              ))}
+            </div>
+          </div>
+        )}
+
         <div className={styles.callout} style={{ marginTop: 24 }}>
           <b>Climas Naturais</b> podem surgir espontaneamente durante os dias de sobrevivência no Mundo Digital, sem depender de habilidades ou ações específicas.
         </div>
+
+        {/* GM: adicionar novo clima */}
+        {isGM && !addingClima && (
+          <button onClick={() => setAddingClima(true)}
+            style={{ marginTop: 16, padding: '7px 18px', borderRadius: 999, cursor: 'pointer',
+              border: '1px solid var(--line)', background: 'transparent',
+              fontFamily: 'var(--font-body)', fontWeight: 600, fontSize: 13, color: 'var(--ink-soft)' }}>
+            + Novo Clima
+          </button>
+        )}
+        {isGM && addingClima && (
+          <div style={{ marginTop: 16, padding: '16px', border: '1px solid var(--line)',
+            borderRadius: 10, background: 'var(--paper-deep)' }}>
+            <div style={{ display:'grid', gridTemplateColumns:'2fr 1fr 1fr 1fr', gap:8, marginBottom:8 }}>
+              <input value={draft.name} onChange={e => setDraft(p=>({...p,name:e.target.value}))}
+                placeholder="Nome do clima *" style={fldStyle} />
+              <select value={draft.type} onChange={e => setDraft(p=>({...p,type:e.target.value as any}))} style={fldStyle}>
+                <option value="Natural">Natural</option><option value="Especial">Especial</option>
+              </select>
+              <input value={draft.icon} onChange={e => setDraft(p=>({...p,icon:e.target.value}))}
+                placeholder="🌀" style={fldStyle} />
+              <input value={draft.color} onChange={e => setDraft(p=>({...p,color:e.target.value}))}
+                placeholder="teal" style={fldStyle} />
+            </div>
+            <textarea value={draft.effects} onChange={e => setDraft(p=>({...p,effects:e.target.value}))}
+              placeholder={'Efeitos (uma por linha):\nFogo +2: Ataques de Fogo causam +2 de dano.\nÁgua −2: Ataques de Água causam −2 de dano.'}
+              rows={3} style={{ ...fldStyle, width:'100%', resize:'vertical', marginBottom:8 }} />
+            <div style={{ display:'flex', gap:8 }}>
+              <button onClick={saveClima} style={{ padding:'7px 16px', borderRadius:999, cursor:'pointer',
+                border:'1px solid var(--ink)', background:'var(--ink)', color:'var(--paper)',
+                fontFamily:'var(--font-body)', fontWeight:600, fontSize:13 }}>Adicionar</button>
+              <button onClick={() => setAddingClima(false)} style={{ padding:'7px 14px', borderRadius:999,
+                cursor:'pointer', border:'1px solid var(--line)', background:'transparent',
+                fontFamily:'var(--font-body)', fontSize:13, color:'var(--ink-mute)' }}>Cancelar</button>
+            </div>
+          </div>
+        )}
       </section>
     </div>
   )
@@ -264,7 +358,13 @@ function DigiviceTab() {
 }
 
 // ── Main ──────────────────────────────────────────────────────────────────────
-export default function SistemaPage() {
+interface SistemaProps {
+  state?:    AppState
+  onUpdate?: (s: AppState) => void
+  isGM?:     boolean
+}
+
+export default function SistemaPage({ state, onUpdate, isGM = false }: SistemaProps) {
   const [tab, setTab] = useState<'regras'|'climas'|'digivice'>('regras')
   return (
     <div>
@@ -278,7 +378,7 @@ export default function SistemaPage() {
         ))}
       </div>
       {tab === 'regras'   && <RegraTab />}
-      {tab === 'climas'   && <ClimasTab />}
+      {tab === 'climas'   && <ClimasTab state={state} onUpdate={onUpdate} isGM={isGM} />}
       {tab === 'digivice' && <DigiviceTab />}
     </div>
   )
