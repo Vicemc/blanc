@@ -55,7 +55,7 @@ INSERT INTO auth.users (
    'convidado6@survive.local', crypt('convidado6', gen_salt('bf')),
    now(), now(), now(), '{"name":"Convidado 6"}'::jsonb, false)
 
-ON CONFLICT (email) DO NOTHING;
+ON CONFLICT DO NOTHING;
 
 -- 3. Criar os perfis com role = 'guest'
 --    (o trigger handle_new_user cria o perfil automaticamente ao inserir em auth.users,
