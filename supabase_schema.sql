@@ -559,6 +559,11 @@ create policy "digivices_insert_gm"
   on public.digivices for insert to authenticated
   with check (public.is_gm());
 
+-- Player pode inserir apenas o próprio Digivice (linha ainda não existe).
+create policy "digivices_insert_player"
+  on public.digivices for insert to authenticated
+  with check (character_id = public.my_character_id());
+
 -- Player pode atualizar apenas o próprio Digivice.
 -- GM pode atualizar qualquer Digivice (controla NPCs).
 create policy "digivices_update"

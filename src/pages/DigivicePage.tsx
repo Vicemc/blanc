@@ -114,7 +114,7 @@ function useDigivice(characterId: string | null) {
 
   const save = async (patch: Partial<Digivice>) => {
     if (!supabase || !characterId) return
-    const updated = { ...digivice, ...patch } as Digivice
+    const updated = { ...EMPTY_DIGIVICE, ...digivice, ...patch } as Digivice
     setDigivice(updated)
 
     if (updated.id) {
@@ -123,7 +123,12 @@ function useDigivice(characterId: string | null) {
       const { data } = await supabase.from('digivices')
         .insert({ character_id: characterId, ...EMPTY_DIGIVICE, ...patch })
         .select('*').single()
-      if (data) setDigivice(data as Digivice)
+      if (data) setDigivice({
+        ...data,
+        inventory: data.inventory ?? [],
+        records:   data.records   ?? [],
+        maps:      data.maps      ?? [],
+      } as Digivice)
     }
   }
 
