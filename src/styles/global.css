@@ -1,0 +1,201 @@
+/* ============================================================
+   DESIGN SYSTEM — Digimon Survive Companion App
+   Campanha: A Midnight Summer's Dream
+   ============================================================ */
+
+/* ── Tokens ─────────────────────────────────────────────────── */
+:root {
+  --paper:       #f6f2e9;
+  --paper-deep:  #efe9dc;
+  --ink:         #1a1814;
+  --ink-soft:    #4a463e;
+  --ink-mute:    #8a8377;
+  --line:        #c8c0ad;
+  --line-soft:   #ddd5c1;
+  --radius:      14px;
+  --shadow:      0 12px 32px -18px rgba(40,30,12,0.35);
+
+  /* Cores de acento / retratos */
+  --sage:        #9bb89c;
+  --wheat:       #d9b974;
+  --rose:        #d99fae;
+  --indigo:      #3b3a5e;
+  --gold:        #e7d4a3;
+  --coral:       #e25845;
+  --orange:      #e87a2c;
+  --teal:        #4a9b9b;
+  --purple:      #8a6ea0;
+  --black:       #1a1814;
+  --green:       #6e9d70;
+  --blue:        #6e8bb5;
+  --pink:        #ec8aa1;
+  --red:         #c43321;
+
+  /* Cores de BUG */
+  --fill-bug-red:    #c43321;
+  --fill-bug-green:  #6e9d70;
+  --fill-bug-blue:   #6e8bb5;
+  --fill-bug-white:  #eee7d5;
+  --fill-bug-purple: #8a6ea0;
+  --fill-bug-yellow: #d6b04a;
+
+  /* Tipografia */
+  --font-display: 'Archivo Black', sans-serif;
+  --font-body:    'DM Sans', sans-serif;
+  --font-serif:   'Instrument Serif', serif;
+  --font-mono:    'JetBrains Mono', monospace;
+}
+
+/* ── Reset ───────────────────────────────────────────────────── */
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+html { font-size: 16px; }
+
+body {
+  font-family: var(--font-body);
+  background: var(--paper);
+  color: var(--ink);
+  min-height: 100vh;
+  position: relative;
+}
+
+/* Grain sutil de fundo */
+body::before {
+  content: '';
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  z-index: 0;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='300' height='300'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3CfeColorMatrix type='saturate' values='0'/%3E%3C/filter%3E%3Crect width='300' height='300' filter='url(%23n)' opacity='1'/%3E%3C/svg%3E");
+  mix-blend-mode: multiply;
+  opacity: 0.5;
+}
+
+#root { position: relative; z-index: 1; }
+
+a { color: inherit; }
+
+button { cursor: pointer; font-family: inherit; }
+
+/* ── Grain texture classes ───────────────────────────────────── */
+.grain {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='200' height='200'%3E%3Cfilter id='g'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' seed='4' stitchTiles='stitch'/%3E%3CfeColorMatrix type='saturate' values='0'/%3E%3C/filter%3E%3Crect width='200' height='200' filter='url(%23g)' opacity='1'/%3E%3C/svg%3E");
+  mix-blend-mode: screen;
+  opacity: 0.7;
+  border-radius: inherit;
+}
+
+.grain-invert {
+  mix-blend-mode: multiply;
+  opacity: 0.85;
+}
+
+/* ── Fill classes (portraits / acento) ──────────────────────── */
+.fill-sage    { background-color: var(--sage);    color: var(--ink); }
+.fill-wheat   { background-color: var(--wheat);   color: var(--ink); }
+.fill-rose    { background-color: var(--rose);    color: var(--ink); }
+.fill-indigo  { background-color: var(--indigo);  color: #f6f2e9; }
+.fill-gold    { background-color: var(--gold);    color: var(--ink); }
+.fill-coral   { background-color: var(--coral);   color: #f6f2e9; }
+.fill-orange  { background-color: var(--orange);  color: #f6f2e9; }
+.fill-teal    { background-color: var(--teal);    color: #f6f2e9; }
+.fill-purple  { background-color: var(--purple);  color: #f6f2e9; }
+.fill-black   { background-color: var(--black);   color: #f6f2e9; }
+.fill-green   { background-color: var(--green);   color: #f6f2e9; }
+.fill-blue    { background-color: var(--blue);    color: #f6f2e9; }
+.fill-pink    { background-color: var(--pink);    color: var(--ink); }
+.fill-red     { background-color: var(--red);     color: #f6f2e9; }
+
+.fill-bug-red    { background-color: var(--fill-bug-red);    color: #f6f2e9; }
+.fill-bug-green  { background-color: var(--fill-bug-green);  color: #f6f2e9; }
+.fill-bug-blue   { background-color: var(--fill-bug-blue);   color: #f6f2e9; }
+.fill-bug-white  { background-color: var(--fill-bug-white);  color: var(--ink); }
+.fill-bug-purple { background-color: var(--fill-bug-purple); color: #f6f2e9; }
+.fill-bug-yellow { background-color: var(--fill-bug-yellow); color: var(--ink); }
+
+/* ── Modal ──────────────────────────────────────────────────── */
+.modal-back {
+  position: fixed;
+  inset: 0;
+  background: rgba(26,24,20,0.55);
+  z-index: 200;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  backdrop-filter: blur(2px);
+}
+
+.modal {
+  background: var(--paper);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+  max-height: 90vh;
+  overflow-y: auto;
+  width: 100%;
+  max-width: 920px;
+  position: relative;
+  padding: 32px;
+}
+
+/* ── Animações ──────────────────────────────────────────────── */
+@keyframes fadeUp {
+  from { opacity: 0; transform: translateY(12px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+
+.fadeUp  { animation: fadeUp  0.25s ease both; }
+.fadeIn  { animation: fadeIn  0.2s  ease both; }
+
+/* ── Scrollbar ──────────────────────────────────────────────── */
+::-webkit-scrollbar { width: 6px; height: 6px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: var(--line); border-radius: 3px; }
+::-webkit-scrollbar-thumb:hover { background: var(--ink-mute); }
+
+/* ── Tooltip de keyword inline (kwTip) ── */
+.kwTip {
+  position: relative;
+  display: inline;
+}
+.kwTipLabel {
+  border-bottom: 1.5px dotted var(--coral);
+  color: var(--coral);
+  cursor: help;
+  font-weight: 600;
+}
+.kwTipBox {
+  position: fixed;
+  background: var(--ink);
+  color: var(--paper);
+  font-family: var(--font-body);
+  font-size: 12px;
+  font-weight: 400;
+  line-height: 1.55;
+  padding: 8px 12px;
+  border-radius: 8px;
+  width: 260px;
+  max-width: calc(100vw - 24px);
+  z-index: 99999;
+  pointer-events: none;
+  white-space: normal;
+  box-shadow: 0 4px 20px rgba(0,0,0,0.3);
+}
+.kwTipBox::after {
+  content: '';
+  position: absolute;
+  top: 100%;
+  left: 50%;
+  transform: translateX(-50%);
+  border: 5px solid transparent;
+  border-top-color: var(--ink);
+}
+/* kwTip hover gerenciado via React state */

@@ -1,0 +1,362 @@
+.sheet { background: var(--paper); border: 1px solid var(--line); border-radius: var(--radius); overflow: hidden; }
+
+.sheetHead {
+  padding: 28px 52px 24px;
+  border-bottom: 1px solid var(--line);
+  background: var(--paper-deep);
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 24px;
+  align-items: center;
+}
+.portrait { width: 88px; height: 88px; border-radius: 14px; overflow: hidden; position: relative; flex-shrink: 0; }
+.headName { font-family: var(--font-display); font-size: 30px; margin: 0 0 5px; letter-spacing: -0.01em; text-transform: uppercase; }
+.headMeta { font-family: var(--font-mono); font-size: 12px; letter-spacing: 0.08em; text-transform: uppercase; color: var(--ink-soft); }
+
+.tabs { display: flex; border-bottom: 1px solid var(--line); background: var(--paper); overflow-x: auto; }
+.tab {
+  flex: 0 0 auto; border: 0; background: transparent;
+  padding: 15px 24px;
+  font-family: var(--font-mono); font-size: 12px; letter-spacing: 0.14em; text-transform: uppercase;
+  color: var(--ink-mute); cursor: pointer;
+  border-right: 1px solid var(--line-soft);
+  border-bottom: 2px solid transparent;
+  transition: color 0.15s;
+}
+.tab:hover { color: var(--ink); }
+.tabActive { color: var(--ink); background: var(--paper-deep); border-bottom-color: var(--ink); }
+
+.sheetBody { padding: 32px 56px 40px; }
+
+.sectionTitle {
+  font-family: var(--font-mono); font-size: 12px;
+  letter-spacing: 0.18em; text-transform: uppercase; color: var(--ink-mute);
+  display: flex; align-items: center; gap: 10px;
+  margin: 28px 0 14px;
+}
+
+.statRow {
+  display: grid; grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+  gap: 10px 20px; padding: 14px 20px;
+  background: var(--paper-deep); border-radius: 8px; border: 1px solid var(--line-soft);
+  font-family: var(--font-mono);
+}
+.statCell { display: flex; flex-direction: column; gap: 3px; align-items: center; text-align: center; }
+.statKey { color: var(--ink-mute); text-transform: uppercase; letter-spacing: 0.08em; font-size: 11px; }
+.statVal { font-weight: 700; font-size: 18px; color: var(--ink); }
+
+.attrGrid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px 40px; margin-top: 8px; }
+.attrGroup { min-width: 0; }
+.attrGroupLabel { font-family: var(--font-mono); font-size: 11px; letter-spacing: 0.1em; text-transform: uppercase; color: var(--ink-mute); margin-bottom: 10px; }
+.attrRow { display: flex; align-items: center; padding: 5px 0; border-bottom: 1px dotted var(--line-soft); font-size: 15px; gap: 8px; }
+.attrName { color: var(--ink); white-space: nowrap; min-width: 110px; flex-shrink: 0; }
+
+.skillsWrap { display: flex; flex-direction: column; gap: 16px; }
+.skillBlock {}
+.skillCat { margin: 0 0 8px; font-family: var(--font-display); font-size: 14px; letter-spacing: 0.04em; text-transform: uppercase; }
+.skillGrid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 4px 28px; font-size: 14px; }
+.skillRow { display: flex; justify-content: space-between; align-items: center; padding: 3px 0; border-bottom: 1px dotted var(--line-soft); }
+
+.weaknessBox { padding: 14px 18px; background: var(--paper-deep); border: 1px solid var(--line-soft); border-radius: 8px; display: flex; flex-direction: column; gap: 6px; }
+.weaknessRow { display: flex; justify-content: space-between; gap: 16px; font-family: var(--font-mono); font-size: 13px; }
+.weaknessKey { color: var(--ink-mute); text-transform: uppercase; font-size: 11px; letter-spacing: 0.08em; }
+.weaknessVal { color: var(--ink); font-weight: 600; font-size: 14px; }
+
+.affinityGrid { font-size: 14px; }
+.affinityRow { display: flex; justify-content: space-between; align-items: center; padding: 4px 0; border-bottom: 1px dotted var(--line-soft); gap: 4px; }
+
+/* ── Skill card ── */
+.skillCard {
+  border: 1px solid var(--line); border-radius: 10px;
+  padding: 16px 18px; margin-bottom: 12px;
+  background: var(--paper); position: relative;
+}
+.passive { background: var(--paper-deep); }
+
+.cardTag {
+  display: inline-block; font-family: var(--font-mono); font-size: 11px;
+  letter-spacing: 0.1em; text-transform: uppercase;
+  background: var(--ink); color: var(--paper);
+  padding: 3px 10px; border-radius: 999px;
+}
+.tagPassive { background: var(--coral); }
+.tagReaction { background: var(--orange); }
+
+.cardKeyword { font-family: var(--font-mono); font-size: 12px; color: var(--ink-mute); letter-spacing: 0.08em; }
+.cardTitle { margin: 10px 0 6px; font-family: var(--font-display); font-size: 18px; text-transform: uppercase; }
+.cardMeta { margin: 0 0 4px; font-family: var(--font-mono); font-size: 12px; color: var(--ink-mute); }
+.cardEffect { margin: 8px 0 0; font-size: 14px; color: var(--ink-soft); line-height: 1.6; }
+.cardEffect b { color: var(--ink); }
+
+/* Botões de ação do card — sem position absolute individual */
+.cardActions {
+  position: absolute;
+  top: 12px;
+  right: 12px;
+  display: flex;
+  flex-direction: row;
+  gap: 6px;
+  align-items: center;
+}
+.cardEdit {
+  background: transparent;
+  border: 1.5px solid var(--line);
+  border-radius: 50%;
+  width: 26px; height: 26px;
+  cursor: pointer; font-size: 13px;
+  color: var(--ink-mute);
+  display: flex; align-items: center; justify-content: center;
+  flex-shrink: 0;
+  transition: all 0.12s;
+}
+.cardEdit:hover { background: var(--ink); color: var(--paper); border-color: var(--ink); }
+/* cardDel NÃO tem position:absolute — fica dentro do cardActions */
+.cardDel {
+  background: transparent;
+  border: 1.5px solid var(--line);
+  border-radius: 50%;
+  width: 26px; height: 26px;
+  cursor: pointer; font-size: 15px;
+  line-height: 1; color: var(--ink-mute);
+  display: flex; align-items: center; justify-content: center;
+  flex-shrink: 0;
+  transition: all 0.12s;
+}
+.cardDel:hover { background: var(--coral); color: var(--paper); border-color: var(--coral); }
+
+/* ── Linha de dados/rolagem ── */
+.cardDados {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  letter-spacing: 0.04em;
+  color: var(--ink);
+  background: var(--paper-deep);
+  border: 1px solid var(--line-soft);
+  border-radius: 6px;
+  padding: 5px 12px;
+  margin: 8px 0 6px;
+  display: inline-block;
+}
+
+.addSkillForm { background: var(--paper-deep); border: 1px solid var(--line); border-radius: 10px; padding: 20px; margin-top: 14px; }
+.formRow { display: flex; gap: 12px; align-items: center; margin-bottom: 10px; }
+.formLabel { font-family: var(--font-mono); font-size: 11px; letter-spacing: 0.1em; text-transform: uppercase; color: var(--ink-mute); min-width: 120px; }
+.formInput { flex: 1; width: 100%; border: 1px solid var(--line); border-radius: 8px; padding: 9px 13px; font-family: var(--font-body); font-size: 14px; background: var(--paper); color: var(--ink); }
+
+.closeBtn { position: absolute; top: 16px; right: 16px; width: 36px; height: 36px; border-radius: 999px; border: 1px solid var(--line); background: var(--paper); cursor: pointer; font-size: 18px; z-index: 5; }
+.closeBtn:hover { background: var(--ink); color: var(--paper); }
+
+.btnSolid { display: inline-flex; align-items: center; gap: 8px; padding: 10px 20px; border-radius: 999px; border: 1px solid var(--ink); background: var(--ink); color: var(--paper); font-family: var(--font-body); font-weight: 600; font-size: 14px; cursor: pointer; transition: all 0.15s; }
+.btnSolid:hover { background: var(--paper); color: var(--ink); }
+.btnGhost { display: inline-flex; align-items: center; gap: 8px; padding: 10px 20px; border-radius: 999px; border: 1px solid var(--line); background: var(--paper); color: var(--ink-soft); font-family: var(--font-body); font-weight: 600; font-size: 14px; cursor: pointer; transition: all 0.15s; }
+.btnGhost:hover { background: var(--ink); color: var(--paper); }
+
+/* ── XP staging ── */
+.pendBtn {
+  width: 20px; height: 20px; border-radius: 50%;
+  border: 1.5px solid var(--coral); background: transparent;
+  color: var(--coral); cursor: pointer; font-size: 14px;
+  line-height: 1; padding: 0; flex-shrink: 0;
+  display: flex; align-items: center; justify-content: center;
+  transition: all 0.12s;
+}
+.pendBtn:hover { background: var(--coral); color: var(--paper); }
+.pendBtnUndo {
+  width: 20px; height: 20px; border-radius: 50%;
+  border: 1.5px solid var(--line); background: transparent;
+  color: var(--ink-mute); cursor: pointer; font-size: 14px;
+  line-height: 1; padding: 0; flex-shrink: 0;
+  display: flex; align-items: center; justify-content: center;
+  transition: all 0.12s;
+}
+.pendBtnUndo:hover { background: var(--ink-mute); color: var(--paper); }
+
+.xpConfirmBar {
+  display: flex; align-items: center; justify-content: space-between;
+  gap: 16px; flex-wrap: wrap;
+  background: rgba(226,88,69,0.08); border: 1.5px solid var(--coral);
+  border-radius: 10px; padding: 14px 18px;
+  margin: 16px 0;
+  animation: fadeUp 0.2s ease;
+}
+
+/* ── Inline XP award ── */
+.xpAwardInline {
+  background: var(--paper-deep); border: 1px solid var(--line-soft);
+  border-radius: 10px; padding: 16px 18px; margin-bottom: 16px;
+}
+
+/* ── Info editor ── */
+.infoEditor {
+  background: var(--paper-deep); border: 1px solid var(--line-soft);
+  border-radius: 10px; padding: 18px; margin-bottom: 16px;
+}
+
+/* ── Skill card editing state ── */
+.editing {
+  border-color: var(--ink) !important;
+  background: var(--paper-deep) !important;
+}
+
+/* ── Weakness editable ── */
+.weaknessKeyInput, .weaknessValInput {
+  border: 1px solid var(--line-soft); border-radius: 6px;
+  padding: 5px 9px; font-family: var(--font-mono); font-size: 13px;
+  background: var(--paper); color: var(--ink);
+}
+.weaknessValInput { flex: 1; }
+
+/* ── Num input ── */
+.numInput {
+  width: 52px; border: 1px solid var(--line); border-radius: 6px;
+  padding: 4px 6px; font-family: var(--font-mono); font-size: 14px;
+  text-align: right; background: var(--paper); color: var(--ink);
+}
+
+/* ── Edição de atributo livre (custo 0) ── */
+.attrFreeEdit { display: flex; align-items: center; gap: 6px; }
+.attrFreeBtn {
+  width: 20px; height: 20px; border-radius: 50%;
+  border: 1.5px solid var(--line); background: transparent;
+  color: var(--ink-mute); cursor: pointer; font-size: 14px;
+  line-height: 1; padding: 0; flex-shrink: 0;
+  display: flex; align-items: center; justify-content: center;
+  transition: all 0.12s;
+}
+.attrFreeBtn:hover { background: var(--ink-mute); color: var(--paper); }
+
+/* ── Toggle de passiva com bônus ── */
+.passiveToggleRow {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  margin-top: 12px;
+  padding-top: 10px;
+  border-top: 1px dashed var(--line);
+}
+
+.passiveToggleBtn {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  padding: 4px 14px;
+  border-radius: 999px;
+  border: 1.5px solid var(--line);
+  background: transparent;
+  color: var(--ink-mute);
+  cursor: pointer;
+  transition: all 0.15s;
+  flex-shrink: 0;
+}
+.passiveToggleBtn:hover {
+  border-color: var(--ink-soft);
+  color: var(--ink);
+}
+.passiveToggleOn {
+  border-color: var(--teal);
+  background: var(--teal);
+  color: #f6f2e9;
+}
+.passiveToggleOn:hover {
+  background: transparent;
+  color: var(--teal);
+}
+
+.passiveXRow {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+.passiveXLabel {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--ink-mute);
+  letter-spacing: 0.06em;
+}
+.passiveXBtn {
+  width: 26px; height: 26px;
+  border-radius: 50%;
+  border: 1.5px solid var(--line);
+  background: transparent;
+  color: var(--ink-mute);
+  font-family: var(--font-mono);
+  font-size: 13px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: all 0.12s;
+  display: flex; align-items: center; justify-content: center;
+  flex-shrink: 0;
+}
+.passiveXBtn:hover { border-color: var(--teal); color: var(--teal); }
+.passiveXBtnActive {
+  background: var(--teal);
+  border-color: var(--teal);
+  color: #f6f2e9;
+}
+
+.passiveBonusSummary {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+}
+.passiveBonusChip {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  padding: 2px 10px;
+  border-radius: 999px;
+  background: rgba(74,155,155,0.15);
+  color: var(--teal);
+  border: 1px solid rgba(74,155,155,0.4);
+}
+
+/* Card passiva com toggle ativo — leve destaque verde */
+.passiveActive {
+  border-color: rgba(74,155,155,0.5) !important;
+}
+
+/* ── Ícone de afinidade com tooltip ── */
+.affinityIcon {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  cursor: default;
+  flex-shrink: 0;
+}
+
+.affinityTooltip {
+  display: none;
+  position: absolute;
+  bottom: calc(100% + 6px);
+  left: 50%;
+  transform: translateX(-50%);
+  background: var(--ink);
+  color: var(--paper);
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-weight: 500;
+  letter-spacing: 0.06em;
+  white-space: nowrap;
+  padding: 4px 9px;
+  border-radius: 6px;
+  z-index: 9999;
+  pointer-events: none;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.25);
+}
+.affinityTooltip::after {
+  content: '';
+  position: absolute;
+  top: 100%;
+  left: 50%;
+  transform: translateX(-50%);
+  border: 4px solid transparent;
+  border-top-color: var(--ink);
+}
+.affinityIcon:hover .affinityTooltip { display: block; }

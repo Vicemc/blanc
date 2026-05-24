@@ -1,0 +1,98 @@
+.page { max-width: 920px; margin: 0 auto; padding: 16px 56px 80px; }
+.toc { display: flex; flex-wrap: wrap; gap: 8px; padding: 14px 0 22px; border-bottom: 1px solid var(--line); margin-bottom: 28px; font-family: var(--font-mono); font-size: 11px; letter-spacing: 0.08em; text-transform: uppercase; position: sticky; top: 57px; background: var(--paper); z-index: 4; }
+.toc a { color: var(--ink-mute); text-decoration: none; padding: 4px 10px; border-radius: 999px; border: 1px solid var(--line); }
+.toc a:hover { color: var(--ink); border-color: var(--ink); }
+
+.rule { margin-bottom: 56px; }
+.ruleNum { font-family: var(--font-display); font-size: 80px; line-height: 0.9; letter-spacing: -0.04em; color: var(--ink); opacity: 0.12; margin-bottom: -50px; transform: translateX(-2px); text-transform: uppercase; }
+.ruleTitle { font-family: var(--font-display); font-size: 36px; margin: 0 0 4px; text-transform: uppercase; letter-spacing: -0.01em; }
+.ruleSub { font-family: var(--font-serif); font-style: italic; font-size: 20px; color: var(--ink-soft); margin-bottom: 20px; }
+.ruleH3 { font-family: var(--font-display); font-size: 16px; text-transform: uppercase; letter-spacing: 0.02em; margin: 24px 0 8px; }
+.rule p, .rule ul, .rule ol { font-size: 16px; line-height: 1.6; color: var(--ink-soft); }
+.rule ul { padding-left: 22px; } .rule li { margin-bottom: 6px; }
+.rule b { color: var(--ink); }
+
+.callout { background: var(--paper-deep); border-left: 4px solid var(--ink); padding: 14px 18px; margin: 16px 0; border-radius: 0 8px 8px 0; font-family: var(--font-mono); font-size: 13px; color: var(--ink-soft); line-height: 1.55; }
+.callout b { color: var(--ink); }
+
+.kwGrid { display: grid; grid-template-columns: repeat(2,1fr); gap: 12px; margin-top: 12px; }
+@media (max-width: 720px) { .kwGrid { grid-template-columns: 1fr; } }
+
+.kw { border: 1px solid var(--line); border-radius: 10px; padding: 12px 14px; background: var(--paper); }
+.kwTag { display: inline-block; font-family: var(--font-mono); font-size: 10px; letter-spacing: 0.12em; text-transform: uppercase; background: var(--ink); color: var(--paper); padding: 2px 8px; border-radius: 999px; margin-bottom: 6px; }
+.tag_wound    { background: var(--coral)  !important; }
+.tag_stack    { background: var(--blue)   !important; }
+.tag_positive { background: var(--green)  !important; }
+.tag_neg      { background: var(--purple) !important; }
+.tag_reaction { background: var(--orange) !important; }
+.kwTitle { font-family: var(--font-display); font-size: 15px; margin: 4px 0 6px; text-transform: uppercase; }
+.kwText { margin: 0; font-size: 13px; line-height: 1.55; color: var(--ink-soft); }
+.kwText b { color: var(--ink); }
+.kwResist { font-family: var(--font-mono); font-size: 11px; color: var(--ink-mute); margin-top: 6px; }
+
+/* ── Sub-abas ── */
+.subTabs {
+  display: flex;
+  gap: 0;
+  border-bottom: 1.5px solid var(--line);
+  background: var(--paper-deep);
+  padding: 0 56px;
+}
+.subTab {
+  padding: 12px 22px;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-weight: 500;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--ink-mute);
+  background: transparent;
+  border: none;
+  border-bottom: 2px solid transparent;
+  cursor: pointer;
+  transition: color 0.15s;
+}
+.subTab:hover { color: var(--ink); }
+.subTabActive { color: var(--ink); border-bottom-color: var(--coral); }
+
+/* ── Tooltip ── */
+.tip {
+  position: relative;
+  display: inline;
+}
+.tipLabel {
+  border-bottom: 1.5px dotted var(--coral);
+  color: var(--coral);
+  cursor: help;
+  font-weight: 600;
+}
+.tipBox {
+  display: none;
+  position: absolute;
+  bottom: calc(100% + 8px);
+  left: 50%;
+  transform: translateX(-50%);
+  background: var(--ink);
+  color: var(--paper);
+  font-family: var(--font-body);
+  font-size: 12px;
+  font-weight: 400;
+  line-height: 1.5;
+  padding: 8px 12px;
+  border-radius: 8px;
+  width: 240px;
+  z-index: 999;
+  pointer-events: none;
+  white-space: normal;
+  box-shadow: 0 4px 16px rgba(0,0,0,0.25);
+}
+.tipBox::after {
+  content: '';
+  position: absolute;
+  top: 100%;
+  left: 50%;
+  transform: translateX(-50%);
+  border: 5px solid transparent;
+  border-top-color: var(--ink);
+}
+.tip:hover .tipBox { display: block; }
