@@ -36,7 +36,7 @@ create table public.profiles (
   id              uuid primary key references auth.users(id) on delete cascade,
   display_name    text not null,
   role            text not null default 'player'
-                  check (role in ('gm', 'player')),
+                  check (role in ('gm', 'player', 'guest')),
 
   -- Vínculo com personagem (mutuamente exclusivos em uso, não em schema)
   tamer_id        text,   -- ex: 't-naoki' — preenchido para players
