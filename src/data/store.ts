@@ -1227,7 +1227,7 @@ export function buildDefaultState(): AppState {
         stageName: 'Blucomon', level: 'Child (Lvl 3)', cost: '0',
         type: 'Small Dragon', portrait: 'blue', size: 3, speed: 5, locked: false,
         status: {
-          HP: 12, Deslocamento: 10, Iniciativa: 7, Defesa: 3, Armadura: 0,
+          HP: 17, Deslocamento: 10, Iniciativa: 7, Defesa: 3, Armadura: 0,
         },
         attributes: { ...mikiAttrs },
         weakness: {
@@ -1252,6 +1252,10 @@ export function buildDefaultState(): AppState {
             alcance: 'projétil 5m', custo: 'Nenhum',
             dados: 'Vigor + Gelo',
             effect: 'Reduz em -2 o Deslocamento do inimigo atingido por esse ataque. Reduz em -4 o Deslocamento em caso de Crítico. Essas alterações duram 3 Rounds.',
+          },
+          {
+            type: 'passive', keyword: 'Passiva', title: 'Sturdy',
+            effect: 'Blucomon recebe +5 de HP.',
           },
         ] as DigimonSkill[],
       },
@@ -1601,7 +1605,7 @@ export function buildDefaultState(): AppState {
         stageName: 'Solarmon', level: 'Child (Lvl 3)', cost: '0',
         type: 'Machine', portrait: 'gold', size: 3, speed: 5, locked: false,
         status: {
-          HP: 13, Deslocamento: 11, Iniciativa: 9, Defesa: 4, Armadura: 1,
+          HP: 18, Deslocamento: 11, Iniciativa: 9, Defesa: 4, Armadura: 1,
         },
         attributes: { ...eisukeAttrs },
         weakness: {
@@ -1630,6 +1634,10 @@ export function buildDefaultState(): AppState {
           {
             type: 'passive', keyword: 'Passiva', title: 'Armored',
             effect: 'Armadura +1 para Solarmon.',
+          },
+          {
+            type: 'passive', keyword: 'Passiva', title: 'Sturdy',
+            effect: 'Solarmon recebe +5 de HP.',
           },
         ] as DigimonSkill[],
       },
@@ -2178,13 +2186,17 @@ export function buildDefaultState(): AppState {
       { stageName: '???', level: 'In-Training (Lvl 2)', cost: '0', type: '???', portrait: 'orange', size: 1, speed: 5, locked: true,
         status: { HP: 0, Deslocamento: 0, Iniciativa: 0, Defesa: 0, Armadura: 0 }, attributes: { ...hareAttrs }, weakness: {}, affinity: {}, skills: [] },
       { stageName: 'Toy Agumon', level: 'Child (Lvl 3)', cost: '0', type: 'Puppet', portrait: 'orange', size: 3, speed: 5, locked: false,
-        status: { HP: 13, Deslocamento: 9, Iniciativa: 5, Defesa: 2, Armadura: 0 }, attributes: { ...hareAttrs },
+        status: { HP: 18, Deslocamento: 9, Iniciativa: 5, Defesa: 2, Armadura: 0 }, attributes: { ...hareAttrs },
         weakness: { 'Letal (+2)': 'Vírus', 'Agravado (+3)': 'Água, Enfraquecer', 'Resistente (-2)': 'Vacina' },
         affinity: { Fogo: 1, Luz: 1, Físico: 1, Enfraquecer: 5, Resistência: 2 },
         skills: [
           { type: 'action', keyword: 'Ataque', title: 'Toy Flame', alcance: 'projétil 8m', custo: 'Nenhum', dados: 'Destreza + Fogo', effect: 'Nenhum.' },
           { type: 'action', keyword: 'Ataque', title: 'Fancy Star', alcance: 'projétil 5m', custo: 'Nenhum', dados: 'Perseverança + Luz', effect: 'Nenhum.' },
           { type: 'action', keyword: 'Ataque', title: 'Block Punch', alcance: 'corpo a corpo 1m', custo: 'Nenhum', dados: 'Força + Físico', effect: 'Nenhum.' },
+          {
+            type: 'passive', keyword: 'Passiva', title: 'Sturdy',
+            effect: 'ToyAgumon recebe +5 de HP.',
+          },
         ] as DigimonSkill[] },
       { stageName: 'Omekamon', level: 'Adult (Lvl 4)', cost: '-2 Memory', type: 'Puppet', portrait: 'orange', size: 3, speed: 5, locked: false,
         status: { HP: 18, Deslocamento: 9, Iniciativa: 5, Defesa: 3, Armadura: 0 }, attributes: { ...hareAttrs },
