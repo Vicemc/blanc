@@ -1596,8 +1596,8 @@ function SkillTreeSection({ tamer, state, onSave, onSaveState, msg }: {
 
 const NPC_FECHADURA_IDS = new Set(['t-hare', 't-kanade', 't-shinra', 't-kumo', 't-hibito', 't-emi'])
 
-function TamerView({ tamer, line, editable, onSave, onSaveLine, onSaveAll, state, onSaveState, onSpawnToken }: {
-  tamer: Tamer; line?: DigimonLine; editable: boolean
+function TamerView({ tamer, line, editable, isGM, onSave, onSaveLine, onSaveAll, state, onSaveState, onSpawnToken }: {
+  tamer: Tamer; line?: DigimonLine; editable: boolean; isGM?: boolean
   onSave: (t: Tamer) => void; onSaveLine?: (l: DigimonLine) => void
   onSaveAll?: (autoridade: number) => void
   state?: AppState; onSaveState?: (s: AppState) => void
@@ -1809,26 +1809,44 @@ function TamerView({ tamer, line, editable, onSave, onSaveLine, onSaveAll, state
       />
       {showAdd && <AddSkillForm isTamer onAdd={sk => { onSave({ ...tamer, tamerSkills: [...tamer.tamerSkills, sk as TamerSkill] }); setShowAdd(false); msg('Skill adicionada!') }} onCancel={() => setShowAdd(false)} />}
 
-      {editable && !line && state && onSaveState && (
+      {editable && isGM && state && onSaveState && (
         <>
           <SectionTitle>Digimon Parceiro</SectionTitle>
-          <div style={{ textAlign:'center', padding:'20px 24px', background:'var(--paper-deep)',
-            border:'1px solid var(--line-soft)', borderRadius:8, marginBottom:16 }}>
-            <div style={{ fontFamily:'var(--font-mono)', fontSize:11, letterSpacing:'0.1em',
-              textTransform:'uppercase', color:'var(--ink-mute)', marginBottom:12 }}>
-              Sem parceiro vinculado
+          {!line ? (
+            <div style={{ textAlign:'center', padding:'20px 24px', background:'var(--paper-deep)',
+              border:'1px solid var(--line-soft)', borderRadius:8, marginBottom:16 }}>
+              <div style={{ fontFamily:'var(--font-mono)', fontSize:11, letterSpacing:'0.1em',
+                textTransform:'uppercase', color:'var(--ink-mute)', marginBottom:12 }}>
+                Sem parceiro vinculado
+              </div>
+              <button className={styles.btnGhost} onClick={() => {
+                const newId = `d-${tamer.id}-partner`
+                const newLine = makeSlimLine(newId, tamer.id, 'Novo Digimon', tamer.portrait, '???')
+                const hiddenLine = { ...newLine, stages: newLine.stages.map(s => ({ ...s, hidden: true })) }
+                onSaveState({
+                  ...state,
+                  bestiary: [...state.bestiary, hiddenLine],
+                  tamers: state.tamers.map(t => t.id === tamer.id ? { ...t, digimonId: newId } : t)
+                })
+              }}>+ Vincular Digimon Parceiro</button>
             </div>
-            <button className={styles.btnGhost} onClick={() => {
-              const newId = `d-${tamer.id}-partner`
-              const newLine = makeSlimLine(newId, tamer.id, 'Novo Digimon', tamer.portrait, '???')
-              const hiddenLine = { ...newLine, stages: newLine.stages.map(s => ({ ...s, hidden: true })) }
-              onSaveState({
-                ...state,
-                bestiary: [...state.bestiary, hiddenLine],
-                tamers: state.tamers.map(t => t.id === tamer.id ? { ...t, digimonId: newId } : t)
-              })
-            }}>+ Vincular Digimon Parceiro</button>
-          </div>
+          ) : (
+            <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between',
+              padding:'10px 16px', background:'var(--paper-deep)',
+              border:'1px solid var(--line-soft)', borderRadius:8, marginBottom:16 }}>
+              <span style={{ fontFamily:'var(--font-mono)', fontSize:13 }}>{line.name}</span>
+              <button className={styles.btnGhost}
+                style={{ color:'var(--coral)', borderColor:'var(--coral)', fontSize:11 }}
+                onClick={() => {
+                  if (!confirm(`Desvincular "${line.name}" de ${tamer.name} e apagar a linha do bestiário?`)) return
+                  onSaveState({
+                    ...state,
+                    bestiary: state.bestiary.filter(l => l.id !== line.id),
+                    tamers: state.tamers.map(t => t.id === tamer.id ? { ...t, digimonId: null } : t)
+                  })
+                }}>× Desvincular e apagar</button>
+            </div>
+          )}
         </>
       )}
 
@@ -1839,9 +1857,9 @@ function TamerView({ tamer, line, editable, onSave, onSaveLine, onSaveAll, state
 }
 
 // ── DigimonStageView ───────────────────────────────────────────────
-function DigimonStageView({ line, stageIdx, tamer, editable, isGM, onSaveLine, onSaveTamer }: {
+function DigimonStageView({ line, stageIdx, tamer, editable, isGM, onSaveLine, onSaveTamer, onDeleteStage }: {
   line: DigimonLine; stageIdx: number; tamer?: Tamer; editable: boolean; isGM?: boolean
-  onSaveLine: (l: DigimonLine) => void; onSaveTamer?: (t: Tamer) => void
+  onSaveLine: (l: DigimonLine) => void; onSaveTamer?: (t: Tamer) => void; onDeleteStage?: () => void
 }) {
   const stage = line.stages[stageIdx]
   const [toast, setToast]    = useState<string|null>(null)
@@ -2039,6 +2057,13 @@ function DigimonStageView({ line, stageIdx, tamer, editable, isGM, onSaveLine, o
         <button className={styles.btnGhost} style={{ fontSize:11, marginBottom:12, marginLeft:6 }}
           onClick={() => onSaveLine({ ...line, stages: line.stages.map((s,i) => i===stageIdx ? { ...s, hidden: !s.hidden } : s) })}>
           {stage.hidden ? '👁 Revelar para players' : '🔒 Ocultar de players'}
+        </button>
+      )}
+      {editable && isGM && onDeleteStage && (
+        <button className={styles.btnGhost}
+          style={{ fontSize:11, marginBottom:12, marginLeft:6, color:'var(--coral)', borderColor:'var(--coral)' }}
+          onClick={() => { if (confirm(`Apagar o estágio "${stage.stageName}"?`)) onDeleteStage() }}>
+          × Apagar estágio
         </button>
       )}
       {isGM && stage.hidden && (
@@ -2369,9 +2394,14 @@ export function FullSheet({ subject, state, onSaveState, editable = false, isGM 
       </div>
 
       <div className={styles.sheetBody}>
-        {showTamer && <TamerView tamer={tamer!} line={line} editable={editable} onSave={saveTamer} onSaveLine={saveLine} onSaveAll={saveAllAutoridade} state={state} onSaveState={onSaveState} onSpawnToken={onSpawnToken} />}
+        {showTamer && <TamerView tamer={tamer!} line={line} editable={editable} isGM={isGM} onSave={saveTamer} onSaveLine={saveLine} onSaveAll={saveAllAutoridade} state={state} onSaveState={onSaveState} onSpawnToken={onSpawnToken} />}
         {stageIdx !== null && line && (
-          <DigimonStageView line={line} stageIdx={stageIdx} tamer={tamer} editable={editable} isGM={isGM} onSaveLine={saveLine} onSaveTamer={tamer ? saveTamer : undefined} />
+          <DigimonStageView line={line} stageIdx={stageIdx} tamer={tamer} editable={editable} isGM={isGM} onSaveLine={saveLine} onSaveTamer={tamer ? saveTamer : undefined}
+            onDeleteStage={editable && isGM ? () => {
+              const newStages = line.stages.filter((_,i) => i !== stageIdx)
+              saveLine({ ...line, stages: newStages })
+              setActive(stageIdx > 0 ? `stage-${stageIdx - 1}` : (tamer ? 'tamer' : 'stage-0'))
+            } : undefined} />
         )}
         {showBug && <BugView bug={bug!} editable={editable} onSave={saveBug} />}
         {active === 'sign' && sign && <SignView sign={sign} editable={editable} onSave={saveSign} />}
