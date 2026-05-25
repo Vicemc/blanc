@@ -17,6 +17,8 @@ interface Props {
   isGM:    boolean
 }
 
+const NPC_FECHADURA_IDS = new Set(['t-hare', 't-kanade', 't-shinra', 't-kumo', 't-hibito', 't-emi'])
+
 // NPCs Fechadura — têm Digivice mas não são tamers no AppState
 const NPC_FECHADURA = [
   { id: 't-hare',   name: 'Hare',   portrait: 'rose'   },
@@ -792,7 +794,7 @@ export default function DigivicePage({ state, onUpdate, profile, isGM }: Props) 
                     { label: 'Memory', value: `${tamer.status.Memory.v}/${tamer.status.Memory.max}` },
                     { label: 'Digisoul', value: `${tamer.status.Digisoul.v}/${tamer.status.Digisoul.max}` },
                     { label: 'Deslocamento', value: tamer.status.Deslocamento },
-                    { label: 'Autoridade', value: tamer.status.Autoridade },
+                    ...(!NPC_FECHADURA_IDS.has(tamer.id) ? [{ label: 'Autoridade', value: tamer.status.Autoridade }] : []),
                     { label: 'Iniciativa', value: tamer.status.Iniciativa },
                   ].map(({ label, value }) => (
                     <div key={label} style={{ padding: '10px 14px', background: 'var(--paper-deep)',

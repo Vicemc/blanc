@@ -1594,6 +1594,8 @@ function SkillTreeSection({ tamer, state, onSave, onSaveState, msg }: {
   )
 }
 
+const NPC_FECHADURA_IDS = new Set(['t-hare', 't-kanade', 't-shinra', 't-kumo', 't-hibito', 't-emi'])
+
 function TamerView({ tamer, line, editable, onSave, onSaveLine, onSaveAll, state, onSaveState, onSpawnToken }: {
   tamer: Tamer; line?: DigimonLine; editable: boolean
   onSave: (t: Tamer) => void; onSaveLine?: (l: DigimonLine) => void
@@ -1699,14 +1701,13 @@ function TamerView({ tamer, line, editable, onSave, onSaveLine, onSaveAll, state
     ],
     ['Deslocamento', derived.Deslocamento + (tamerActiveBonus['Deslocamento'] ?? 0)],
     ['Iniciativa', derived.Iniciativa + (tamerActiveBonus['Iniciativa'] ?? 0)],
-    ['Autoridade',
+    ...(!NPC_FECHADURA_IDS.has(tamer.id) ? [['Autoridade',
       tamer.status.Autoridade,
       (v: number) => {
         const newVal = Math.max(0, v)
-        // Propaga para todos os tamers no estado global via onSaveAll
         onSaveAll?.(newVal)
       }
-    ],
+    ] as const] : []),
     ['XP livre', tamer.xp],
   ]
 
