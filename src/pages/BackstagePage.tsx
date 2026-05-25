@@ -232,6 +232,7 @@ function SheetSection({ state, onUpdate }: Props) {
           onSaveState={onUpdate}
           onClose={() => setOpen(null)}
           editable
+          isGM
         />
       )}
     </div>

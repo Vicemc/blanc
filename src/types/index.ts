@@ -178,6 +178,7 @@ export interface DigimonStage {
   affinity:   Partial<Affinity>;
   skills:     DigimonSkill[];
   locked:     boolean;
+  hidden?:    boolean;
   image?:     string | null;
   imageKey?:  string | null;
 }

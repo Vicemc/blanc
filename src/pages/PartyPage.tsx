@@ -292,7 +292,7 @@ export default function PartyPage({ state, onUpdate, canEdit, isGM }: Props) {
       </div>
 
       {open && <SheetModal subject={open} state={state} onSaveState={onUpdate} onClose={() => setOpen(null)}
-        editable={canEdit ? canEdit(open.kind === 'tamer' ? open.id : undefined) : true} />}
+        editable={canEdit ? canEdit(open.kind === 'tamer' ? open.id : undefined) : true} isGM={isGM} />}
       {showAdd && <AddTamerModal state={state} onSave={s => { onUpdate(s); setShowAdd(false) }} onClose={() => setShowAdd(false)} />}
     </div>
   )

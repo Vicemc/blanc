@@ -8,7 +8,7 @@ import {
   findTamer, findDigimon, findBug,
   calcTamerDerived, calcDigimonDerived,
   xpCostAttribute, xpCostSkill,
-  makeEmptyStage, makeDefaultAttributes,
+  makeEmptyStage, makeDefaultAttributes, makeSlimLine,
   buySkillTreeSkill,
   DIGIMON_DEFAULT_IMAGES
 } from '../data/store'
@@ -1703,11 +1703,8 @@ function TamerView({ tamer, line, editable, onSave, onSaveLine, onSaveAll, state
     ['Iniciativa', derived.Iniciativa + (tamerActiveBonus['Iniciativa'] ?? 0)],
     ...(!NPC_FECHADURA_IDS.has(tamer.id) ? [['Autoridade',
       tamer.status.Autoridade,
-      (v: number) => {
-        const newVal = Math.max(0, v)
-        onSaveAll?.(newVal)
-      }
-    ] as const] : []),
+      (v: number) => { onSaveAll?.(Math.max(0, v)) }
+    ] as [string, number, (v: number) => void]] : []),
     ['XP livre', tamer.xp],
   ]
 
@@ -1812,6 +1809,29 @@ function TamerView({ tamer, line, editable, onSave, onSaveLine, onSaveAll, state
       />
       {showAdd && <AddSkillForm isTamer onAdd={sk => { onSave({ ...tamer, tamerSkills: [...tamer.tamerSkills, sk as TamerSkill] }); setShowAdd(false); msg('Skill adicionada!') }} onCancel={() => setShowAdd(false)} />}
 
+      {editable && !line && state && onSaveState && (
+        <>
+          <SectionTitle>Digimon Parceiro</SectionTitle>
+          <div style={{ textAlign:'center', padding:'20px 24px', background:'var(--paper-deep)',
+            border:'1px solid var(--line-soft)', borderRadius:8, marginBottom:16 }}>
+            <div style={{ fontFamily:'var(--font-mono)', fontSize:11, letterSpacing:'0.1em',
+              textTransform:'uppercase', color:'var(--ink-mute)', marginBottom:12 }}>
+              Sem parceiro vinculado
+            </div>
+            <button className={styles.btnGhost} onClick={() => {
+              const newId = `d-${tamer.id}-partner`
+              const newLine = makeSlimLine(newId, tamer.id, 'Novo Digimon', tamer.portrait, '???')
+              const hiddenLine = { ...newLine, stages: newLine.stages.map(s => ({ ...s, hidden: true })) }
+              onSaveState({
+                ...state,
+                bestiary: [...state.bestiary, hiddenLine],
+                tamers: state.tamers.map(t => t.id === tamer.id ? { ...t, digimonId: newId } : t)
+              })
+            }}>+ Vincular Digimon Parceiro</button>
+          </div>
+        </>
+      )}
+
       {/* Skill Tree — fases liberadas pelo GM */}
       <SkillTreeSection tamer={tamer} state={state} onSave={onSave} onSaveState={onSaveState} msg={msg} />
     </div>
@@ -1819,8 +1839,8 @@ function TamerView({ tamer, line, editable, onSave, onSaveLine, onSaveAll, state
 }
 
 // ── DigimonStageView ───────────────────────────────────────────────
-function DigimonStageView({ line, stageIdx, tamer, editable, onSaveLine, onSaveTamer }: {
-  line: DigimonLine; stageIdx: number; tamer?: Tamer; editable: boolean
+function DigimonStageView({ line, stageIdx, tamer, editable, isGM, onSaveLine, onSaveTamer }: {
+  line: DigimonLine; stageIdx: number; tamer?: Tamer; editable: boolean; isGM?: boolean
   onSaveLine: (l: DigimonLine) => void; onSaveTamer?: (t: Tamer) => void
 }) {
   const stage = line.stages[stageIdx]
@@ -2014,6 +2034,20 @@ function DigimonStageView({ line, stageIdx, tamer, editable, onSaveLine, onSaveT
         <button className={styles.btnGhost} style={{ fontSize:11, marginBottom:12 }} onClick={() => setEditInfo(p=>!p)}>
           {editInfo ? '✕ Fechar' : '✎ Editar info do estágio'}
         </button>
+      )}
+      {editable && isGM && (
+        <button className={styles.btnGhost} style={{ fontSize:11, marginBottom:12, marginLeft:6 }}
+          onClick={() => onSaveLine({ ...line, stages: line.stages.map((s,i) => i===stageIdx ? { ...s, hidden: !s.hidden } : s) })}>
+          {stage.hidden ? '👁 Revelar para players' : '🔒 Ocultar de players'}
+        </button>
+      )}
+      {isGM && stage.hidden && (
+        <div style={{ marginBottom:10, display:'inline-flex', alignItems:'center', gap:4,
+          padding:'3px 10px', background:'rgba(196,51,33,0.10)', borderRadius:6,
+          fontFamily:'var(--font-mono)', fontSize:10, letterSpacing:'0.12em',
+          textTransform:'uppercase', color:'var(--coral)' }}>
+          🔒 Oculto dos players
+        </div>
       )}
 
       <StatRow entries={statusEntries} />
@@ -2211,9 +2245,9 @@ function SignView({ sign: sg, editable, onSave }: { sign: Sign; editable: boolea
 }
 
 // ── FullSheet ──────────────────────────────────────────────────────
-interface FullSheetProps { subject: SheetSubject; state: AppState; onSaveState?: (s: AppState) => void; editable?: boolean; onSpawnToken?: (token: TokenSpawn) => void }
+interface FullSheetProps { subject: SheetSubject; state: AppState; onSaveState?: (s: AppState) => void; editable?: boolean; isGM?: boolean; onSpawnToken?: (token: TokenSpawn) => void }
 
-export function FullSheet({ subject, state, onSaveState, editable = false, onSpawnToken }: FullSheetProps) {
+export function FullSheet({ subject, state, onSaveState, editable = false, isGM = false, onSpawnToken }: FullSheetProps) {
   const { kind } = subject
   let tamer: Tamer | undefined
   let line:  DigimonLine | undefined
@@ -2226,9 +2260,12 @@ export function FullSheet({ subject, state, onSaveState, editable = false, onSpa
   if (kind === 'bug')    bug  = findBug(state, (subject as any).id)
   if (kind === 'sign')   sign = (state.signs ?? []).find(sg => sg.id === (subject as any).id)
 
-  const tabs: { id: string; label: string; locked?: boolean }[] = []
+  const tabs: { id: string; label: string; locked?: boolean; hidden?: boolean }[] = []
   if (tamer) tabs.push({ id:'tamer', label: tamer.name })
-  if (line)  line.stages.forEach((s,i) => tabs.push({ id:`stage-${i}`, label: s.stageName, locked: s.locked }))
+  if (line)  line.stages.forEach((s,i) => {
+    if (s.hidden && !isGM) return
+    tabs.push({ id:`stage-${i}`, label: s.stageName, locked: s.locked, hidden: s.hidden })
+  })
   if (bug)   tabs.push({ id:'bug', label: bug.name })
   if (sign)  tabs.push({ id:'sign', label: sign.code })
 
@@ -2304,11 +2341,24 @@ export function FullSheet({ subject, state, onSaveState, editable = false, onSpa
         {tabs.length > 1 && tabs.map(t => (
           <button key={t.id} className={`${styles.tab} ${active===t.id?styles.tabActive:''}`}
             onClick={() => setActive(t.id)}
-            style={t.locked ? { fontStyle:'italic', opacity:0.5 } : undefined}>
-            {t.label}
+            style={t.locked ? { fontStyle:'italic', opacity:0.5 } : t.hidden ? { fontStyle:'italic', opacity:0.7, color:'var(--coral)' } : undefined}>
+            {t.label}{t.hidden ? ' 🔒' : ''}
           </button>
         ))}
-        <div style={{ marginLeft:'auto', display:'flex', alignItems:'center', paddingRight:8, borderLeft: tabs.length > 1 ? '1px solid var(--line-soft)' : 'none', paddingLeft:8 }}>
+        <div style={{ marginLeft:'auto', display:'flex', alignItems:'center', gap:4, paddingRight:8, borderLeft: tabs.length > 1 ? '1px solid var(--line-soft)' : 'none', paddingLeft:8 }}>
+          {editable && isGM && line && (
+            <button
+              onClick={() => {
+                const newStage = { ...makeEmptyStage('???', '???', '—', false), hidden: true }
+                const updated = { ...line, stages: [...line.stages, newStage] }
+                saveLine(updated)
+                setActive(`stage-${line.stages.length}`)
+              }}
+              title="Adicionar evolução oculta"
+              style={{ background:'transparent', border:'1px solid var(--line)', borderRadius:6, cursor:'pointer', fontFamily:'var(--font-mono)', fontSize:11, letterSpacing:'0.08em', color:'var(--ink-mute)', padding:'3px 8px', lineHeight:1, transition:'all 0.15s' }}>
+              + Estágio
+            </button>
+          )}
           <button
             onClick={() => setDisplayMode(m => m === 'number' ? 'dots' : 'number')}
             title={displayMode === 'number' ? 'Mudar para bolinhas' : 'Mudar para números'}
@@ -2321,7 +2371,7 @@ export function FullSheet({ subject, state, onSaveState, editable = false, onSpa
       <div className={styles.sheetBody}>
         {showTamer && <TamerView tamer={tamer!} line={line} editable={editable} onSave={saveTamer} onSaveLine={saveLine} onSaveAll={saveAllAutoridade} state={state} onSaveState={onSaveState} onSpawnToken={onSpawnToken} />}
         {stageIdx !== null && line && (
-          <DigimonStageView line={line} stageIdx={stageIdx} tamer={tamer} editable={editable} onSaveLine={saveLine} onSaveTamer={tamer ? saveTamer : undefined} />
+          <DigimonStageView line={line} stageIdx={stageIdx} tamer={tamer} editable={editable} isGM={isGM} onSaveLine={saveLine} onSaveTamer={tamer ? saveTamer : undefined} />
         )}
         {showBug && <BugView bug={bug!} editable={editable} onSave={saveBug} />}
         {active === 'sign' && sign && <SignView sign={sign} editable={editable} onSave={saveSign} />}
@@ -2332,16 +2382,16 @@ export function FullSheet({ subject, state, onSaveState, editable = false, onSpa
 }
 
 // ── Modal wrapper ──────────────────────────────────────────────────
-export function SheetModal({ subject, state, onSaveState, onClose, editable, onSpawnToken }: {
+export function SheetModal({ subject, state, onSaveState, onClose, editable, isGM, onSpawnToken }: {
   subject: SheetSubject | null; state: AppState; onSaveState?: (s: AppState) => void
-  onClose: () => void; editable?: boolean; onSpawnToken?: (token: TokenSpawn) => void
+  onClose: () => void; editable?: boolean; isGM?: boolean; onSpawnToken?: (token: TokenSpawn) => void
 }) {
   if (!subject) return null
   return (
     <div className="modal-back" onClick={onClose}>
       <div className="modal" onClick={e => e.stopPropagation()}>
         <button className={styles.closeBtn} onClick={onClose} aria-label="Fechar">×</button>
-        <FullSheet subject={subject} state={state} onSaveState={onSaveState} editable={editable} onSpawnToken={onSpawnToken} />
+        <FullSheet subject={subject} state={state} onSaveState={onSaveState} editable={editable} isGM={isGM} onSpawnToken={onSpawnToken} />
       </div>
     </div>
   )

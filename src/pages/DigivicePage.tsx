@@ -889,6 +889,7 @@ export default function DigivicePage({ state, onUpdate, profile, isGM }: Props) 
           onSaveState={onUpdate}
           onClose={() => setSheetOpen(false)}
           editable={canEdit}
+          isGM={isGM}
         />
       )}
     </div>

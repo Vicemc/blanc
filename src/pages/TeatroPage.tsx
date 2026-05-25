@@ -1943,7 +1943,7 @@ function PalcoView({ stage, state, onUpdate, onBack, isGM = false }: {
       </div>
 
       {pickerSide && <Picker state={state} onPick={(a, qty) => addActor(pickerSide, a, qty)} onClose={() => setPickerSide(null)} />}
-      {open && <SheetModal subject={open} state={state} onSaveState={onUpdate} onClose={() => setOpen(null)} onSpawnToken={spawnToken} />}
+      {open && <SheetModal subject={open} state={state} onSaveState={onUpdate} onClose={() => setOpen(null)} isGM={isGM} onSpawnToken={spawnToken} />}
     </div>
   )
 }
