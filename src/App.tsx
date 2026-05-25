@@ -9,16 +9,33 @@ import { isSupabaseReady } from './lib/supabase'
 import type { AppState } from './types'
 import styles from './App.module.css'
 
-const LoginPage = lazy(() => import('./pages/LoginPage'))
-const HomePage = lazy(() => import('./pages/HomePage'))
-const PartyPage = lazy(() => import('./pages/PartyPage'))
-const GogglePage = lazy(() => import('./pages/GogglePage'))
-const TeatroPage = lazy(() => import('./pages/TeatroPage'))
-const SistemaPage = lazy(() => import('./pages/SistemaPage'))
-const BackstagePage = lazy(() => import('./pages/BackstagePage'))
-const DigivicePage = lazy(() => import('./pages/DigivicePage'))
-const DigiZapPage = lazy(() => import('./pages/DigiZapPage'))
-const ViewerPage = lazy(() => import('./pages/ViewerPage'))
+// Ao falhar o carregamento de um chunk lazy (deploy novo, hash diferente),
+// força reload para buscar o novo index.html com os hashes corretos.
+const RELOAD_KEY = 'chunk_reload'
+function lazyLoad<T extends React.ComponentType<any>>(
+  factory: () => Promise<{ default: T }>
+) {
+  return lazy(() =>
+    factory().catch(() => {
+      if (!sessionStorage.getItem(RELOAD_KEY)) {
+        sessionStorage.setItem(RELOAD_KEY, '1')
+        window.location.reload()
+      }
+      return new Promise<{ default: T }>(() => {})
+    })
+  )
+}
+
+const LoginPage     = lazyLoad(() => import('./pages/LoginPage'))
+const HomePage      = lazyLoad(() => import('./pages/HomePage'))
+const PartyPage     = lazyLoad(() => import('./pages/PartyPage'))
+const GogglePage    = lazyLoad(() => import('./pages/GogglePage'))
+const TeatroPage    = lazyLoad(() => import('./pages/TeatroPage'))
+const SistemaPage   = lazyLoad(() => import('./pages/SistemaPage'))
+const BackstagePage = lazyLoad(() => import('./pages/BackstagePage'))
+const DigivicePage  = lazyLoad(() => import('./pages/DigivicePage'))
+const DigiZapPage   = lazyLoad(() => import('./pages/DigiZapPage'))
+const ViewerPage    = lazyLoad(() => import('./pages/ViewerPage'))
 
 function AppInner() {
   const { session, profile, loading, isGM, localMode, refresh } = useAuth()
