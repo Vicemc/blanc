@@ -331,12 +331,14 @@ export function calcDigimonDerived(
   tamerHP?: number,
   level = 'Child (Lvl 3)',
 ) {
-  // HP por estágio: Child+5 | Armor+13 | Adult+15 | Perfect+20 | Ultimate+25
+  // HP por estágio relativo ao HP do tamer:
+  // Lvl3 = tamer+5 | Armor = Lvl3+3 = tamer+8 | Adult = Lvl3+5 = tamer+10
+  // Perfect = Adult+5 = tamer+15 | Ultimate = Perfect+5 = tamer+20
   // Sem tamer vinculado: Vigor + size (selvagens/bugs)
-  const hpBonus = level.startsWith('Armor')    ? 13
-    : level.startsWith('Adult')                ? 15
-    : level.startsWith('Perfect')              ? 20
-    : level.startsWith('Ultimate')             ? 25
+  const hpBonus = level.startsWith('Armor')    ? 8
+    : level.startsWith('Adult')                ? 10
+    : level.startsWith('Perfect')              ? 15
+    : level.startsWith('Ultimate')             ? 20
     : 5;
   const HP = tamerHP != null ? tamerHP + hpBonus : attrs.Vigor + size;
   return {

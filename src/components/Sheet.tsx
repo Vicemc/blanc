@@ -1849,7 +1849,7 @@ function DigimonStageView({ line, stageIdx, tamer, editable, onSaveLine, onSaveT
   // Para digimons parceiros: derivar HP a partir do tamer (regra do sistema)
   // Para selvagens e bugs: usar os valores absolutos do status — sem cálculo
   const isDerived = !!tamer
-  const tamerHP = tamer ? tamer.attributes.Vigor + 5 : undefined
+  const tamerHP = tamer ? tamer.status.HP.max : undefined
   const derived = isDerived
     ? calcDigimonDerived(stage.attributes, stage.size, stage.speed, evBonus, tamerHP, stage.level)
     : {

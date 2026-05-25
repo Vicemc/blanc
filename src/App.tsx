@@ -28,6 +28,7 @@ function AppInner() {
   const [migrateResult, setMigrateResult] = useState<string | null>(null)
   const [isDirty, setIsDirty] = useState(false)
   const [isSaving, setIsSaving] = useState(false)
+  const [digizapUnread, setDigizapUnread] = useState(0)
   const realtimeUnsub = useRef<(() => void) | null>(null)
 
   const isGuest = !localMode && profile?.role === 'guest'
@@ -144,7 +145,20 @@ function AppInner() {
           <NavLink to="/digivice"   className={({ isActive }) => isActive ? styles.active : ''}>Digivice</NavLink>
         )}
         {canSeeDigizap && (
-          <NavLink to="/digizap"    className={({ isActive }) => isActive ? styles.active : ''}>Digi-Zap</NavLink>
+          <NavLink to="/digizap"    className={({ isActive }) => isActive ? styles.active : ''}
+            style={{ position: 'relative' }}>
+            Digi-Zap
+            {digizapUnread > 0 && (
+              <span style={{ position: 'absolute', top: -4, right: -10,
+                minWidth: 16, height: 16, borderRadius: 999,
+                background: 'var(--coral)', color: '#f6f2e9',
+                fontFamily: 'var(--font-mono)', fontSize: 9, fontWeight: 700,
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                padding: '0 3px', lineHeight: 1 }}>
+                {digizapUnread}
+              </span>
+            )}
+          </NavLink>
         )}
         {isGM && (
           <NavLink to="/backstage"  className={({ isActive }) => isActive ? styles.active : ''}>Backstage</NavLink>
@@ -227,7 +241,7 @@ function AppInner() {
             <Route path="/sistema"   element={<SistemaPage  state={state} onUpdate={onUpdateLocal} isGM={isGM} />} />
             <Route path="/backstage" element={<BackstagePage state={state} onUpdate={onUpdateLocal} />} />
             <Route path="/digivice"  element={<DigivicePage  state={state} onUpdate={onUpdateLocal} profile={profile} isGM={isGM} />} />
-            <Route path="/digizap"   element={<DigiZapPage   state={state} profile={profile} isGM={isGM} />} />
+            <Route path="/digizap"   element={<DigiZapPage   state={state} profile={profile} isGM={isGM} onUnreadChange={setDigizapUnread} />} />
             <Route path="/view"      element={<ViewerPage    state={state} />} />
           </Routes>
         </Suspense>

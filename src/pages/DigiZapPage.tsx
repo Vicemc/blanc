@@ -1,6 +1,6 @@
 // src/pages/DigiZapPage.tsx
 // Chat Realtime do Digi-Zap entre personagens.
-// Grupos: SURVIVORS (todos os tamers), Sanbaka (Naoki/Shinra/Kumo), e bilaterais (PC ↔ NPC).
+// Grupos: SURVIVORS, Sanbaka, Kurumizawa Girls (pré-criados), e bilaterais (PC ↔ NPC).
 
 import { useState, useEffect, useRef, useCallback } from 'react'
 import type { AppState } from '../types'
@@ -8,9 +8,10 @@ import type { UserProfile } from '../lib/auth'
 import { supabase } from '../lib/supabase'
 
 interface Props {
-  state:   AppState
-  profile: UserProfile | null
-  isGM:    boolean
+  state:            AppState
+  profile:          UserProfile | null
+  isGM:             boolean
+  onUnreadChange?:  (n: number) => void
 }
 
 // ── Tipos ─────────────────────────────────────────────────────────────────────
@@ -45,12 +46,42 @@ function tamerPortrait(state: AppState, characterId: string): string {
   return t?.portrait ?? 'sage'
 }
 
+// Ping sonoro via Web Audio API
+function playPing() {
+  try {
+    const ctx = new AudioContext()
+    const osc = ctx.createOscillator()
+    const gain = ctx.createGain()
+    osc.connect(gain)
+    gain.connect(ctx.destination)
+    osc.frequency.value = 880
+    gain.gain.setValueAtTime(0.18, ctx.currentTime)
+    gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.45)
+    osc.start()
+    osc.stop(ctx.currentTime + 0.45)
+  } catch { /* ignore */ }
+}
+
+// Controle de "última vez visto" por grupo (localStorage)
+const LS_KEY = 'digizap-lastseen'
+
+function getLastSeen(): Record<string, string> {
+  try { return JSON.parse(localStorage.getItem(LS_KEY) || '{}') } catch { return {} }
+}
+
+function markGroupSeen(groupId: string) {
+  const map = getLastSeen()
+  map[groupId] = new Date().toISOString()
+  localStorage.setItem(LS_KEY, JSON.stringify(map))
+}
+
 // ── DigiZapPage ───────────────────────────────────────────────────────────────
 
-export default function DigiZapPage({ state, profile, isGM }: Props) {
+export default function DigiZapPage({ state, profile, isGM, onUnreadChange }: Props) {
   const [groups,         setGroups]         = useState<DigiZapGroup[]>([])
   const [activeGroupId,  setActiveGroupId]  = useState<string | null>(null)
   const [messages,       setMessages]       = useState<DigiZapMessage[]>([])
+  const [unread,         setUnread]         = useState<Record<string, number>>({})
   const [input,          setInput]          = useState('')
   const [survivalDay,    setSurvivalDay]    = useState<string>('')
   const [sentAtTime,     setSentAtTime]     = useState<string>('')
@@ -58,15 +89,29 @@ export default function DigiZapPage({ state, profile, isGM }: Props) {
   const [showMeta,       setShowMeta]       = useState(false)
   const [sending,        setSending]        = useState(false)
   const [loadingMsgs,    setLoadingMsgs]    = useState(false)
-  const [npcView,        setNpcView]        = useState<string>('')  // GM: envia como qual NPC
+  const [npcView,        setNpcView]        = useState<string>('')
+  const [showCreateGroup, setShowCreateGroup] = useState(false)
+  const [newGroupName,   setNewGroupName]   = useState('')
+  const [newGroupMembers, setNewGroupMembers] = useState<string[]>([])
   const messagesEndRef = useRef<HTMLDivElement>(null)
+  const activeGroupIdRef = useRef<string | null>(null)
 
-  // Meu character_id (GM pode escolher um NPC)
+  // Mantém ref sincronizado para uso dentro de callbacks de realtime
+  useEffect(() => { activeGroupIdRef.current = activeGroupId }, [activeGroupId])
+
   const myCharId = isGM
     ? (npcView || null)
     : (profile?.tamer_id ?? null)
 
-  // ── Carregar grupos ──────────────────────────────────────────────────────
+  const npcIds    = ['t-hare', 't-kanade', 't-shinra', 't-kumo', 't-emi', 't-hibito']
+  const allCharIds = [...npcIds, ...state.tamers.map(t => t.id)]
+
+  // ── Computar total de não-lidos ──────────────────────────────────────────
+
+  const computeTotal = useCallback((u: Record<string, number>) =>
+    Object.values(u).reduce((a, b) => a + b, 0), [])
+
+  // ── Carregar grupos + contagens iniciais ─────────────────────────────────
 
   useEffect(() => {
     if (!supabase) return
@@ -74,15 +119,31 @@ export default function DigiZapPage({ state, profile, isGM }: Props) {
     supabase.from('digi_zap_groups')
       .select('*')
       .order('name')
-      .then(({ data }) => {
-        const groups = (data ?? []) as DigiZapGroup[]
-        setGroups(groups)
-        // Selecionar primeiro grupo automaticamente
-        if (groups.length > 0 && !activeGroupId) {
-          setActiveGroupId(groups[0].id)
+      .then(async ({ data }) => {
+        const grps = (data ?? []) as DigiZapGroup[]
+        setGroups(grps)
+        if (grps.length > 0 && !activeGroupIdRef.current) {
+          setActiveGroupId(grps[0].id)
         }
+
+        // Calcular não-lidos iniciais
+        const lastSeen = getLastSeen()
+        const counts: Record<string, number> = {}
+        for (const g of grps) {
+          const since = lastSeen[g.id]
+          const query = supabase!
+            .from('digi_zap_messages')
+            .select('*', { count: 'exact', head: true })
+            .eq('group_id', g.id)
+          const { count } = since
+            ? await query.gt('created_at', since)
+            : await query
+          counts[g.id] = count ?? 0
+        }
+        setUnread(counts)
+        onUnreadChange?.(Object.values(counts).reduce((a, b) => a + b, 0))
       })
-  }, [])
+  }, [onUnreadChange])
 
   // ── Carregar mensagens do grupo ativo ────────────────────────────────────
 
@@ -101,25 +162,45 @@ export default function DigiZapPage({ state, profile, isGM }: Props) {
   useEffect(() => {
     if (!activeGroupId) return
     loadMessages(activeGroupId)
-  }, [activeGroupId, loadMessages])
+    // Marcar como lido ao abrir o grupo
+    markGroupSeen(activeGroupId)
+    setUnread(prev => {
+      const next = { ...prev, [activeGroupId]: 0 }
+      onUnreadChange?.(computeTotal(next))
+      return next
+    })
+  }, [activeGroupId, loadMessages, onUnreadChange, computeTotal])
 
-  // ── Realtime: ouvir novas mensagens ─────────────────────────────────────
+  // ── Realtime: ouvir TODOS os grupos ─────────────────────────────────────
 
   useEffect(() => {
-    if (!supabase || !activeGroupId) return
+    if (!supabase) return
 
     const channel = supabase
-      .channel(`digizap-${activeGroupId}`)
+      .channel('digizap-all')
       .on('postgres_changes', {
         event: 'INSERT', schema: 'public', table: 'digi_zap_messages',
-        filter: `group_id=eq.${activeGroupId}`,
       }, payload => {
-        setMessages(prev => [...prev, payload.new as DigiZapMessage])
+        const msg = payload.new as DigiZapMessage
+
+        if (msg.group_id === activeGroupIdRef.current) {
+          // Grupo ativo — adiciona à lista e marca como lido
+          setMessages(prev => [...prev, msg])
+          markGroupSeen(msg.group_id)
+        } else {
+          // Outro grupo — incrementa não-lidos + ping
+          setUnread(prev => {
+            const next = { ...prev, [msg.group_id]: (prev[msg.group_id] ?? 0) + 1 }
+            onUnreadChange?.(computeTotal(next))
+            return next
+          })
+          playPing()
+        }
       })
       .subscribe()
 
     return () => { supabase?.removeChannel(channel) }
-  }, [activeGroupId])
+  }, [onUnreadChange, computeTotal])
 
   // ── Auto-scroll ──────────────────────────────────────────────────────────
 
@@ -150,10 +231,6 @@ export default function DigiZapPage({ state, profile, isGM }: Props) {
 
   const createBilateral = async (npcId: string) => {
     if (!supabase || !myCharId) return
-    const participants = [myCharId, npcId].sort()
-    const name = `${tamerName(state, myCharId)} ↔ ${tamerName(state, npcId)}`
-
-    // Verificar se já existe
     const existing = groups.find(g =>
       g.kind === 'bilateral' &&
       g.participants.includes(myCharId) &&
@@ -161,8 +238,9 @@ export default function DigiZapPage({ state, profile, isGM }: Props) {
     )
     if (existing) { setActiveGroupId(existing.id); return }
 
+    const name = `${tamerName(state, myCharId)} ↔ ${tamerName(state, npcId)}`
     const { data } = await supabase.from('digi_zap_groups')
-      .insert({ kind: 'bilateral', name, participants })
+      .insert({ kind: 'bilateral', name, participants: [myCharId, npcId].sort() })
       .select('*').single()
 
     if (data) {
@@ -170,6 +248,22 @@ export default function DigiZapPage({ state, profile, isGM }: Props) {
       setGroups(prev => [...prev, newGroup])
       setActiveGroupId(newGroup.id)
     }
+  }
+
+  // ── Criar grupo (GM) ─────────────────────────────────────────────────────
+
+  const createGroup = async () => {
+    if (!supabase || !newGroupName.trim() || newGroupMembers.length < 2) return
+    const { data } = await supabase.from('digi_zap_groups')
+      .insert({ kind: 'group', name: newGroupName.trim(), participants: newGroupMembers })
+      .select('*').single()
+    if (data) {
+      setGroups(prev => [...prev, data as DigiZapGroup].sort((a, b) => a.name.localeCompare(b.name)))
+      setActiveGroupId((data as DigiZapGroup).id)
+    }
+    setNewGroupName('')
+    setNewGroupMembers([])
+    setShowCreateGroup(false)
   }
 
   if (!supabase) {
@@ -183,10 +277,7 @@ export default function DigiZapPage({ state, profile, isGM }: Props) {
   }
 
   const activeGroup = groups.find(g => g.id === activeGroupId)
-
-  // NPCs disponíveis para o GM assumir ou para iniciar conversa bilateral
-  const npcIds = ['t-hare', 't-kanade', 't-shinra', 't-kumo', 't-emi', 't-hibito']
-  const allCharIds = [...npcIds, ...state.tamers.map(t => t.id)]
+  const totalUnread = computeTotal(unread)
 
   return (
     <div style={{ maxWidth: 1100, margin: '0 auto', height: 'calc(100vh - 57px)',
@@ -197,13 +288,22 @@ export default function DigiZapPage({ state, profile, isGM }: Props) {
         <h1 style={{ fontFamily: 'var(--font-display)', fontSize: 36,
           textTransform: 'uppercase', letterSpacing: '-0.02em', margin: '0 0 4px' }}>
           Digi-Zap
+          {totalUnread > 0 && (
+            <span style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+              marginLeft: 12, minWidth: 24, height: 24, borderRadius: 999,
+              background: 'var(--coral)', color: '#f6f2e9',
+              fontFamily: 'var(--font-mono)', fontSize: 13, fontWeight: 700,
+              padding: '0 7px', verticalAlign: 'middle' }}>
+              {totalUnread}
+            </span>
+          )}
         </h1>
         <div style={{ fontFamily: 'var(--font-serif)', fontStyle: 'italic',
           fontSize: 16, color: 'var(--ink-soft)', marginBottom: 16 }}>
           ~ mensagens entre sobreviventes ~
         </div>
 
-        {/* GM: seletor de NPC para assumir */}
+        {/* GM: seletor de NPC */}
         {isGM && (
           <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 12,
             padding: '10px 14px', background: 'var(--paper-deep)',
@@ -215,12 +315,78 @@ export default function DigiZapPage({ state, profile, isGM }: Props) {
             <select value={npcView} onChange={e => setNpcView(e.target.value)}
               style={{ border: '1px solid var(--line)', borderRadius: 6, padding: '5px 10px',
                 fontFamily: 'var(--font-body)', fontSize: 13, background: 'var(--paper)',
-                color: 'var(--ink)' }}>
+                color: 'var(--ink)', flex: 1 }}>
               <option value="">— GM (observador) —</option>
               {allCharIds.map(id => (
                 <option key={id} value={id}>{tamerName(state, id)}</option>
               ))}
             </select>
+            <button onClick={() => setShowCreateGroup(p => !p)}
+              style={{ padding: '5px 14px', borderRadius: 8, cursor: 'pointer',
+                border: `1px solid ${showCreateGroup ? 'var(--ink)' : 'var(--line)'}`,
+                background: showCreateGroup ? 'var(--ink)' : 'transparent',
+                color: showCreateGroup ? 'var(--paper)' : 'var(--ink-soft)',
+                fontFamily: 'var(--font-body)', fontSize: 12, fontWeight: 600,
+                whiteSpace: 'nowrap' }}>
+              + Novo Grupo
+            </button>
+          </div>
+        )}
+
+        {/* Modal de criação de grupo (GM) */}
+        {isGM && showCreateGroup && (
+          <div style={{ marginBottom: 12, padding: '14px 16px',
+            border: '1px solid var(--line)', borderRadius: 10,
+            background: 'var(--paper-deep)' }}>
+            <div style={{ fontFamily: 'var(--font-mono)', fontSize: 10, letterSpacing: '0.1em',
+              textTransform: 'uppercase', color: 'var(--ink-mute)', marginBottom: 8 }}>
+              Criar novo grupo
+            </div>
+            <input value={newGroupName} onChange={e => setNewGroupName(e.target.value)}
+              placeholder="Nome do grupo *"
+              style={{ width: '100%', marginBottom: 10, border: '1px solid var(--line)',
+                borderRadius: 7, padding: '6px 10px', fontFamily: 'var(--font-body)',
+                fontSize: 13, background: 'var(--paper)', color: 'var(--ink)',
+                boxSizing: 'border-box' }} />
+            <div style={{ fontFamily: 'var(--font-mono)', fontSize: 10, letterSpacing: '0.1em',
+              textTransform: 'uppercase', color: 'var(--ink-mute)', marginBottom: 6 }}>
+              Participantes
+            </div>
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginBottom: 10 }}>
+              {allCharIds.map(id => {
+                const selected = newGroupMembers.includes(id)
+                return (
+                  <button key={id}
+                    onClick={() => setNewGroupMembers(prev =>
+                      selected ? prev.filter(x => x !== id) : [...prev, id]
+                    )}
+                    style={{ padding: '4px 10px', borderRadius: 999, cursor: 'pointer',
+                      fontFamily: 'var(--font-body)', fontSize: 12,
+                      border: `1px solid ${selected ? 'var(--ink)' : 'var(--line)'}`,
+                      background: selected ? 'var(--ink)' : 'transparent',
+                      color: selected ? 'var(--paper)' : 'var(--ink-soft)' }}>
+                    {tamerName(state, id)}
+                  </button>
+                )
+              })}
+            </div>
+            <div style={{ display: 'flex', gap: 8 }}>
+              <button onClick={createGroup}
+                disabled={!newGroupName.trim() || newGroupMembers.length < 2}
+                style={{ padding: '6px 16px', borderRadius: 8, cursor: 'pointer',
+                  border: '1px solid var(--ink)', background: 'var(--ink)',
+                  color: 'var(--paper)', fontFamily: 'var(--font-body)',
+                  fontWeight: 600, fontSize: 13,
+                  opacity: (!newGroupName.trim() || newGroupMembers.length < 2) ? 0.4 : 1 }}>
+                Criar
+              </button>
+              <button onClick={() => setShowCreateGroup(false)}
+                style={{ padding: '6px 16px', borderRadius: 8, cursor: 'pointer',
+                  border: '1px solid var(--line)', background: 'transparent',
+                  color: 'var(--ink-soft)', fontFamily: 'var(--font-body)', fontSize: 13 }}>
+                Cancelar
+              </button>
+            </div>
           </div>
         )}
       </div>
@@ -237,32 +403,60 @@ export default function DigiZapPage({ state, profile, isGM }: Props) {
             Grupos
           </div>
 
-          {groups.filter(g => g.kind === 'group').map(g => (
-            <button key={g.id} onClick={() => setActiveGroupId(g.id)}
-              style={{ padding: '10px 14px', borderRadius: 8, border: 'none', cursor: 'pointer',
-                textAlign: 'left', fontFamily: 'var(--font-body)', fontSize: 14, fontWeight: 600,
-                background: activeGroupId === g.id ? 'var(--ink)' : 'transparent',
-                color: activeGroupId === g.id ? 'var(--paper)' : 'var(--ink-soft)',
-                transition: 'all 0.12s' }}>
-              {g.name}
-            </button>
-          ))}
+          {groups.filter(g => g.kind === 'group').map(g => {
+            const cnt = unread[g.id] ?? 0
+            return (
+              <button key={g.id} onClick={() => setActiveGroupId(g.id)}
+                style={{ padding: '10px 14px', borderRadius: 8, border: 'none', cursor: 'pointer',
+                  textAlign: 'left', fontFamily: 'var(--font-body)', fontSize: 14, fontWeight: 600,
+                  background: activeGroupId === g.id ? 'var(--ink)' : 'transparent',
+                  color: activeGroupId === g.id ? 'var(--paper)' : 'var(--ink-soft)',
+                  transition: 'all 0.12s',
+                  display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 6 }}>
+                <span>{g.name}</span>
+                {cnt > 0 && activeGroupId !== g.id && (
+                  <span style={{ minWidth: 18, height: 18, borderRadius: 999,
+                    background: 'var(--coral)', color: '#f6f2e9',
+                    fontFamily: 'var(--font-mono)', fontSize: 10, fontWeight: 700,
+                    display: 'flex', alignItems: 'center', justifyContent: 'center',
+                    padding: '0 4px', flexShrink: 0 }}>
+                    {cnt}
+                  </span>
+                )}
+              </button>
+            )
+          })}
 
           <div style={{ fontFamily: 'var(--font-mono)', fontSize: 9, letterSpacing: '0.14em',
             textTransform: 'uppercase', color: 'var(--ink-mute)', padding: '12px 4px 6px' }}>
             Conversas
           </div>
 
-          {groups.filter(g => g.kind === 'bilateral').map(g => (
-            <button key={g.id} onClick={() => setActiveGroupId(g.id)}
-              style={{ padding: '9px 14px', borderRadius: 8, border: 'none', cursor: 'pointer',
-                textAlign: 'left', fontFamily: 'var(--font-body)', fontSize: 13,
-                background: activeGroupId === g.id ? 'var(--ink)' : 'transparent',
-                color: activeGroupId === g.id ? 'var(--paper)' : 'var(--ink-soft)',
-                transition: 'all 0.12s' }}>
-              {g.name}
-            </button>
-          ))}
+          {groups.filter(g => g.kind === 'bilateral').map(g => {
+            const cnt = unread[g.id] ?? 0
+            return (
+              <button key={g.id} onClick={() => setActiveGroupId(g.id)}
+                style={{ padding: '9px 14px', borderRadius: 8, border: 'none', cursor: 'pointer',
+                  textAlign: 'left', fontFamily: 'var(--font-body)', fontSize: 13,
+                  background: activeGroupId === g.id ? 'var(--ink)' : 'transparent',
+                  color: activeGroupId === g.id ? 'var(--paper)' : 'var(--ink-soft)',
+                  transition: 'all 0.12s',
+                  display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 6 }}>
+                <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                  {g.name}
+                </span>
+                {cnt > 0 && activeGroupId !== g.id && (
+                  <span style={{ minWidth: 18, height: 18, borderRadius: 999,
+                    background: 'var(--coral)', color: '#f6f2e9',
+                    fontFamily: 'var(--font-mono)', fontSize: 10, fontWeight: 700,
+                    display: 'flex', alignItems: 'center', justifyContent: 'center',
+                    padding: '0 4px', flexShrink: 0 }}>
+                    {cnt}
+                  </span>
+                )}
+              </button>
+            )
+          })}
 
           {/* Nova conversa bilateral */}
           {myCharId && (
@@ -321,7 +515,7 @@ export default function DigiZapPage({ state, profile, isGM }: Props) {
               </div>
             )}
             {messages.map(msg => {
-              const isMe = msg.sender_id === myCharId
+              const isMe    = msg.sender_id === myCharId
               const senderName = tamerName(state, msg.sender_id)
               const portrait   = tamerPortrait(state, msg.sender_id)
 
@@ -337,7 +531,6 @@ export default function DigiZapPage({ state, profile, isGM }: Props) {
 
                   {/* Balão */}
                   <div style={{ maxWidth: '70%' }}>
-                    {/* Meta */}
                     <div style={{ fontFamily: 'var(--font-mono)', fontSize: 9,
                       letterSpacing: '0.08em', textTransform: 'uppercase',
                       color: 'var(--ink-mute)', marginBottom: 4,
@@ -348,9 +541,9 @@ export default function DigiZapPage({ state, profile, isGM }: Props) {
                       {msg.session_num  && ` · Sessão ${msg.session_num}`}
                     </div>
 
-                    {/* Conteúdo */}
                     <div style={{
-                      padding: '10px 14px', borderRadius: isMe ? '14px 4px 14px 14px' : '4px 14px 14px 14px',
+                      padding: '10px 14px',
+                      borderRadius: isMe ? '14px 4px 14px 14px' : '4px 14px 14px 14px',
                       background: isMe ? 'var(--ink)' : 'var(--paper-deep)',
                       color: isMe ? 'var(--paper)' : 'var(--ink)',
                       border: isMe ? 'none' : '1px solid var(--line-soft)',
@@ -369,7 +562,6 @@ export default function DigiZapPage({ state, profile, isGM }: Props) {
           {/* Input */}
           {activeGroup && myCharId && (
             <div style={{ borderTop: '1px solid var(--line-soft)', padding: '12px 16px' }}>
-              {/* Meta opcional */}
               <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 8 }}>
                 <button onClick={() => setShowMeta(p => !p)}
                   style={{ fontFamily: 'var(--font-mono)', fontSize: 9, letterSpacing: '0.1em',
@@ -387,9 +579,10 @@ export default function DigiZapPage({ state, profile, isGM }: Props) {
                         padding: '3px 8px', fontFamily: 'var(--font-mono)', fontSize: 12,
                         background: 'var(--paper)', color: 'var(--ink)' }} />
                     <input value={sentAtTime} onChange={e => setSentAtTime(e.target.value)}
-                      placeholder="Horário" style={{ width: 70, border: '1px solid var(--line)',
-                        borderRadius: 6, padding: '3px 8px', fontFamily: 'var(--font-mono)',
-                        fontSize: 12, background: 'var(--paper)', color: 'var(--ink)' }} />
+                      placeholder="Horário"
+                      style={{ width: 70, border: '1px solid var(--line)', borderRadius: 6,
+                        padding: '3px 8px', fontFamily: 'var(--font-mono)', fontSize: 12,
+                        background: 'var(--paper)', color: 'var(--ink)' }} />
                     <input value={sessionNum} onChange={e => setSessionNum(e.target.value)}
                       placeholder="Sessão" type="number" min={1}
                       style={{ width: 70, border: '1px solid var(--line)', borderRadius: 6,
@@ -421,7 +614,6 @@ export default function DigiZapPage({ state, profile, isGM }: Props) {
             </div>
           )}
 
-          {/* Sem personagem selecionado */}
           {activeGroup && !myCharId && (
             <div style={{ padding: '16px 20px', borderTop: '1px solid var(--line-soft)',
               fontFamily: 'var(--font-mono)', fontSize: 11, color: 'var(--ink-mute)',

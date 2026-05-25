@@ -482,6 +482,12 @@ create policy "app_state_update_gm"
   on public.app_state for update to authenticated
   using (public.is_gm());
 
+-- Players também podem atualizar (para propagar ações no palco em tempo real).
+-- O controle granular do que cada player pode tocar é feito na camada de aplicação.
+create policy "app_state_update_player"
+  on public.app_state for update to authenticated
+  using (true);
+
 
 -- ── Stages ───────────────────────────────────────────────────────────────────
 
