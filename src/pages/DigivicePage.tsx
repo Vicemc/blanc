@@ -52,7 +52,7 @@ interface InventoryItem {
 
 interface DigiRecord {
   id:         string
-  type:       'document' | 'photo'
+  type:       'document' | 'photo' | 'chat'
   title:      string
   content:    string
   image_path: string | null
@@ -296,16 +296,30 @@ function InventoryTab({ items, isGM, onSave }: {
 
 // ── Records ───────────────────────────────────────────────────────────────────
 
-function RecordsTab({ records, isGM, onSave }: {
+interface ChatMessage {
+  id:           string
+  sender_id:    string
+  content:      string
+  survival_day: number | null
+  sent_at_time: string | null
+  created_at:   string
+}
+
+function RecordsTab({ records, isGM, onSave, state }: {
   records: DigiRecord[]
   isGM:    boolean
   onSave:  (records: DigiRecord[]) => void
+  state:   AppState
 }) {
-  const [adding, setAdding]   = useState(false)
-  const [viewing, setViewing] = useState<DigiRecord | null>(null)
-  const [draft, setDraft]     = useState<Partial<DigiRecord>>({
+  const [adding, setAdding]           = useState(false)
+  const [viewing, setViewing]         = useState<DigiRecord | null>(null)
+  const [viewingChat, setViewingChat] = useState<DigiRecord | null>(null)
+  const [draft, setDraft]             = useState<Partial<DigiRecord>>({
     type: 'document', title: '', content: '', session: null, image_path: null,
   })
+
+  const chatRecords  = records.filter(r => r.type === 'chat')
+  const otherRecords = records.filter(r => r.type !== 'chat')
 
   const addRecord = () => {
     if (!draft.title?.trim()) return
@@ -324,9 +338,54 @@ function RecordsTab({ records, isGM, onSave }: {
 
   return (
     <div>
+      {/* Conversas Arquivadas */}
+      {chatRecords.length > 0 && (
+        <div style={{ marginBottom: 24 }}>
+          <div style={{ fontFamily: 'var(--font-mono)', fontSize: 9, letterSpacing: '0.14em',
+            textTransform: 'uppercase', color: 'var(--ink-mute)', marginBottom: 10,
+            paddingBottom: 6, borderBottom: '1px solid var(--line-soft)' }}>
+            Conversas Arquivadas
+          </div>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+            {chatRecords.map(rec => {
+              const msgs: ChatMessage[] = (() => {
+                try { return JSON.parse(rec.content) as ChatMessage[] } catch { return [] }
+              })()
+              return (
+                <div key={rec.id} onClick={() => setViewingChat(rec)}
+                  style={{ padding: '12px 16px', background: 'var(--paper)',
+                    border: '1px solid var(--line)', borderRadius: 10,
+                    cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 12,
+                    transition: 'all 0.12s' }}
+                  onMouseEnter={e => { e.currentTarget.style.borderColor = 'var(--ink)' }}
+                  onMouseLeave={e => { e.currentTarget.style.borderColor = 'var(--line)' }}>
+                  <span style={{ fontSize: 20 }}>💬</span>
+                  <div style={{ flex: 1 }}>
+                    <div style={{ fontFamily: 'var(--font-display)', fontSize: 14,
+                      textTransform: 'uppercase' }}>{rec.title}</div>
+                    <div style={{ fontFamily: 'var(--font-mono)', fontSize: 10,
+                      color: 'var(--ink-mute)', marginTop: 2 }}>
+                      {msgs.length} mensagem{msgs.length !== 1 ? 's' : ''}
+                    </div>
+                  </div>
+                  {isGM && (
+                    <button onClick={e => {
+                      e.stopPropagation()
+                      onSave(records.filter(r => r.id !== rec.id))
+                    }}
+                      style={{ background: 'transparent', border: 'none', cursor: 'pointer',
+                        color: 'var(--coral)', fontSize: 18, padding: '2px 6px' }}>×</button>
+                  )}
+                </div>
+              )
+            })}
+          </div>
+        </div>
+      )}
+
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(200px,1fr))',
         gap: 10, marginBottom: 16 }}>
-        {records.map(rec => (
+        {otherRecords.map(rec => (
           <div key={rec.id} onClick={() => setViewing(rec)}
             style={{ padding: '14px 16px', background: 'var(--paper)',
               border: '1px solid var(--line)', borderRadius: 10,
@@ -402,7 +461,7 @@ function RecordsTab({ records, isGM, onSave }: {
         </div>
       )}
 
-      {/* Modal de visualização */}
+      {/* Modal de visualização de documento/foto */}
       {viewing && (
         <div className="modal-back" onClick={() => setViewing(null)}>
           <div className="modal" style={{ maxWidth: 640 }} onClick={e => e.stopPropagation()}>
@@ -435,6 +494,57 @@ function RecordsTab({ records, isGM, onSave }: {
                   Remover record
                 </button>
               )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal de visualização de conversa arquivada */}
+      {viewingChat && (
+        <div className="modal-back" onClick={() => setViewingChat(null)}>
+          <div className="modal" style={{ maxWidth: 640, maxHeight: '80vh',
+            display: 'flex', flexDirection: 'column' }} onClick={e => e.stopPropagation()}>
+            <button onClick={() => setViewingChat(null)}
+              style={{ position: 'absolute', top: 16, right: 16, width: 36, height: 36,
+                borderRadius: 999, border: '1px solid var(--line)', background: 'var(--paper)',
+                cursor: 'pointer', fontSize: 18 }}>×</button>
+            <div style={{ padding: '24px 28px 16px', borderBottom: '1px solid var(--line-soft)',
+              flexShrink: 0 }}>
+              <div style={{ fontFamily: 'var(--font-mono)', fontSize: 9, letterSpacing: '0.1em',
+                textTransform: 'uppercase', color: 'var(--ink-mute)', marginBottom: 4 }}>
+                💬 Conversa Arquivada
+              </div>
+              <h2 style={{ fontFamily: 'var(--font-display)', fontSize: 20,
+                textTransform: 'uppercase', margin: 0 }}>{viewingChat.title}</h2>
+            </div>
+            <div style={{ flex: 1, overflowY: 'auto', padding: '16px 28px',
+              display: 'flex', flexDirection: 'column', gap: 10 }}>
+              {(() => {
+                const msgs: ChatMessage[] = (() => {
+                  try { return JSON.parse(viewingChat.content) as ChatMessage[] } catch { return [] }
+                })()
+                return msgs.map(msg => {
+                  const t = state.tamers.find(t => t.id === msg.sender_id)
+                  const name = t?.name ?? msg.sender_id
+                  return (
+                    <div key={msg.id} style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+                      <div style={{ fontFamily: 'var(--font-mono)', fontSize: 9,
+                        letterSpacing: '0.08em', textTransform: 'uppercase',
+                        color: 'var(--ink-mute)' }}>
+                        {name}
+                        {msg.survival_day && ` · Dia ${msg.survival_day}`}
+                        {msg.sent_at_time && ` · ${msg.sent_at_time}`}
+                      </div>
+                      <div style={{ padding: '8px 12px', borderRadius: '4px 14px 14px 14px',
+                        background: 'var(--paper-deep)', border: '1px solid var(--line-soft)',
+                        fontFamily: 'var(--font-body)', fontSize: 14, lineHeight: 1.55,
+                        whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>
+                        {msg.content}
+                      </div>
+                    </div>
+                  )
+                })
+              })()}
             </div>
           </div>
         </div>
@@ -853,6 +963,7 @@ export default function DigivicePage({ state, onUpdate, profile, isGM }: Props) 
                 records={digivice.records}
                 isGM={canEdit}
                 onSave={records => save({ records })}
+                state={state}
               />
             )}
 

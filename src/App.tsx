@@ -47,6 +47,7 @@ function AppInner() {
   const [isSaving, setIsSaving] = useState(false)
   const [digizapUnread, setDigizapUnread] = useState(0)
   const realtimeUnsub = useRef<(() => void) | null>(null)
+  const lastSaveRef   = useRef(0)
 
   const isGuest = !localMode && profile?.role === 'guest'
 
@@ -59,7 +60,10 @@ function AppInner() {
   useEffect(() => {
     if (!isSupabaseReady || !session) return
     realtimeUnsub.current?.()
-    realtimeUnsub.current = subscribeToState(remoteState => { setState(remoteState) })
+    realtimeUnsub.current = subscribeToState(remoteState => {
+      if (Date.now() - lastSaveRef.current < 3000) return
+      setState(remoteState)
+    })
     return () => { realtimeUnsub.current?.() }
   }, [session])
 
@@ -74,6 +78,7 @@ function AppInner() {
   // Auto-save para Teatro/Palco (combate em tempo real)
   const onUpdate = useCallback((s: AppState) => {
     setState(s)
+    lastSaveRef.current = Date.now()
     saveStateToDB(s)
   }, [])
 

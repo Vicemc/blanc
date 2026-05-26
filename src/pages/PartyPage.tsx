@@ -1,7 +1,8 @@
 import { useState, useCallback } from 'react'
 import type { AppState, Tamer } from '../types'
 import { PORTRAIT_LIST } from '../types'
-import { findDigimon, makeTamer, makeSlimLine, idbSaveImage } from '../data/store'
+import { findDigimon, makeTamer, makeSlimLine } from '../data/store'
+import { uploadImage } from '../lib/db'
 import { PageHead } from '../components/PageHead'
 import { GrainFill } from '../components/GrainFill'
 import { SheetModal } from '../components/Sheet'
@@ -209,9 +210,11 @@ export default function PartyPage({ state, onUpdate, canEdit, isGM }: Props) {
   const [compactGrid, setCompactGrid] = useState(false)
 
   const handleImageUpload = useCallback(async (tamerId: string, dataUrl: string) => {
-    const imageKey = `img-${tamerId}`
-    await idbSaveImage(imageKey, dataUrl)
-    onUpdate({ ...state, tamers: state.tamers.map(t => t.id === tamerId ? { ...t, image: dataUrl, imageKey } : t) })
+    const url = await uploadImage(dataUrl, tamerId)
+    const uploadedToStorage = url != null && !url.startsWith('data:')
+    const ext = dataUrl.match(/data:image\/([^;]+);/)?.[1] ?? 'webp'
+    const imageKey = uploadedToStorage ? `${tamerId}.${ext}` : null
+    onUpdate({ ...state, tamers: state.tamers.map(t => t.id === tamerId ? { ...t, image: url ?? dataUrl, imageKey } : t) })
   }, [state, onUpdate])
 
   return (

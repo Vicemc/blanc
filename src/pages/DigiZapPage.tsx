@@ -62,6 +62,37 @@ function playPing() {
   } catch { /* ignore */ }
 }
 
+// Arquiva mensagens nos Digivices dos participantes e as remove do banco
+async function archiveMessages(group: DigiZapGroup, toArchive: DigiZapMessage[]) {
+  if (!supabase || toArchive.length === 0) return
+
+  const rec = {
+    id:         `chat-${Date.now().toString(36)}`,
+    type:       'chat',
+    title:      `${group.name} · ${new Date().toLocaleDateString('pt-BR')}`,
+    content:    JSON.stringify(toArchive),
+    image_path: null,
+    session:    null,
+  }
+
+  for (const charId of group.participants) {
+    const { data: dv } = await supabase
+      .from('digivices')
+      .select('id, records')
+      .eq('character_id', charId)
+      .maybeSingle()
+    if (dv) {
+      await supabase
+        .from('digivices')
+        .update({ records: [...(dv.records ?? []), rec] })
+        .eq('id', dv.id)
+    }
+  }
+
+  const ids = toArchive.map(m => m.id)
+  await supabase.from('digi_zap_messages').delete().in('id', ids)
+}
+
 // Controle de "última vez visto" por grupo (localStorage)
 const LS_KEY = 'digizap-lastseen'
 
@@ -155,9 +186,17 @@ export default function DigiZapPage({ state, profile, isGM, onUnreadChange }: Pr
       .select('*')
       .eq('group_id', groupId)
       .order('created_at', { ascending: true })
-    setMessages((data ?? []) as DigiZapMessage[])
+    const msgs = (data ?? []) as DigiZapMessage[]
+    if (msgs.length > 100) {
+      const toArchive = msgs.slice(0, msgs.length - 100)
+      const group = groups.find(g => g.id === groupId)
+      if (group) await archiveMessages(group, toArchive)
+      setMessages(msgs.slice(-100))
+    } else {
+      setMessages(msgs)
+    }
     setLoadingMsgs(false)
-  }, [])
+  }, [groups])
 
   useEffect(() => {
     if (!activeGroupId) return
@@ -184,8 +223,8 @@ export default function DigiZapPage({ state, profile, isGM, onUnreadChange }: Pr
         const msg = payload.new as DigiZapMessage
 
         if (msg.group_id === activeGroupIdRef.current) {
-          // Grupo ativo — adiciona à lista e marca como lido
-          setMessages(prev => [...prev, msg])
+          // Grupo ativo — adiciona à lista (cap 100) e marca como lido
+          setMessages(prev => [...prev.slice(-99), msg])
           markGroupSeen(msg.group_id)
         } else {
           // Outro grupo — incrementa não-lidos + ping
@@ -264,6 +303,12 @@ export default function DigiZapPage({ state, profile, isGM, onUnreadChange }: Pr
     setNewGroupName('')
     setNewGroupMembers([])
     setShowCreateGroup(false)
+  }
+
+  const archiveCurrentGroup = async () => {
+    if (!activeGroup || messages.length === 0) return
+    await archiveMessages(activeGroup, messages)
+    setMessages([])
   }
 
   if (!supabase) {
@@ -488,14 +533,26 @@ export default function DigiZapPage({ state, profile, isGM, onUnreadChange }: Pr
           {/* Header do grupo */}
           {activeGroup && (
             <div style={{ padding: '14px 20px', borderBottom: '1px solid var(--line-soft)',
-              background: 'var(--paper-deep)', fontFamily: 'var(--font-display)',
-              fontSize: 16, textTransform: 'uppercase', letterSpacing: '-0.01em' }}>
-              {activeGroup.name}
-              <span style={{ fontFamily: 'var(--font-mono)', fontSize: 9,
-                letterSpacing: '0.1em', color: 'var(--ink-mute)', marginLeft: 10,
-                fontWeight: 400, textTransform: 'none' }}>
-                {activeGroup.participants.length} participante{activeGroup.participants.length !== 1 ? 's' : ''}
-              </span>
+              background: 'var(--paper-deep)', display: 'flex', alignItems: 'center',
+              justifyContent: 'space-between', gap: 12 }}>
+              <div>
+                <span style={{ fontFamily: 'var(--font-display)', fontSize: 16,
+                  textTransform: 'uppercase', letterSpacing: '-0.01em' }}>{activeGroup.name}</span>
+                <span style={{ fontFamily: 'var(--font-mono)', fontSize: 9,
+                  letterSpacing: '0.1em', color: 'var(--ink-mute)', marginLeft: 10,
+                  fontWeight: 400, textTransform: 'none' }}>
+                  {activeGroup.participants.length} participante{activeGroup.participants.length !== 1 ? 's' : ''}
+                </span>
+              </div>
+              {isGM && messages.length > 0 && (
+                <button onClick={archiveCurrentGroup}
+                  style={{ padding: '4px 12px', borderRadius: 8, cursor: 'pointer',
+                    fontFamily: 'var(--font-mono)', fontSize: 9, letterSpacing: '0.1em',
+                    textTransform: 'uppercase', border: '1px solid var(--line)',
+                    background: 'transparent', color: 'var(--ink-mute)', flexShrink: 0 }}>
+                  Arquivar conversa
+                </button>
+              )}
             </div>
           )}
 

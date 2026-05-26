@@ -38,11 +38,6 @@ export async function loadStateFromDB(): Promise<AppState> {
 export async function hydrateImagesFromStorage(s: AppState): Promise<AppState> {
   if (!supabase) return s
 
-  const storageUrl = (bucket: string, key: string) => {
-    const { data } = supabase!.storage.from(bucket).getPublicUrl(key)
-    return data?.publicUrl ?? null
-  }
-
   const hydrateTamer = (t: typeof s.tamers[0]) => {
     if (t.imageKey) return { ...t, image: storageUrl(BUCKET_PORTRAITS, t.imageKey) }
     if (TAMER_DEFAULT_IMAGES[t.id]) return { ...t, image: TAMER_DEFAULT_IMAGES[t.id] }
@@ -144,6 +139,16 @@ export async function deleteStage(id: string) {
 
 const BUCKET_PORTRAITS = 'portraits'
 const BUCKET_ASSETS    = 'assets'
+
+const _urlCache = new Map<string, string>()
+function storageUrl(bucket: string, key: string): string | null {
+  const cacheKey = `${bucket}:${key}`
+  if (_urlCache.has(cacheKey)) return _urlCache.get(cacheKey)!
+  const { data } = supabase!.storage.from(bucket).getPublicUrl(key)
+  const url = data?.publicUrl ?? null
+  if (url) _urlCache.set(cacheKey, url)
+  return url
+}
 
 function stripImages(s: AppState): AppState {
   return {

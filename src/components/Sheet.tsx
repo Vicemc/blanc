@@ -14,6 +14,7 @@ import {
 } from '../data/store'
 import { GrainFill } from "./GrainFill"
 import { Toast } from './Toast'
+import { uploadImage } from '../lib/db'
 import styles from './Sheet.module.css'
 
 // ── Modo de visualização: número ou bolinhas ─────────────────────
@@ -2332,13 +2333,20 @@ export function FullSheet({ subject, state, onSaveState, editable = false, isGM 
     ...state,
     tamers: state.tamers.map(x => ({ ...x, status: { ...x.status, Autoridade: autoridade } }))
   })
-  const saveImage = (dataUrl: string) => {
-    if (tamer) saveTamer({ ...tamer, image: dataUrl })
-    else if (line) {
+  const saveImage = async (dataUrl: string) => {
+    const ext = dataUrl.match(/data:image\/([^;]+);/)?.[1] ?? 'webp'
+    if (tamer) {
+      const url = await uploadImage(dataUrl, tamer.id)
+      const toStorage = url != null && !url.startsWith('data:')
+      saveTamer({ ...tamer, image: url ?? dataUrl, imageKey: toStorage ? `${tamer.id}.${ext}` : null })
+    } else if (line) {
       // Salva a imagem no estágio ativo, não na line inteira
       const displayIdx = stageIdx ?? line.currentStage
+      const stId = `${line.id}-stage-${displayIdx}`
+      const url = await uploadImage(dataUrl, stId)
+      const toStorage = url != null && !url.startsWith('data:')
       const newStages = line.stages.map((s, i) =>
-        i === displayIdx ? { ...s, image: dataUrl } : s
+        i === displayIdx ? { ...s, image: url ?? dataUrl, imageKey: toStorage ? `${stId}.${ext}` : null } : s
       )
       saveLine({ ...line, stages: newStages })
     }
