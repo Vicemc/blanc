@@ -1,3 +1,4 @@
+import { useState, useEffect } from 'react'
 import styles from './GrainFill.module.css'
 
 interface GrainFillProps {
@@ -8,8 +9,13 @@ interface GrainFillProps {
 }
 
 export function GrainFill({ color, invert = false, className = '', image }: GrainFillProps) {
-  if (image) {
-    return <img src={image} alt="" className={`${styles.fill} ${className}`} style={{ objectFit: 'cover', width: '100%', height: '100%' }} />
+  const [imgOk, setImgOk] = useState(true)
+  useEffect(() => { setImgOk(true) }, [image])
+
+  if (image && imgOk) {
+    return <img src={image} alt="" className={`${styles.fill} ${className}`}
+      style={{ objectFit: 'cover', width: '100%', height: '100%' }}
+      onError={() => setImgOk(false)} />
   }
   return (
     <div className={`${styles.wrap} ${className}`}>

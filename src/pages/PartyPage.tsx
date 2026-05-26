@@ -250,7 +250,8 @@ export default function PartyPage({ state, onUpdate, canEdit, isGM }: Props) {
             <div key={t.id} className={styles.card} onClick={() => setOpen({ kind:'tamer', id:t.id })}>
               <div className={`${styles.portrait} fill-${t.portrait}`}>
                 {t.image
-                  ? <img src={t.image} alt={t.name} style={{ width:'100%', height:'100%', objectFit:'cover' }} />
+                  ? <img src={t.image} alt="" style={{ width:'100%', height:'100%', objectFit:'cover' }}
+                      onError={e => { (e.currentTarget as HTMLImageElement).style.display = 'none' }} />
                   : <div className="grain" />}
                 <label className={styles.uploadHint} onClick={e => e.stopPropagation()}>
                   trocar foto
