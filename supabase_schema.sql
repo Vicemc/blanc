@@ -873,18 +873,48 @@ alter publication supabase_realtime add table public.skill_tree_phases;
 -- =============================================================================
 -- BLOCO 12 — STORAGE BUCKETS
 -- =============================================================================
--- Criar manualmente no Dashboard → Storage → New Bucket.
--- Os comandos SQL abaixo são documentação das políticas a aplicar.
+-- Criar manualmente no Dashboard → Storage → New Bucket (marcar "Public bucket").
+-- Depois executar o SQL abaixo no SQL Editor para criar as policies.
 
 -- Bucket: 'portraits'
 -- Uso: fotos de tamers e digimons (upload pelo player ou GM)
--- Política: leitura pública, upload para autenticados
--- Path convention: portraits/{character_id}/{timestamp}.webp
+-- Path convention: {character_id}.{ext}   ex: t-yahiro-abc123.png
+
+CREATE POLICY "portraits: leitura pública"
+  ON storage.objects FOR SELECT TO anon, authenticated
+  USING (bucket_id = 'portraits');
+
+CREATE POLICY "portraits: autenticados podem inserir"
+  ON storage.objects FOR INSERT TO authenticated
+  WITH CHECK (bucket_id = 'portraits');
+
+CREATE POLICY "portraits: autenticados podem atualizar"
+  ON storage.objects FOR UPDATE TO authenticated
+  USING (bucket_id = 'portraits') WITH CHECK (bucket_id = 'portraits');
+
+CREATE POLICY "portraits: autenticados podem deletar"
+  ON storage.objects FOR DELETE TO authenticated
+  USING (bucket_id = 'portraits');
 
 -- Bucket: 'assets'
 -- Uso: imagens de SIGNs, mapas, records/fotos do Digivice (só GM faz upload)
--- Política: leitura pública, upload só para GM
 -- Path convention: assets/signs/{sign_id}.webp
+
+CREATE POLICY "assets: leitura pública"
+  ON storage.objects FOR SELECT TO anon, authenticated
+  USING (bucket_id = 'assets');
+
+CREATE POLICY "assets: autenticados podem inserir"
+  ON storage.objects FOR INSERT TO authenticated
+  WITH CHECK (bucket_id = 'assets');
+
+CREATE POLICY "assets: autenticados podem atualizar"
+  ON storage.objects FOR UPDATE TO authenticated
+  USING (bucket_id = 'assets') WITH CHECK (bucket_id = 'assets');
+
+CREATE POLICY "assets: autenticados podem deletar"
+  ON storage.objects FOR DELETE TO authenticated
+  USING (bucket_id = 'assets');
 --                  assets/maps/{map_id}.webp
 --                  assets/records/{character_id}/{record_id}.webp
 
