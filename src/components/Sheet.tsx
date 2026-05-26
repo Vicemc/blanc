@@ -2271,9 +2271,9 @@ function SignView({ sign: sg, editable, onSave }: { sign: Sign; editable: boolea
 }
 
 // ── FullSheet ──────────────────────────────────────────────────────
-interface FullSheetProps { subject: SheetSubject; state: AppState; onSaveState?: (s: AppState) => void; editable?: boolean; isGM?: boolean; onSpawnToken?: (token: TokenSpawn) => void }
+interface FullSheetProps { subject: SheetSubject; state: AppState; onSaveState?: (s: AppState) => void; onClose?: () => void; editable?: boolean; isGM?: boolean; onSpawnToken?: (token: TokenSpawn) => void }
 
-export function FullSheet({ subject, state, onSaveState, editable = false, isGM = false, onSpawnToken }: FullSheetProps) {
+export function FullSheet({ subject, state, onSaveState, onClose, editable = false, isGM = false, onSpawnToken }: FullSheetProps) {
   const { kind } = subject
   let tamer: Tamer | undefined
   let line:  DigimonLine | undefined
@@ -2298,6 +2298,8 @@ export function FullSheet({ subject, state, onSaveState, editable = false, isGM 
   const initial = (kind === 'pair' && (subject as any).stage != null) ? `stage-${(subject as any).stage}` : tabs[0]?.id ?? ''
   const [active, setActive] = useState(initial)
   const [displayMode, setDisplayMode] = useState<'number' | 'dots'>('number')
+  const [showDelete, setShowDelete] = useState(false)
+  const [deleteInput, setDeleteInput] = useState('')
 
   if (!tabs.length) return <div style={{ padding:32, color:'var(--ink-mute)' }}>Ficha não encontrada.</div>
 
@@ -2326,6 +2328,11 @@ export function FullSheet({ subject, state, onSaveState, editable = false, isGM 
   }
 
   const saveTamer = (t: Tamer) => onSaveState?.({ ...state, tamers: state.tamers.map(x => x.id===t.id?t:x) })
+  const handleDeleteTamer = () => {
+    if (!tamer || deleteInput !== tamer.name) return
+    onSaveState?.({ ...state, tamers: state.tamers.filter(t => t.id !== tamer!.id) })
+    onClose?.()
+  }
   const saveLine  = (l: DigimonLine) => onSaveState?.({ ...state, bestiary: state.bestiary.map(x => x.id===l.id?l:x) })
   const saveBug   = (b: Bug) => onSaveState?.({ ...state, bugs: state.bugs.map(x => x.id===b.id?b:x) })
   const saveSign  = (sg: Sign) => onSaveState?.({ ...state, signs: (state.signs ?? []).map(x => x.id===sg.id?sg:x) })
@@ -2414,6 +2421,65 @@ export function FullSheet({ subject, state, onSaveState, editable = false, isGM 
         {showBug && <BugView bug={bug!} editable={editable} onSave={saveBug} />}
         {active === 'sign' && sign && <SignView sign={sign} editable={editable} onSave={saveSign} />}
       </div>
+
+      {/* Zona de exclusão — apenas GM, apenas aba do tamer */}
+      {showTamer && isGM && editable && (
+        <div style={{ borderTop: '1px solid var(--line-soft)', padding: '20px 32px 24px',
+          marginTop: 8 }}>
+          {!showDelete ? (
+            <button onClick={() => setShowDelete(true)}
+              style={{ padding: '6px 16px', borderRadius: 999, cursor: 'pointer',
+                fontFamily: 'var(--font-mono)', fontSize: 10, letterSpacing: '0.1em',
+                textTransform: 'uppercase', border: '1px solid var(--line)',
+                background: 'transparent', color: 'var(--ink-mute)' }}>
+              ⚠ Excluir personagem
+            </button>
+          ) : (
+            <div style={{ padding: '16px', borderRadius: 10,
+              border: '2px solid var(--coral)', background: 'rgba(196,51,33,0.06)' }}>
+              <div style={{ fontFamily: 'var(--font-mono)', fontSize: 11, letterSpacing: '0.08em',
+                textTransform: 'uppercase', color: 'var(--coral)', marginBottom: 8,
+                fontWeight: 700 }}>
+                ⚠ Excluir permanentemente
+              </div>
+              <div style={{ fontFamily: 'var(--font-serif)', fontSize: 13,
+                color: 'var(--ink-soft)', marginBottom: 14, lineHeight: 1.5 }}>
+                Esta ação remove o tamer do estado e não pode ser desfeita.
+                Digite <strong>{tamer!.name}</strong> para confirmar.
+              </div>
+              <input
+                value={deleteInput}
+                onChange={e => setDeleteInput(e.target.value)}
+                placeholder={tamer!.name}
+                style={{ width: '100%', marginBottom: 12, padding: '8px 12px',
+                  border: '1px solid var(--coral)', borderRadius: 8,
+                  fontFamily: 'var(--font-body)', fontSize: 14,
+                  background: 'var(--paper)', color: 'var(--ink)',
+                  boxSizing: 'border-box' }}
+              />
+              <div style={{ display: 'flex', gap: 8 }}>
+                <button onClick={handleDeleteTamer}
+                  disabled={deleteInput !== tamer!.name}
+                  style={{ padding: '8px 18px', borderRadius: 999, cursor: 'pointer',
+                    fontFamily: 'var(--font-body)', fontWeight: 700, fontSize: 13,
+                    border: '1px solid var(--coral)',
+                    background: deleteInput === tamer!.name ? 'var(--coral)' : 'transparent',
+                    color: deleteInput === tamer!.name ? 'var(--paper)' : 'var(--coral)',
+                    opacity: deleteInput !== tamer!.name ? 0.5 : 1 }}>
+                  Confirmar exclusão
+                </button>
+                <button onClick={() => { setShowDelete(false); setDeleteInput('') }}
+                  style={{ padding: '8px 18px', borderRadius: 999, cursor: 'pointer',
+                    fontFamily: 'var(--font-body)', fontSize: 13,
+                    border: '1px solid var(--line)', background: 'transparent',
+                    color: 'var(--ink-soft)' }}>
+                  Cancelar
+                </button>
+              </div>
+            </div>
+          )}
+        </div>
+      )}
     </div>
     </DisplayModeCtx.Provider>
   )
@@ -2429,7 +2495,7 @@ export function SheetModal({ subject, state, onSaveState, onClose, editable, isG
     <div className="modal-back" onClick={onClose}>
       <div className="modal" onClick={e => e.stopPropagation()}>
         <button className={styles.closeBtn} onClick={onClose} aria-label="Fechar">×</button>
-        <FullSheet subject={subject} state={state} onSaveState={onSaveState} editable={editable} isGM={isGM} onSpawnToken={onSpawnToken} />
+        <FullSheet subject={subject} state={state} onSaveState={onSaveState} onClose={onClose} editable={editable} isGM={isGM} onSpawnToken={onSpawnToken} />
       </div>
     </div>
   )
