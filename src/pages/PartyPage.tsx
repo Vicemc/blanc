@@ -387,7 +387,7 @@ export default function PartyPage({ state, onUpdate, canEdit, isGM }: Props) {
             </div>
             <div className={styles.info}>
               <div style={{ fontFamily: 'var(--font-mono)', fontSize: 9, letterSpacing: '0.14em', textTransform: 'uppercase', color: 'var(--ink-mute)', marginBottom: 2 }}>Survivor</div>
-              <h3 className={styles.name}>{sv.name}{sv.surname ? ` ${sv.surname}` : ''}</h3>
+              <h3 className={styles.name}>{sv.name}</h3>
               {(sv.age || sv.sign) && <div className={styles.meta}>{[sv.age && `${sv.age} anos`, sv.sign].filter(Boolean).join(' · ')}</div>}
               {sv.tagline && <div className={styles.tagline}>~ {sv.tagline} ~</div>}
               <div className={styles.xpBar} style={{ display: 'flex', gap: 8 }}>
