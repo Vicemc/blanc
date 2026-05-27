@@ -2791,40 +2791,14 @@ function AddMeritForm({ onAdd, onCancel }: { onAdd: (m: Merit) => void; onCancel
 function SurvivorInventoryTab({ sv, editable, onSave }: {
   sv: Survivor; editable: boolean; onSave: (sv: Survivor) => void
 }) {
-  const [newItem, setNewItem] = useState<{ name: string; qty: string; notes: string } | null>(null)
   return (
     <div>
-      <SectionTitle action={editable && !newItem && (
-        <button className={styles.btnGhost} style={{ fontSize: 11 }} onClick={() => setNewItem({ name: '', qty: '1', notes: '' })}>+ Item</button>
-      )}>Inventário</SectionTitle>
-      {sv.inventory.length === 0 && !newItem && (
-        <div style={{ fontFamily: 'var(--font-mono)', fontSize: 11, color: 'var(--ink-mute)', padding: '8px 0 12px' }}>Inventário vazio.</div>
-      )}
-      {sv.inventory.map((item, i) => (
-        <div key={item.id} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '6px 0', borderBottom: '1px solid var(--line-soft)', fontFamily: 'var(--font-body)', fontSize: 13 }}>
-          <span style={{ fontFamily: 'var(--font-mono)', fontSize: 12, color: 'var(--ink-mute)', minWidth: 28, textAlign: 'right' }}>×{item.qty}</span>
-          <span style={{ flex: 1 }}>{item.name}</span>
-          {item.notes && <span style={{ fontSize: 11, color: 'var(--ink-mute)', fontStyle: 'italic' }}>{item.notes}</span>}
-          {editable && (
-            <button onClick={() => onSave({ ...sv, inventory: sv.inventory.filter((_, j) => j !== i) })}
-              className={styles.cardDel} style={{ position: 'static', opacity: 1 }}>×</button>
-          )}
-        </div>
-      ))}
-      {newItem && (
-        <div style={{ display: 'flex', gap: 6, marginTop: 10, flexWrap: 'wrap' }}>
-          <input value={newItem.name} onChange={e => setNewItem(n => ({ ...n!, name: e.target.value }))} placeholder="Nome do item" className={styles.formInput} style={{ flex: 2, minWidth: 120 }} />
-          <input type="number" min={1} value={newItem.qty} onChange={e => setNewItem(n => ({ ...n!, qty: e.target.value }))} className={styles.numInput} style={{ width: 56 }} />
-          <input value={newItem.notes} onChange={e => setNewItem(n => ({ ...n!, notes: e.target.value }))} placeholder="Nota (opcional)" className={styles.formInput} style={{ flex: 1, minWidth: 80 }} />
-          <button className={styles.btnSolid} style={{ fontSize: 12 }} onClick={() => {
-            if (!newItem.name.trim()) return
-            const item: InventoryItem = { id: `inv-${Date.now().toString(36)}`, name: newItem.name.trim(), qty: parseInt(newItem.qty) || 1, notes: newItem.notes || undefined }
-            onSave({ ...sv, inventory: [...sv.inventory, item] })
-            setNewItem(null)
-          }}>+ Add</button>
-          <button className={styles.btnGhost} style={{ fontSize: 12 }} onClick={() => setNewItem(null)}>Cancelar</button>
-        </div>
-      )}
+      <SectionTitle>Inventário</SectionTitle>
+      <InventorySection
+        items={sv.inventory}
+        editable={editable}
+        onSave={items => onSave({ ...sv, inventory: items })}
+      />
     </div>
   )
 }
