@@ -207,9 +207,13 @@ function AddTamerModal({ state, onSave, onClose }: { state: AppState; onSave: (s
 
 // ── Add Survivor Modal ─────────────────────────────────────────────
 function AddSurvivorModal({ state, onSave, onClose }: { state: AppState; onSave: (s: AppState) => void; onClose: () => void }) {
-  const [name, setName]       = useState('')
-  const [surname, setSurname] = useState('')
-  const [tagline, setTagline] = useState('')
+  const [name, setName]         = useState('')
+  const [surname, setSurname]   = useState('')
+  const [tagline, setTagline]   = useState('')
+  const [age, setAge]           = useState('')
+  const [sign, setSign]         = useState('')
+  const [birthday, setBirthday] = useState('')
+  const [voice, setVoice]       = useState('')
   const [portrait, setPortrait] = useState<Survivor['portrait']>('rose')
 
   const handleSubmit = () => {
@@ -217,8 +221,12 @@ function AddSurvivorModal({ state, onSave, onClose }: { state: AppState; onSave:
     const id = `sv-${name.toLowerCase().replace(/\s+/g, '-')}-${Date.now().toString(36)}`
     const sv: Survivor = {
       ...makeSurvivor(id, name.trim(), portrait),
-      surname: surname || undefined,
-      tagline: tagline || undefined,
+      surname:  surname  || undefined,
+      tagline:  tagline  || undefined,
+      age:      age      || undefined,
+      sign:     sign     || undefined,
+      birthday: birthday || undefined,
+      voice:    voice    || undefined,
     }
     onSave({ ...state, survivors: [...(state.survivors ?? []), sv] })
     onClose()
@@ -233,7 +241,7 @@ function AddSurvivorModal({ state, onSave, onClose }: { state: AppState; onSave:
 
   return (
     <div className="modal-back" onClick={onClose}>
-      <div className="modal" style={{ maxWidth: 480 }} onClick={e => e.stopPropagation()}>
+      <div className="modal" style={{ maxWidth: 520 }} onClick={e => e.stopPropagation()}>
         <button className={styles.closeBtn} onClick={onClose}>×</button>
         <div className={styles.addForm}>
           <h2 className={styles.addTitle}>Novo Survivor</h2>
@@ -242,6 +250,12 @@ function AddSurvivorModal({ state, onSave, onClose }: { state: AppState; onSave:
             {inp('Sobrenome', surname, setSurname, 'Akugetsu')}
           </div>
           {inp('Tagline', tagline, setTagline, 'Aquela que carrega as cerejeiras')}
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 12 }}>
+            {inp('Idade', age, setAge, '17')}
+            {inp('Signo', sign, setSign, 'Áries')}
+            {inp('Aniversário', birthday, setBirthday, '25 de Março')}
+          </div>
+          {inp('Voz', voice, setVoice, 'Yui Ishikawa')}
           <div className={styles.field}>
             <label className={styles.fieldLabel}>Cor do retrato</label>
             <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginTop: 4 }}>
@@ -374,6 +388,7 @@ export default function PartyPage({ state, onUpdate, canEdit, isGM }: Props) {
             <div className={styles.info}>
               <div style={{ fontFamily: 'var(--font-mono)', fontSize: 9, letterSpacing: '0.14em', textTransform: 'uppercase', color: 'var(--ink-mute)', marginBottom: 2 }}>Survivor</div>
               <h3 className={styles.name}>{sv.name}{sv.surname ? ` ${sv.surname}` : ''}</h3>
+              {(sv.age || sv.sign) && <div className={styles.meta}>{[sv.age && `${sv.age} anos`, sv.sign].filter(Boolean).join(' · ')}</div>}
               {sv.tagline && <div className={styles.tagline}>~ {sv.tagline} ~</div>}
               <div className={styles.xpBar} style={{ display: 'flex', gap: 8 }}>
                 <span className={styles.xpPill}>HP: <b>{sv.status.HP.v}/{sv.status.HP.max}</b></span>

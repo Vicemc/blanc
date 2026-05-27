@@ -2971,9 +2971,14 @@ function SurvivorView({ sv, editable, isGM, onSave, state, wide = false }: {
             {inp(sv.surname ?? '', v => onSave({ ...sv, surname: v || undefined }), 'Sobrenome')}
           </div>
           {inp(sv.tagline ?? '', v => onSave({ ...sv, tagline: v || undefined }), 'Tagline')}
-          <div style={{ display: 'flex', gap: 8 }}>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 8 }}>
             {inp(String(sv.age ?? ''), v => onSave({ ...sv, age: v || undefined }), 'Idade')}
-            <select value={sv.portrait} onChange={e => onSave({ ...sv, portrait: e.target.value as any })} className={styles.formInput} style={{ flex: 1 }}>
+            {inp(sv.sign ?? '', v => onSave({ ...sv, sign: v || undefined }), 'Signo')}
+            {inp(sv.birthday ?? '', v => onSave({ ...sv, birthday: v || undefined }), 'Aniversário')}
+          </div>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
+            {inp(sv.voice ?? '', v => onSave({ ...sv, voice: v || undefined }), 'Voz')}
+            <select value={sv.portrait} onChange={e => onSave({ ...sv, portrait: e.target.value as any })} className={styles.formInput}>
               {PORTRAIT_LIST.map(p => <option key={p} value={p}>{p}</option>)}
             </select>
           </div>
@@ -3040,7 +3045,7 @@ export function FullSheet({ subject, state, onSaveState, onClose, editable = fal
     headMeta = [tamer.surname, tamer.age && `${tamer.age} anos`, tamer.sign, tamer.height && `${tamer.height} cm`, tamer.voice].filter(Boolean).join(' · ')
   } else if (survivor) {
     headPortrait = survivor.portrait; headName = survivor.name; headImage = survivor.image ?? null
-    headMeta = [survivor.surname, survivor.age && `${survivor.age} anos`].filter(Boolean).join(' · ') || 'Survivor'
+    headMeta = [survivor.surname, survivor.age && `${survivor.age} anos`, survivor.sign, survivor.voice].filter(Boolean).join(' · ') || 'Survivor'
   } else if (line) {
     const displayIdx = stageIdx ?? line.currentStage
     const curS = line.stages[displayIdx] ?? line.stages[1] ?? line.stages[0]

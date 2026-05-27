@@ -153,6 +153,9 @@ export interface Survivor {
   name:       string;
   surname?:   string;
   age?:       string | number;
+  birthday?:  string;
+  sign?:      string;
+  voice?:     string;
   tagline?:   string;
   portrait:   Portrait;
   image:      string | null;
