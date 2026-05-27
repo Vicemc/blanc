@@ -1,5 +1,6 @@
 import { supabase, isSupabaseReady } from '../supabase'
 import { loadState as localLoad, saveState as localSave, idbSaveImage, idbLoadImage, idbListImageKeys, loadStateAsync, TAMER_DEFAULT_IMAGES, DIGIMON_DEFAULT_IMAGES } from '../../data/store'
+import { DEFAULT_SURVIVORS } from '../../data/domain'
 import type { AppState } from '../../types'
 
 const CAMPAIGN = 'midnight-summer'
@@ -20,9 +21,18 @@ export async function loadStateFromDB(): Promise<AppState> {
     if (error || !data) return localLoad()
 
     _stateRowId = data.id
-    const remoteState = data.state as AppState
+    let remoteState = data.state as AppState
 
-    // Hidratar imagens do Storage (URLs p├║blicas) + defaults est├íticos
+    // Injetar survivors default que ainda não existam no estado remoto
+    if (!remoteState.survivors?.length) {
+      remoteState = { ...remoteState, survivors: DEFAULT_SURVIVORS }
+    } else {
+      const ids = new Set(remoteState.survivors.map(sv => sv.id))
+      const missing = DEFAULT_SURVIVORS.filter(sv => !ids.has(sv.id))
+      if (missing.length) remoteState = { ...remoteState, survivors: [...remoteState.survivors, ...missing] }
+    }
+
+    // Hidratar imagens do Storage (URLs públicas) + defaults estáticos
     const hydrated = await hydrateImagesFromStorage(remoteState)
 
     // Sincronizar localStorage como cache offline
@@ -68,10 +78,11 @@ export async function hydrateImagesFromStorage(s: AppState): Promise<AppState> {
 
   return {
     ...s,
-    tamers:   s.tamers.map(hydrateTamer),
-    bestiary: s.bestiary.map(hydrateDigimon),
-    bugs:     s.bugs.map(hydrateFn as any),
-    signs:    (s.signs ?? []).map(hydrateFn as any),
+    tamers:    s.tamers.map(hydrateTamer),
+    survivors: (s.survivors ?? []).map(hydrateFn as any),
+    bestiary:  s.bestiary.map(hydrateDigimon),
+    bugs:      s.bugs.map(hydrateFn as any),
+    signs:     (s.signs ?? []).map(hydrateFn as any),
   }
 }
 
@@ -153,12 +164,13 @@ function storageUrl(bucket: string, key: string): string | null {
 function stripImages(s: AppState): AppState {
   return {
     ...s,
-    tamers:   s.tamers.map(t    => ({ ...t, image: null })),
-    bestiary: s.bestiary.map(d  => ({
+    tamers:    s.tamers.map(t    => ({ ...t, image: null })),
+    survivors: (s.survivors ?? []).map(sv => ({ ...sv, image: null })),
+    bestiary:  s.bestiary.map(d  => ({
       ...d, image: null,
       stages: d.stages.map(st => ({ ...st, image: null })),
     })),
-    bugs:     s.bugs.map(b     => ({ ...b, image: null })),
-    signs:    (s.signs ?? []).map(sg => ({ ...sg, image: null })),
+    bugs:      s.bugs.map(b     => ({ ...b, image: null })),
+    signs:     (s.signs ?? []).map(sg => ({ ...sg, image: null })),
   }
 }

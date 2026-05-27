@@ -1,4 +1,36 @@
-import type { AppState } from '../types'
+import type { AppState, Survivor, SurvivorStatus, SurvivorAttributes, Merit, MindLink, SkillSet, Portrait } from '../types'
+import { DEFAULT_SKILL_SET } from '../types'
+
+export function makeSurvivor(id: string, name: string, portrait: Portrait = 'sage'): Survivor {
+  return {
+    id,
+    name,
+    portrait,
+    image:      null,
+    imageKey:   null,
+    attributes: { Poder: 2, Refinamento: 2, Resistência: 2 },
+    status:     { HP: { v: 10, max: 10 }, Digisoul: { v: 5, max: 5 }, Deslocamento: 3 },
+    skills:     {
+      Mental: { ...DEFAULT_SKILL_SET.Mental },
+      Físico: { ...DEFAULT_SKILL_SET.Físico },
+      Social: { ...DEFAULT_SKILL_SET.Social },
+    },
+    merits:   [],
+    mindLink: { digimonId: null, active: false },
+    inventory: [],
+  }
+}
+
+// ── Survivor padrão: Yahiro Akugetsu ──────────────────────────────
+const DEFAULT_SURVIVORS: Survivor[] = [
+  {
+    ...makeSurvivor('sv-yahiro', 'Yahiro', 'rose'),
+    surname: 'Akugetsu',
+    tagline: 'Aquela que carrega as cerejeiras',
+    attributes: { Poder: 2, Refinamento: 3, Resistência: 2 },
+    status: { HP: { v: 10, max: 10 }, Digisoul: { v: 8, max: 8 }, Deslocamento: 3 },
+  },
+]
 
 function mergeWithDefaults(state: AppState): AppState {
   const defaults = buildDefaultState()
@@ -6,15 +38,20 @@ function mergeWithDefaults(state: AppState): AppState {
   return {
     ...defaults,
     ...state,
-    tamers: state.tamers?.length ? state.tamers : defaults.tamers,
-    bestiary: state.bestiary?.length ? state.bestiary : defaults.bestiary,
-    bugs: state.bugs?.length ? state.bugs : defaults.bugs,
-    signs: state.signs?.length ? state.signs : defaults.signs,
+    survivors: state.survivors?.length ? state.survivors : defaults.survivors,
+    tamers:    state.tamers?.length    ? state.tamers    : defaults.tamers,
+    bestiary:  state.bestiary?.length  ? state.bestiary  : defaults.bestiary,
+    bugs:      state.bugs?.length      ? state.bugs      : defaults.bugs,
+    signs:     state.signs?.length     ? state.signs     : defaults.signs,
   }
 }
 
 function findTamer(state: AppState, tamerId: string) {
   return state.tamers.find(t => t.id === tamerId)
+}
+
+export function findSurvivor(state: AppState, survivorId: string) {
+  return (state.survivors ?? []).find(sv => sv.id === survivorId)
 }
 
 function findDigimon(state: AppState, digimonId: string) {
@@ -35,13 +72,11 @@ function isVisible(state: AppState, key: string) {
 
 function setVisibility(state: AppState, key: string, visible: boolean) {
   const visibility = { ...(state.visibility ?? {}) }
-
   if (visible) {
     visibility[key] = true
   } else {
     delete visibility[key]
   }
-
   return { ...state, visibility }
 }
 
@@ -55,18 +90,19 @@ function makeSkillTreePhase() {
 
 function buildDefaultState(): AppState {
   return {
-    tamers: [],
-    bestiary: [],
-    bugs: [],
-    signs: [],
-    stages: [],
-    sectors: [],
-    bugFolders: [],
-    skillTree: [],
-    customClimas: [],
-    customKeywords: [],
+    tamers:    [],
+    survivors: DEFAULT_SURVIVORS,
+    bestiary:  [],
+    bugs:      [],
+    signs:     [],
+    stages:    [],
+    sectors:   [],
+    bugFolders:  [],
+    skillTree:   [],
+    customClimas:     [],
+    customKeywords:   [],
     customConditions: [],
-    tokenDefs: [],
+    tokenDefs:  [],
     visibility: { intro: true, bestiary: true },
   }
 }
@@ -81,4 +117,5 @@ export {
   isVisible,
   setVisibility,
   makeSkillTreePhase,
+  DEFAULT_SURVIVORS,
 }

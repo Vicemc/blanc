@@ -119,6 +119,52 @@ export interface TamerSkill {
   alwaysOn?: AlwaysOnBonus;
 }
 
+// ---------- Survivor ----------
+
+export interface SurvivorAttributes {
+  Poder:       number;
+  Refinamento: number;
+  Resistência: number;
+}
+
+export interface SurvivorStatus {
+  HP:           { v: number; max: number };
+  Digisoul:     { v: number; max: number };
+  Deslocamento: number;
+}
+
+export interface Merit {
+  type:     SkillCardType;
+  keyword:  string;
+  title:    string;
+  target?:  string;
+  ds_cost?: string;
+  dados?:   string;
+  effect:   string;
+}
+
+export interface MindLink {
+  digimonId: string | null;
+  active:    boolean;
+}
+
+export interface Survivor {
+  id:         string;
+  name:       string;
+  surname?:   string;
+  age?:       string | number;
+  tagline?:   string;
+  portrait:   Portrait;
+  image:      string | null;
+  imageKey?:  string | null;
+  attributes: SurvivorAttributes;
+  status:     SurvivorStatus;
+  skills:     SkillSet;
+  merits:     Merit[];
+  mindLink:   MindLink;
+  inventory:  InventoryItem[];
+}
+
 // ---------- Digimon Skill ----------
 
 export interface DigimonSkill {
@@ -308,6 +354,7 @@ export interface BugFolder {
 
 export interface AppState {
   tamers:      Tamer[];
+  survivors:   Survivor[];
   bestiary:    DigimonLine[];
   bugs:        Bug[];
   signs:       Sign[];

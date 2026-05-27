@@ -1,7 +1,8 @@
 import { useState, useCallback } from 'react'
-import type { AppState, Tamer } from '../types'
+import type { AppState, Tamer, Survivor } from '../types'
 import { PORTRAIT_LIST } from '../types'
 import { findDigimon, makeTamer, makeSlimLine } from '../data/store'
+import { makeSurvivor } from '../data/domain'
 import { uploadImage, saveStateToDB } from '../lib/db'
 import { PageHead } from '../components/PageHead'
 import { GrainFill } from '../components/GrainFill'
@@ -204,10 +205,70 @@ function AddTamerModal({ state, onSave, onClose }: { state: AppState; onSave: (s
   )
 }
 
+// ── Add Survivor Modal ─────────────────────────────────────────────
+function AddSurvivorModal({ state, onSave, onClose }: { state: AppState; onSave: (s: AppState) => void; onClose: () => void }) {
+  const [name, setName]       = useState('')
+  const [surname, setSurname] = useState('')
+  const [tagline, setTagline] = useState('')
+  const [portrait, setPortrait] = useState<Survivor['portrait']>('rose')
+
+  const handleSubmit = () => {
+    if (!name.trim()) return
+    const id = `sv-${name.toLowerCase().replace(/\s+/g, '-')}-${Date.now().toString(36)}`
+    const sv: Survivor = {
+      ...makeSurvivor(id, name.trim(), portrait),
+      surname: surname || undefined,
+      tagline: tagline || undefined,
+    }
+    onSave({ ...state, survivors: [...(state.survivors ?? []), sv] })
+    onClose()
+  }
+
+  const inp = (lbl: string, val: string, set: (v: string) => void, ph = '') => (
+    <div className={styles.field}>
+      <label className={styles.fieldLabel}>{lbl}</label>
+      <input value={val} onChange={e => set(e.target.value)} placeholder={ph} className={styles.fieldInput} />
+    </div>
+  )
+
+  return (
+    <div className="modal-back" onClick={onClose}>
+      <div className="modal" style={{ maxWidth: 480 }} onClick={e => e.stopPropagation()}>
+        <button className={styles.closeBtn} onClick={onClose}>×</button>
+        <div className={styles.addForm}>
+          <h2 className={styles.addTitle}>Novo Survivor</h2>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+            {inp('Nome *', name, setName, 'Yahiro')}
+            {inp('Sobrenome', surname, setSurname, 'Akugetsu')}
+          </div>
+          {inp('Tagline', tagline, setTagline, 'Aquela que carrega as cerejeiras')}
+          <div className={styles.field}>
+            <label className={styles.fieldLabel}>Cor do retrato</label>
+            <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginTop: 4 }}>
+              {PORTRAIT_LIST.map(p => (
+                <div key={p} onClick={() => setPortrait(p)}
+                  style={{ width: 30, height: 30, borderRadius: 6, overflow: 'hidden', cursor: 'pointer', position: 'relative',
+                    outline: portrait === p ? '2px solid var(--ink)' : 'none', outlineOffset: 2 }}>
+                  <GrainFill color={p} />
+                </div>
+              ))}
+            </div>
+          </div>
+          <div style={{ display: 'flex', gap: 8, marginTop: 8 }}>
+            <button className={styles.btnSolid} onClick={handleSubmit}>Criar</button>
+            <button className={styles.btnGhost} onClick={onClose}>Cancelar</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  )
+}
+
 // ── PartyPage ──────────────────────────────────────────────────────
 export default function PartyPage({ state, onUpdate, canEdit, isGM }: Props) {
-  const [open, setOpen]       = useState<SheetSubject | null>(null)
-  const [showAdd, setShowAdd] = useState(false)
+  const [open, setOpen]         = useState<SheetSubject | null>(null)
+  const [showAdd, setShowAdd]   = useState(false)
+  const [showAddSv, setShowAddSv] = useState(false)
   const { settings, update: updateSettings } = useSettings()
   const compactGrid = settings.partyCompact
   const setCompactGrid = (v: boolean | ((prev: boolean) => boolean)) => {
@@ -230,7 +291,7 @@ export default function PartyPage({ state, onUpdate, canEdit, isGM }: Props) {
       <PageHead title="Party" tag="Aqueles que carregam o sonho" pageId="party" />
 
       <div className={styles.toolbar}>
-        <span className={styles.eyebrow}>{state.tamers.length} tamers · {state.bestiary.filter(d => d.tamerId).length} digimons</span>
+        <span className={styles.eyebrow}>{state.tamers.length} tamers · {state.bestiary.filter(d => d.tamerId).length} digimons · {(state.survivors ?? []).length} survivors</span>
         <div style={{ display:'flex', gap:8 }}>
           <button
             className={compactGrid ? styles.btnSolid : styles.btnGhost}
@@ -240,6 +301,7 @@ export default function PartyPage({ state, onUpdate, canEdit, isGM }: Props) {
             {compactGrid ? '⊞ Compacto' : '⊟ Normal'}
           </button>
           {isGM && <button className={styles.btnGhost} onClick={() => setShowAdd(true)}>+ Novo Tamer</button>}
+          {isGM && <button className={styles.btnGhost} onClick={() => setShowAddSv(true)}>+ Survivor</button>}
         </div>
       </div>
 
@@ -300,12 +362,33 @@ export default function PartyPage({ state, onUpdate, canEdit, isGM }: Props) {
             </div>
           )
         })}
+        {/* Survivor cards */}
+        {(state.survivors ?? []).map(sv => (
+          <div key={sv.id} className={styles.card} onClick={() => setOpen({ kind: 'survivor', id: sv.id })}>
+            <div className={`${styles.portrait} fill-${sv.portrait}`}>
+              {sv.image
+                ? <img key={sv.image} src={sv.image} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+                    onError={e => { (e.currentTarget as HTMLImageElement).style.display = 'none' }} />
+                : <div className="grain" />}
+            </div>
+            <div className={styles.info}>
+              <div style={{ fontFamily: 'var(--font-mono)', fontSize: 9, letterSpacing: '0.14em', textTransform: 'uppercase', color: 'var(--ink-mute)', marginBottom: 2 }}>Survivor</div>
+              <h3 className={styles.name}>{sv.name}{sv.surname ? ` ${sv.surname}` : ''}</h3>
+              {sv.tagline && <div className={styles.tagline}>~ {sv.tagline} ~</div>}
+              <div className={styles.xpBar} style={{ display: 'flex', gap: 8 }}>
+                <span className={styles.xpPill}>HP: <b>{sv.status.HP.v}/{sv.status.HP.max}</b></span>
+                <span className={styles.xpPill}>DS: <b>{sv.status.Digisoul.v}/{sv.status.Digisoul.max}</b></span>
+              </div>
+            </div>
+          </div>
+        ))}
         {isGM && <div className={styles.addCard} onClick={() => setShowAdd(true)}>+ Novo Tamer</div>}
       </div>
 
       {open && <SheetModal subject={open} state={state} onSaveState={onUpdate} onClose={() => setOpen(null)}
-        editable={canEdit ? canEdit(open.kind === 'tamer' ? open.id : undefined) : true} isGM={isGM} />}
+        editable={canEdit ? canEdit(open.kind === 'tamer' ? (open as any).id : undefined) : true} isGM={isGM} />}
       {showAdd && <AddTamerModal state={state} onSave={s => { onUpdate(s); setShowAdd(false) }} onClose={() => setShowAdd(false)} />}
+      {showAddSv && <AddSurvivorModal state={state} onSave={s => { onUpdate(s); setShowAddSv(false) }} onClose={() => setShowAddSv(false)} />}
     </div>
   )
 }

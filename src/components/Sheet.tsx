@@ -1,7 +1,8 @@
 import type {
   AppState, Tamer, DigimonLine, DigimonStage, Bug, Sign,
   AttributeKey, Attributes, SkillSet, TamerSkill, DigimonSkill, DigimonStageStatus, PassiveToggleBonus,
-  SkillTreePhase, InventoryItem
+  SkillTreePhase, InventoryItem,
+  Survivor, Merit, SurvivorAttributes, SurvivorStatus
 } from '../types'
 import { ATTRIBUTE_GROUPS, ATTRIBUTE_KEYS, AFFINITY_KEYS, PORTRAIT_LIST, BUG_COLORS } from '../types'
 import {
@@ -12,6 +13,7 @@ import {
   buySkillTreeSkill,
   DIGIMON_DEFAULT_IMAGES
 } from '../data/store'
+import { findSurvivor, makeSurvivor } from '../data/domain'
 import { GrainFill } from "./GrainFill"
 import { Toast } from './Toast'
 import { uploadImage, saveStateToDB } from '../lib/db'
@@ -52,11 +54,12 @@ function ValueDisplay({ value, max, pend = 0 }: { value: number; max: number; pe
 }
 
 export type SheetSubject =
-  | { kind: 'tamer';  id: string }
-  | { kind: 'pair';   tamerId: string; digimonId: string; stage?: number }
+  | { kind: 'tamer';    id: string }
+  | { kind: 'pair';     tamerId: string; digimonId: string; stage?: number }
   | { kind: 'wild' | 'digimon'; id: string }
-  | { kind: 'bug';    id: string }
-  | { kind: 'sign';   id: string }
+  | { kind: 'bug';      id: string }
+  | { kind: 'sign';     id: string }
+  | { kind: 'survivor'; id: string }
 
 // ── Parser de Tokens ────────────────────────────────────────────────
 // Detecta padrões como [Puppet Token / Lv.3], [Silhouette Token], [Enhanced Puppet Token / Lv.4]
@@ -2645,25 +2648,372 @@ function DigiviceInventoryTab({ tamerId, editable, isGM }: {
   )
 }
 
+// ── MeritCard ──────────────────────────────────────────────────────
+function MeritCard({ m, editable, onDelete, onChange }: {
+  m: Merit; editable?: boolean; onDelete?: () => void; onChange?: (m: Merit) => void
+}) {
+  const [editing, setEditing] = useState(false)
+  const [draft, setDraft] = useState(m)
+  const isPassive = m.type === 'passive'
+
+  if (editing) {
+    return (
+      <div className={`${styles.skillCard} ${styles.editing}`}>
+        <div style={{ display: 'flex', gap: 8, marginBottom: 8, flexWrap: 'wrap' }}>
+          <select value={draft.type} onChange={e => setDraft(d => ({ ...d, type: e.target.value as any }))} className={styles.formInput} style={{ flex: '0 0 auto' }}>
+            <option value="action">Ação</option>
+            <option value="reaction">Reação</option>
+            <option value="passive">Passiva</option>
+          </select>
+          <input value={draft.keyword} onChange={e => setDraft(d => ({ ...d, keyword: e.target.value }))} placeholder="Palavra-chave" className={styles.formInput} style={{ flex: 1 }} />
+        </div>
+        <input value={draft.title} onChange={e => setDraft(d => ({ ...d, title: e.target.value }))} placeholder="Nome *" className={styles.formInput} style={{ marginBottom: 6, width: '100%' }} />
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 6, marginBottom: 6 }}>
+          <input value={(draft as Merit).target ?? ''} onChange={e => setDraft(d => ({ ...d, target: e.target.value }))} placeholder="Alvo" className={styles.formInput} />
+          <input value={(draft as Merit).ds_cost ?? ''} onChange={e => setDraft(d => ({ ...d, ds_cost: e.target.value }))} placeholder="Custo DS (ex: -2 Digisoul)" className={styles.formInput} />
+        </div>
+        <input value={draft.dados ?? ''} onChange={e => setDraft(d => ({ ...d, dados: e.target.value }))} placeholder="Dados (ex: Poder + Físico)" className={styles.formInput} style={{ marginBottom: 6, width: '100%' }} />
+        <textarea value={draft.effect} onChange={e => setDraft(d => ({ ...d, effect: e.target.value }))} placeholder="Efeito" className={styles.formInput} rows={3} style={{ width: '100%', resize: 'vertical', marginBottom: 8 }} />
+        <div style={{ display: 'flex', gap: 6 }}>
+          <button className={styles.btnSolid} style={{ fontSize: 12 }} onClick={() => { onChange?.(draft); setEditing(false) }}>Salvar</button>
+          <button className={styles.btnGhost} style={{ fontSize: 12 }} onClick={() => { setDraft(m); setEditing(false) }}>Cancelar</button>
+        </div>
+      </div>
+    )
+  }
+
+  const dadosLine = [
+    m.target && `Alvo: ${m.target}`,
+    m.ds_cost && `DS: ${m.ds_cost}`,
+    m.dados && `Dados: ${m.dados}`,
+  ].filter(Boolean).join(' · ')
+
+  return (
+    <div className={`${styles.skillCard} ${isPassive ? styles.passive : ''}`}>
+      {editable && (
+        <div className={styles.cardActions}>
+          {onChange && <button className={styles.cardEdit} onClick={() => setEditing(true)} title="Editar">✎</button>}
+          {onDelete && <button className={styles.cardDel} onClick={onDelete} title="Remover">×</button>}
+        </div>
+      )}
+      <div style={{ display: 'flex', alignItems: 'baseline', gap: 6, flexWrap: 'wrap', paddingRight: editable ? 80 : 0 }}>
+        <span className={`${styles.cardTag} ${isPassive ? styles.tagPassive : m.type === 'reaction' ? styles.tagReaction : ''}`}>
+          {isPassive ? 'Passiva' : m.type === 'reaction' ? 'Reação' : 'Ação'}
+        </span>
+        {m.keyword && <span className={styles.cardKeyword}>[{m.keyword}]</span>}
+      </div>
+      <h5 className={styles.cardTitle}>{m.title}</h5>
+      {dadosLine && <div className={styles.cardDados}>{dadosLine}</div>}
+      {m.effect && m.effect !== '—' && <p className={styles.cardEffect}><EffectText text={m.effect} /></p>}
+    </div>
+  )
+}
+
+function AddMeritForm({ onAdd, onCancel }: { onAdd: (m: Merit) => void; onCancel: () => void }) {
+  const [type, setType]       = useState<'action' | 'reaction' | 'passive'>('action')
+  const [keyword, setKeyword] = useState('')
+  const [title, setTitle]     = useState('')
+  const [target, setTarget]   = useState('')
+  const [dsCost, setDsCost]   = useState('')
+  const [dados, setDados]     = useState('')
+  const [effect, setEffect]   = useState('')
+
+  return (
+    <div className={styles.addSkillForm}>
+      <div style={{ display: 'flex', gap: 8, marginBottom: 8, flexWrap: 'wrap' }}>
+        <select value={type} onChange={e => setType(e.target.value as any)} className={styles.formInput} style={{ flex: '0 0 auto' }}>
+          <option value="action">Ação</option>
+          <option value="reaction">Reação</option>
+          <option value="passive">Passiva</option>
+        </select>
+        <input value={keyword} onChange={e => setKeyword(e.target.value)} placeholder="Palavra-chave" className={styles.formInput} style={{ flex: 1 }} />
+      </div>
+      <input value={title} onChange={e => setTitle(e.target.value)} placeholder="Nome *" className={styles.formInput} style={{ marginBottom: 6, width: '100%' }} />
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 6, marginBottom: 6 }}>
+        <input value={target} onChange={e => setTarget(e.target.value)} placeholder="Alvo" className={styles.formInput} />
+        <input value={dsCost} onChange={e => setDsCost(e.target.value)} placeholder="Custo DS (ex: -2 Digisoul)" className={styles.formInput} />
+      </div>
+      <input value={dados} onChange={e => setDados(e.target.value)} placeholder="Dados (ex: Poder + Físico)" className={styles.formInput} style={{ marginBottom: 6, width: '100%' }} />
+      <textarea value={effect} onChange={e => setEffect(e.target.value)} placeholder="Efeito" className={styles.formInput} rows={3} style={{ width: '100%', resize: 'vertical', marginBottom: 8 }} />
+      <div style={{ display: 'flex', gap: 6 }}>
+        <button className={styles.btnSolid} style={{ fontSize: 12 }} onClick={() => {
+          if (!title.trim()) return
+          onAdd({ type, keyword, title, target: target || undefined, ds_cost: dsCost || undefined, dados: dados || undefined, effect })
+        }}>+ Adicionar</button>
+        <button className={styles.btnGhost} style={{ fontSize: 12 }} onClick={onCancel}>Cancelar</button>
+      </div>
+    </div>
+  )
+}
+
+// ── SurvivorView ───────────────────────────────────────────────────
+function SurvivorView({ sv, editable, isGM, onSave, state, wide = false }: {
+  sv: Survivor; editable: boolean; isGM?: boolean
+  onSave: (sv: Survivor) => void; state: AppState; wide?: boolean
+}) {
+  const [toast, setToast]       = useState<string | null>(null)
+  const [showAddMerit, setShowAddMerit] = useState(false)
+  const [editInfo, setEditInfo] = useState(false)
+  const [newItem, setNewItem]   = useState<{ name: string; qty: string; notes: string } | null>(null)
+
+  const editAttr = (k: keyof SurvivorAttributes, v: number) =>
+    onSave({ ...sv, attributes: { ...sv.attributes, [k]: Math.max(1, Math.min(5, v)) } })
+
+  const editStatus = (patch: Partial<SurvivorStatus>) =>
+    onSave({ ...sv, status: { ...sv.status, ...patch } as SurvivorStatus })
+
+  const wildDigimons = (state.bestiary ?? []).filter(d => !d.tamerId)
+
+  const statusSection = (
+    <>
+      <SectionTitle>Status</SectionTitle>
+      <div className={styles.statRow}>
+        {/* HP */}
+        <div className={styles.statCell}>
+          <span className={styles.statKey}>HP</span>
+          {isGM && editable ? (
+            <div style={{ display: 'flex', alignItems: 'center', gap: 3 }}>
+              <input type="number" min={0} max={sv.status.HP.max} value={sv.status.HP.v}
+                onChange={e => editStatus({ HP: { ...sv.status.HP, v: Math.max(0, Math.min(sv.status.HP.max, parseInt(e.target.value) || 0)) } })}
+                className={styles.numInput} style={{ width: 44 }} />
+              <span style={{ fontFamily: 'var(--font-mono)', fontSize: 12, color: 'var(--ink-mute)' }}>/</span>
+              <input type="number" min={1} max={30} value={sv.status.HP.max}
+                onChange={e => editStatus({ HP: { ...sv.status.HP, max: Math.max(1, parseInt(e.target.value) || 1) } })}
+                className={styles.numInput} style={{ width: 44 }} />
+            </div>
+          ) : (
+            <span className={styles.statVal}>{sv.status.HP.v}/{sv.status.HP.max}</span>
+          )}
+        </div>
+        {/* Digisoul */}
+        <div className={styles.statCell}>
+          <span className={styles.statKey}>Digisoul</span>
+          {isGM && editable ? (
+            <div style={{ display: 'flex', alignItems: 'center', gap: 3 }}>
+              <input type="number" min={0} max={sv.status.Digisoul.max} value={sv.status.Digisoul.v}
+                onChange={e => editStatus({ Digisoul: { ...sv.status.Digisoul, v: Math.max(0, Math.min(sv.status.Digisoul.max, parseInt(e.target.value) || 0)) } })}
+                className={styles.numInput} style={{ width: 44 }} />
+              <span style={{ fontFamily: 'var(--font-mono)', fontSize: 12, color: 'var(--ink-mute)' }}>/</span>
+              <input type="number" min={1} max={30} value={sv.status.Digisoul.max}
+                onChange={e => editStatus({ Digisoul: { ...sv.status.Digisoul, max: Math.max(1, parseInt(e.target.value) || 1) } })}
+                className={styles.numInput} style={{ width: 44 }} />
+            </div>
+          ) : (
+            <span className={styles.statVal}>{sv.status.Digisoul.v}/{sv.status.Digisoul.max}</span>
+          )}
+        </div>
+        {/* Deslocamento */}
+        <div className={styles.statCell}>
+          <span className={styles.statKey}>Desl.</span>
+          {isGM && editable ? (
+            <input type="number" min={1} max={20} value={sv.status.Deslocamento}
+              onChange={e => editStatus({ Deslocamento: Math.max(1, parseInt(e.target.value) || 1) })}
+              className={styles.numInput} style={{ width: 44 }} />
+          ) : (
+            <span className={styles.statVal}>{sv.status.Deslocamento}</span>
+          )}
+        </div>
+      </div>
+    </>
+  )
+
+  const attrSection = (
+    <>
+      <SectionTitle>Atributos</SectionTitle>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 4, marginTop: 4 }}>
+        {(['Poder', 'Refinamento', 'Resistência'] as (keyof SurvivorAttributes)[]).map(k => (
+          <div key={k} className={styles.attrRow}>
+            <span className={styles.attrName}>{k}</span>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexShrink: 0 }}>
+              <ValueDisplay value={sv.attributes[k]} max={5} />
+              {isGM && editable && (
+                <>
+                  <button onClick={() => editAttr(k, sv.attributes[k] + 1)} className={styles.attrFreeBtn} disabled={sv.attributes[k] >= 5}>+</button>
+                  <button onClick={() => editAttr(k, sv.attributes[k] - 1)} className={styles.attrFreeBtn} disabled={sv.attributes[k] <= 1}>−</button>
+                </>
+              )}
+            </div>
+          </div>
+        ))}
+      </div>
+    </>
+  )
+
+  const skillsSection = (
+    <>
+      <SectionTitle>Perícias</SectionTitle>
+      <SkillGrid
+        skills={sv.skills}
+        editable={!!(isGM && editable)}
+        freeMode={isGM && editable}
+        onFreeEdit={(cat, name, delta) =>
+          onSave({ ...sv, skills: { ...sv.skills, [cat]: { ...sv.skills[cat], [name]: Math.max(0, Math.min(5, sv.skills[cat][name] + delta)) } } })
+        }
+      />
+    </>
+  )
+
+  const meritsSection = (
+    <>
+      <SectionTitle action={isGM && editable && !showAddMerit && (
+        <button className={styles.btnGhost} style={{ fontSize: 11 }} onClick={() => setShowAddMerit(true)}>+ Mérito</button>
+      )}>Méritos</SectionTitle>
+      {sv.merits.length === 0 && !showAddMerit && (
+        <div style={{ fontFamily: 'var(--font-mono)', fontSize: 11, color: 'var(--ink-mute)', padding: '8px 0 12px' }}>Nenhum mérito.</div>
+      )}
+      {sv.merits.map((m, i) => (
+        <MeritCard key={i} m={m} editable={!!(isGM && editable)}
+          onDelete={isGM && editable ? () => onSave({ ...sv, merits: sv.merits.filter((_, j) => j !== i) }) : undefined}
+          onChange={isGM && editable ? updated => onSave({ ...sv, merits: sv.merits.map((x, j) => j === i ? updated : x) }) : undefined}
+        />
+      ))}
+      {showAddMerit && (
+        <AddMeritForm
+          onAdd={m => { onSave({ ...sv, merits: [...sv.merits, m] }); setShowAddMerit(false) }}
+          onCancel={() => setShowAddMerit(false)}
+        />
+      )}
+    </>
+  )
+
+  const mindLinkSection = (
+    <>
+      <SectionTitle>Mind Link</SectionTitle>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap', padding: '8px 0' }}>
+        {isGM && editable ? (
+          <select
+            value={sv.mindLink.digimonId ?? ''}
+            onChange={e => onSave({ ...sv, mindLink: { ...sv.mindLink, digimonId: e.target.value || null } })}
+            className={styles.formInput}
+            style={{ flex: 1, minWidth: 160 }}>
+            <option value="">— Nenhum —</option>
+            {wildDigimons.map(d => <option key={d.id} value={d.id}>{d.name}</option>)}
+          </select>
+        ) : (
+          <span style={{ fontFamily: 'var(--font-body)', fontSize: 14, color: sv.mindLink.digimonId ? 'var(--ink)' : 'var(--ink-mute)' }}>
+            {sv.mindLink.digimonId
+              ? (wildDigimons.find(d => d.id === sv.mindLink.digimonId)?.name ?? sv.mindLink.digimonId)
+              : '— Nenhum —'}
+          </span>
+        )}
+        {sv.mindLink.digimonId && (
+          <button
+            onClick={isGM && editable ? () => onSave({ ...sv, mindLink: { ...sv.mindLink, active: !sv.mindLink.active } }) : undefined}
+            style={{
+              padding: '4px 14px', borderRadius: 999,
+              fontFamily: 'var(--font-mono)', fontSize: 11, letterSpacing: '0.08em',
+              background: sv.mindLink.active ? 'var(--teal)' : 'transparent',
+              border: '1px solid var(--teal)',
+              color: sv.mindLink.active ? 'var(--paper)' : 'var(--teal)',
+              cursor: isGM && editable ? 'pointer' : 'default',
+              transition: 'all 0.15s',
+            }}>
+            {sv.mindLink.active ? '● Link Ativo' : '○ Link Inativo'}
+          </button>
+        )}
+      </div>
+    </>
+  )
+
+  const inventorySection = (
+    <>
+      <SectionTitle action={editable && !newItem && (
+        <button className={styles.btnGhost} style={{ fontSize: 11 }} onClick={() => setNewItem({ name: '', qty: '1', notes: '' })}>+ Item</button>
+      )}>Inventário</SectionTitle>
+      {sv.inventory.length === 0 && !newItem && (
+        <div style={{ fontFamily: 'var(--font-mono)', fontSize: 11, color: 'var(--ink-mute)', padding: '8px 0 12px' }}>Inventário vazio.</div>
+      )}
+      {sv.inventory.map((item, i) => (
+        <div key={item.id} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '6px 0', borderBottom: '1px solid var(--line-soft)', fontFamily: 'var(--font-body)', fontSize: 13 }}>
+          <span style={{ fontFamily: 'var(--font-mono)', fontSize: 12, color: 'var(--ink-mute)', minWidth: 28, textAlign: 'right' }}>×{item.qty}</span>
+          <span style={{ flex: 1 }}>{item.name}</span>
+          {item.notes && <span style={{ fontSize: 11, color: 'var(--ink-mute)', fontStyle: 'italic' }}>{item.notes}</span>}
+          {editable && (
+            <button onClick={() => onSave({ ...sv, inventory: sv.inventory.filter((_, j) => j !== i) })}
+              className={styles.cardDel} style={{ position: 'static', opacity: 1 }}>×</button>
+          )}
+        </div>
+      ))}
+      {newItem && (
+        <div style={{ display: 'flex', gap: 6, marginTop: 10, flexWrap: 'wrap' }}>
+          <input value={newItem.name} onChange={e => setNewItem(n => ({ ...n!, name: e.target.value }))} placeholder="Nome do item" className={styles.formInput} style={{ flex: 2, minWidth: 120 }} />
+          <input type="number" min={1} value={newItem.qty} onChange={e => setNewItem(n => ({ ...n!, qty: e.target.value }))} className={styles.numInput} style={{ width: 56 }} />
+          <input value={newItem.notes} onChange={e => setNewItem(n => ({ ...n!, notes: e.target.value }))} placeholder="Nota (opcional)" className={styles.formInput} style={{ flex: 1, minWidth: 80 }} />
+          <button className={styles.btnSolid} style={{ fontSize: 12 }} onClick={() => {
+            if (!newItem.name.trim()) return
+            const item: InventoryItem = { id: `inv-${Date.now().toString(36)}`, name: newItem.name.trim(), qty: parseInt(newItem.qty) || 1, notes: newItem.notes || undefined }
+            onSave({ ...sv, inventory: [...sv.inventory, item] })
+            setNewItem(null)
+          }}>+ Add</button>
+          <button className={styles.btnGhost} style={{ fontSize: 12 }} onClick={() => setNewItem(null)}>Cancelar</button>
+        </div>
+      )}
+    </>
+  )
+
+  const leftCol = <>{statusSection}{attrSection}{skillsSection}</>
+  const rightCol = <>{meritsSection}{mindLinkSection}{inventorySection}</>
+
+  return (
+    <div>
+      {toast && <Toast msg={toast} onDone={() => setToast(null)} />}
+
+      {/* Info editable */}
+      {isGM && editable && (
+        <button className={styles.btnGhost} style={{ fontSize: 11, marginBottom: 12 }} onClick={() => setEditInfo(p => !p)}>
+          {editInfo ? '✕ Fechar' : '✎ Editar info'}
+        </button>
+      )}
+      {editInfo && isGM && editable && (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginBottom: 16, padding: '14px 16px', background: 'var(--paper-deep)', border: '1px solid var(--line-soft)', borderRadius: 8 }}>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
+            {inp(sv.name, v => onSave({ ...sv, name: v }), 'Nome')}
+            {inp(sv.surname ?? '', v => onSave({ ...sv, surname: v || undefined }), 'Sobrenome')}
+          </div>
+          {inp(sv.tagline ?? '', v => onSave({ ...sv, tagline: v || undefined }), 'Tagline')}
+          <div style={{ display: 'flex', gap: 8 }}>
+            {inp(String(sv.age ?? ''), v => onSave({ ...sv, age: v || undefined }), 'Idade')}
+            <select value={sv.portrait} onChange={e => onSave({ ...sv, portrait: e.target.value as any })} className={styles.formInput} style={{ flex: 1 }}>
+              {PORTRAIT_LIST.map(p => <option key={p} value={p}>{p}</option>)}
+            </select>
+          </div>
+        </div>
+      )}
+
+      {wide ? (
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0 48px', alignItems: 'start' }}>
+          <div>{leftCol}</div>
+          <div>{rightCol}</div>
+        </div>
+      ) : (
+        <>{leftCol}{rightCol}</>
+      )}
+    </div>
+  )
+}
+
 // ── FullSheet ──────────────────────────────────────────────────────
 interface FullSheetProps { subject: SheetSubject; state: AppState; onSaveState?: (s: AppState) => void; onClose?: () => void; editable?: boolean; isGM?: boolean; onSpawnToken?: (token: TokenSpawn) => void; wide?: boolean }
 
 export function FullSheet({ subject, state, onSaveState, onClose, editable = false, isGM = false, onSpawnToken, wide = false }: FullSheetProps) {
   const { kind } = subject
-  let tamer: Tamer | undefined
-  let line:  DigimonLine | undefined
-  let bug:   Bug | undefined
-  let sign:  Sign | undefined
+  let tamer:    Tamer | undefined
+  let line:     DigimonLine | undefined
+  let bug:      Bug | undefined
+  let sign:     Sign | undefined
+  let survivor: Survivor | undefined
 
-  if (kind === 'tamer')  { tamer = findTamer(state, (subject as any).id); if (tamer?.digimonId) line = findDigimon(state, tamer.digimonId) }
-  if (kind === 'pair')   { tamer = findTamer(state, (subject as any).tamerId); line = findDigimon(state, (subject as any).digimonId) }
+  if (kind === 'tamer')    { tamer = findTamer(state, (subject as any).id); if (tamer?.digimonId) line = findDigimon(state, tamer.digimonId) }
+  if (kind === 'pair')     { tamer = findTamer(state, (subject as any).tamerId); line = findDigimon(state, (subject as any).digimonId) }
   if (kind === 'wild' || kind === 'digimon') line = findDigimon(state, (subject as any).id)
-  if (kind === 'bug')    bug  = findBug(state, (subject as any).id)
-  if (kind === 'sign')   sign = (state.signs ?? []).find(sg => sg.id === (subject as any).id)
+  if (kind === 'bug')      bug      = findBug(state, (subject as any).id)
+  if (kind === 'sign')     sign     = (state.signs ?? []).find(sg => sg.id === (subject as any).id)
+  if (kind === 'survivor') survivor = findSurvivor(state, (subject as any).id)
 
   const tabs: { id: string; label: string; locked?: boolean; hidden?: boolean }[] = []
-  if (tamer) tabs.push({ id:'tamer', label: tamer.name })
-  if (tamer) tabs.push({ id:'inventario', label: 'Inventário' })
+  if (tamer)    tabs.push({ id: 'tamer',    label: tamer.name })
+  if (tamer)    tabs.push({ id: 'inventario', label: 'Inventário' })
+  if (survivor) tabs.push({ id: 'survivor', label: survivor.name })
   if (line)  line.stages.forEach((s,i) => {
     if (s.hidden && !isGM) return
     tabs.push({ id:`stage-${i}`, label: s.stageName, locked: s.locked, hidden: s.hidden })
@@ -2688,6 +3038,9 @@ export function FullSheet({ subject, state, onSaveState, onClose, editable = fal
   if (tamer) {
     headPortrait = tamer.portrait; headName = tamer.name; headImage = tamer.image
     headMeta = [tamer.surname, tamer.age && `${tamer.age} anos`, tamer.sign, tamer.height && `${tamer.height} cm`, tamer.voice].filter(Boolean).join(' · ')
+  } else if (survivor) {
+    headPortrait = survivor.portrait; headName = survivor.name; headImage = survivor.image ?? null
+    headMeta = [survivor.surname, survivor.age && `${survivor.age} anos`].filter(Boolean).join(' · ') || 'Survivor'
   } else if (line) {
     const displayIdx = stageIdx ?? line.currentStage
     const curS = line.stages[displayIdx] ?? line.stages[1] ?? line.stages[0]
@@ -2704,10 +3057,16 @@ export function FullSheet({ subject, state, onSaveState, onClose, editable = fal
     headMeta = sign.code
   }
 
-  const saveTamer = (t: Tamer) => onSaveState?.({ ...state, tamers: state.tamers.map(x => x.id===t.id?t:x) })
+  const saveTamer    = (t: Tamer) => onSaveState?.({ ...state, tamers: state.tamers.map(x => x.id===t.id?t:x) })
+  const saveSurvivor = (s: Survivor) => onSaveState?.({ ...state, survivors: (state.survivors ?? []).map(x => x.id===s.id?s:x) })
   const handleDeleteTamer = () => {
     if (!tamer || deleteInput !== tamer.name) return
     onSaveState?.({ ...state, tamers: state.tamers.filter(t => t.id !== tamer!.id) })
+    onClose?.()
+  }
+  const handleDeleteSurvivor = () => {
+    if (!survivor || deleteInput !== survivor.name) return
+    onSaveState?.({ ...state, survivors: (state.survivors ?? []).filter(s => s.id !== survivor!.id) })
     onClose?.()
   }
   const saveLine  = (l: DigimonLine) => onSaveState?.({ ...state, bestiary: state.bestiary.map(x => x.id===l.id?l:x) })
@@ -2736,6 +3095,14 @@ export function FullSheet({ subject, state, onSaveState, onClose, editable = fal
       )
       const newLine = { ...line, stages: newStages }
       const newState = { ...state, bestiary: state.bestiary.map(x => x.id === newLine.id ? newLine : x) }
+      onSaveState?.(newState)
+      if (toStorage) void saveStateToDB(newState)
+    }
+    else if (survivor) {
+      const url = await uploadImage(dataUrl, survivor.id)
+      const toStorage = url != null && !url.startsWith('data:')
+      const newSurvivor = { ...survivor, image: url ?? dataUrl, imageKey: toStorage ? `${survivor.id}.${ext}` : null }
+      const newState = { ...state, survivors: (state.survivors ?? []).map(x => x.id === newSurvivor.id ? newSurvivor : x) }
       onSaveState?.(newState)
       if (toStorage) void saveStateToDB(newState)
     }
@@ -2768,6 +3135,7 @@ export function FullSheet({ subject, state, onSaveState, onClose, editable = fal
           <h2 className={styles.headName}>{headName}</h2>
           <div className={styles.headMeta}>{headMeta}</div>
           {tamer?.tagline && <div style={{ fontFamily:'var(--font-serif)', fontStyle:'italic', fontSize:17, color:'var(--ink-soft)', marginTop:4 }}>~ {tamer.tagline} ~</div>}
+          {survivor?.tagline && <div style={{ fontFamily:'var(--font-serif)', fontStyle:'italic', fontSize:16, color:'var(--ink-soft)', marginTop:4 }}>~ {survivor.tagline} ~</div>}
           {bug?.lore && <div style={{ fontFamily:'var(--font-serif)', fontStyle:'italic', fontSize:15, color:'var(--ink-soft)', marginTop:4 }}>~ {bug.lore} ~</div>}
         </div>
       </div>
@@ -2800,6 +3168,7 @@ export function FullSheet({ subject, state, onSaveState, onClose, editable = fal
       <div className={styles.sheetBody}>
         {showTamer && <TamerView tamer={tamer!} line={line} editable={editable} isGM={isGM} onSave={saveTamer} onSaveLine={saveLine} onSaveAll={saveAllAutoridade} state={state} onSaveState={onSaveState} onSpawnToken={onSpawnToken} wide={wide} />}
         {active === 'inventario' && tamer && <DigiviceInventoryTab tamerId={tamer.id} editable={editable} isGM={isGM} />}
+        {active === 'survivor' && survivor && <SurvivorView sv={survivor} editable={editable} isGM={isGM} onSave={saveSurvivor} state={state} wide={wide} />}
         {stageIdx !== null && line && (
           <DigimonStageView line={line} stageIdx={stageIdx} tamer={tamer} editable={editable} isGM={isGM} onSaveLine={saveLine} onSaveTamer={tamer ? saveTamer : undefined}
             onDeleteStage={editable && isGM ? () => {
@@ -2811,6 +3180,44 @@ export function FullSheet({ subject, state, onSaveState, onClose, editable = fal
         {showBug && <BugView bug={bug!} editable={editable} onSave={saveBug} />}
         {active === 'sign' && sign && <SignView sign={sign} editable={editable} onSave={saveSign} />}
       </div>
+
+      {/* Zona de exclusão — survivor */}
+      {active === 'survivor' && survivor && isGM && editable && (
+        <div style={{ borderTop: '1px solid var(--line-soft)', padding: '20px 32px 24px', marginTop: 8 }}>
+          {!showDelete ? (
+            <button onClick={() => setShowDelete(true)}
+              style={{ padding: '6px 16px', borderRadius: 999, cursor: 'pointer',
+                fontFamily: 'var(--font-mono)', fontSize: 10, letterSpacing: '0.1em',
+                textTransform: 'uppercase', border: '1px solid var(--line)',
+                background: 'transparent', color: 'var(--ink-mute)' }}>
+              ⚠ Excluir survivor
+            </button>
+          ) : (
+            <div style={{ padding: '16px', borderRadius: 10, border: '2px solid var(--coral)', background: 'rgba(196,51,33,0.06)' }}>
+              <div style={{ fontFamily: 'var(--font-mono)', fontSize: 11, letterSpacing: '0.08em', textTransform: 'uppercase', color: 'var(--coral)', marginBottom: 8, fontWeight: 700 }}>
+                ⚠ Excluir permanentemente
+              </div>
+              <div style={{ fontFamily: 'var(--font-serif)', fontSize: 13, color: 'var(--ink-soft)', marginBottom: 14, lineHeight: 1.5 }}>
+                Digite <strong>{survivor.name}</strong> para confirmar.
+              </div>
+              <input value={deleteInput} onChange={e => setDeleteInput(e.target.value)} placeholder={survivor.name}
+                style={{ width: '100%', marginBottom: 12, padding: '8px 12px', border: '1px solid var(--coral)', borderRadius: 8, fontFamily: 'var(--font-body)', fontSize: 14, background: 'var(--paper)', color: 'var(--ink)', boxSizing: 'border-box' }} />
+              <div style={{ display: 'flex', gap: 8 }}>
+                <button onClick={handleDeleteSurvivor} disabled={deleteInput !== survivor.name}
+                  style={{ padding: '8px 18px', borderRadius: 999, cursor: 'pointer', fontFamily: 'var(--font-body)', fontWeight: 700, fontSize: 13,
+                    border: '1px solid var(--coral)', background: deleteInput === survivor.name ? 'var(--coral)' : 'transparent',
+                    color: deleteInput === survivor.name ? 'var(--paper)' : 'var(--coral)', opacity: deleteInput !== survivor.name ? 0.5 : 1 }}>
+                  Confirmar exclusão
+                </button>
+                <button onClick={() => { setShowDelete(false); setDeleteInput('') }}
+                  style={{ padding: '8px 18px', borderRadius: 999, cursor: 'pointer', fontFamily: 'var(--font-body)', fontSize: 13, border: '1px solid var(--line)', background: 'transparent', color: 'var(--ink-soft)' }}>
+                  Cancelar
+                </button>
+              </div>
+            </div>
+          )}
+        </div>
+      )}
 
       {/* Zona de exclusão — apenas GM, apenas aba do tamer */}
       {showTamer && isGM && editable && (

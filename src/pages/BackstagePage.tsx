@@ -183,8 +183,25 @@ function UserRow({ profile, saving, feedback, onSave }: {
 function SheetSection({ state, onUpdate }: Props) {
   const [open, setOpen] = useState<SheetSubject | null>(null)
 
-  const allTamers = state.tamers
-  const allDigis  = state.bestiary.filter(d => d.tamerId)
+  const allTamers    = state.tamers
+  const allDigis     = state.bestiary.filter(d => d.tamerId)
+  const allSurvivors = state.survivors ?? []
+
+  const sheetBtn = (label: string, sub: string, subject: SheetSubject, color = 'var(--ink)') => (
+    <button key={(subject as any).id} onClick={() => setOpen(subject)}
+      style={{ padding: '12px 14px', border: '1px solid var(--line)', borderRadius: 10,
+        background: 'var(--paper)', cursor: 'pointer', textAlign: 'left',
+        fontFamily: 'var(--font-display)', fontSize: 14, textTransform: 'uppercase',
+        letterSpacing: '-0.01em', transition: 'all 0.12s' }}
+      onMouseEnter={e => { e.currentTarget.style.borderColor = color }}
+      onMouseLeave={e => { e.currentTarget.style.borderColor = 'var(--line)' }}>
+      {label}
+      <div style={{ fontFamily: 'var(--font-mono)', fontSize: 9, color: 'var(--ink-mute)',
+        marginTop: 4, textTransform: 'uppercase', letterSpacing: '0.08em' }}>
+        {sub}
+      </div>
+    </button>
+  )
 
   return (
     <div>
@@ -195,36 +212,9 @@ function SheetSection({ state, onUpdate }: Props) {
 
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(160px,1fr))',
         gap: 10, marginBottom: 20 }}>
-        {allTamers.map(t => (
-          <button key={t.id} onClick={() => setOpen({ kind: 'tamer', id: t.id })}
-            style={{ padding: '12px 14px', border: '1px solid var(--line)', borderRadius: 10,
-              background: 'var(--paper)', cursor: 'pointer', textAlign: 'left',
-              fontFamily: 'var(--font-display)', fontSize: 14, textTransform: 'uppercase',
-              letterSpacing: '-0.01em', transition: 'all 0.12s' }}
-            onMouseEnter={e => { e.currentTarget.style.borderColor = 'var(--ink)' }}
-            onMouseLeave={e => { e.currentTarget.style.borderColor = 'var(--line)' }}>
-            {t.name}
-            <div style={{ fontFamily: 'var(--font-mono)', fontSize: 9, color: 'var(--ink-mute)',
-              marginTop: 4, textTransform: 'uppercase', letterSpacing: '0.08em' }}>
-              Tamer
-            </div>
-          </button>
-        ))}
-        {allDigis.map(d => (
-          <button key={d.id} onClick={() => setOpen({ kind: 'digimon', id: d.id })}
-            style={{ padding: '12px 14px', border: '1px solid var(--line)', borderRadius: 10,
-              background: 'var(--paper)', cursor: 'pointer', textAlign: 'left',
-              fontFamily: 'var(--font-display)', fontSize: 14, textTransform: 'uppercase',
-              letterSpacing: '-0.01em', transition: 'all 0.12s' }}
-            onMouseEnter={e => { e.currentTarget.style.borderColor = 'var(--teal)' }}
-            onMouseLeave={e => { e.currentTarget.style.borderColor = 'var(--line)' }}>
-            {d.name.replace(' Line', '')}
-            <div style={{ fontFamily: 'var(--font-mono)', fontSize: 9, color: 'var(--ink-mute)',
-              marginTop: 4, textTransform: 'uppercase', letterSpacing: '0.08em' }}>
-              Digimon
-            </div>
-          </button>
-        ))}
+        {allTamers.map(t    => sheetBtn(t.name, 'Tamer', { kind: 'tamer', id: t.id }))}
+        {allDigis.map(d     => sheetBtn(d.name.replace(' Line', ''), 'Digimon', { kind: 'digimon', id: d.id }, 'var(--teal)'))}
+        {allSurvivors.map(sv => sheetBtn(sv.name, 'Survivor', { kind: 'survivor', id: sv.id }, 'var(--rose, var(--coral))'))}
       </div>
 
       {open && (

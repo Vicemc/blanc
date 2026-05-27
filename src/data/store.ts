@@ -15,6 +15,7 @@ import { idbLoad, idbLoadImage, idbListImageKeys, idbSave, idbSaveImage } from '
 export { idbLoadImage, idbListImageKeys, idbSaveImage } from './persistence';
 import { DIGIMON_DEFAULT_IMAGES, TAMER_DEFAULT_IMAGES } from './images';
 export { DIGIMON_DEFAULT_IMAGES, TAMER_DEFAULT_IMAGES } from './images';
+import { DEFAULT_SURVIVORS } from './domain';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Persistência — localStorage + IndexedDB (fallback duplo)
@@ -40,9 +41,10 @@ export function attachExportImageKeys(s: AppState): AppState {
     img && !key ? `img-${id}-${Date.now()}` : key ?? null;
   return {
     ...s,
-    tamers:   s.tamers.map(t   => ({ ...t,   imageKey: stamp(t.id,   t.image,   t.imageKey)   })),
-    bestiary: s.bestiary.map(d => ({ ...d,   imageKey: stamp(d.id,   d.image,   d.imageKey)   })),
-    bugs:     s.bugs.map(b     => ({ ...b,   imageKey: stamp(b.id,   b.image,   b.imageKey)   })),
+    tamers:    s.tamers.map(t    => ({ ...t, imageKey: stamp(t.id,  t.image,  t.imageKey)  })),
+    survivors: (s.survivors ?? []).map(sv => ({ ...sv, imageKey: stamp(sv.id, sv.image ?? null, sv.imageKey) })),
+    bestiary:  s.bestiary.map(d  => ({ ...d, imageKey: stamp(d.id,  d.image,  d.imageKey)  })),
+    bugs:      s.bugs.map(b      => ({ ...b, imageKey: stamp(b.id,  b.image,  b.imageKey)  })),
   };
 }
 
@@ -120,8 +122,37 @@ function mergeWithDefaults(saved: AppState, defaults: AppState): AppState {
   const savedBestiaryIds = new Set(saved.bestiary?.map(d => d.id) ?? []);
   const savedBugIds      = new Set(saved.bugs?.map(b => b.id) ?? []);
 
+  // Migration: se um tamer chamado Yahiro existir no saved, converte para Survivor
+  let savedSurvivors = saved.survivors ?? [];
+  let savedTamers    = saved.tamers    ?? [];
+  if (!savedSurvivors.some(sv => sv.name.toLowerCase().includes('yahiro'))) {
+    const yahiroTamer = savedTamers.find(t => t.name.toLowerCase().includes('yahiro'));
+    if (yahiroTamer) {
+      const sv = defaults.survivors.find(s => s.name.toLowerCase().includes('yahiro'));
+      const converted = {
+        ...(sv ?? defaults.survivors[0]),
+        id:       yahiroTamer.id.startsWith('t-') ? yahiroTamer.id.replace('t-', 'sv-') : `sv-${yahiroTamer.id}`,
+        name:     yahiroTamer.name,
+        surname:  yahiroTamer.surname,
+        portrait: yahiroTamer.portrait,
+        image:    yahiroTamer.image ?? null,
+        imageKey: yahiroTamer.imageKey ?? null,
+      };
+      savedSurvivors = [...savedSurvivors, converted];
+      savedTamers    = savedTamers.filter(t => t.id !== yahiroTamer.id);
+    }
+  }
+
+  // Survivors: preserva totalmente (sem código-fixo de merits), injeta defaults que faltem
+  const survivorIds = new Set(savedSurvivors.map(sv => sv.id));
+  const survivors = [
+    ...savedSurvivors,
+    ...defaults.survivors.filter(sv => !survivorIds.has(sv.id)),
+  ];
+
   return {
     ...saved,
+    survivors,
     stages:         saved.stages         ?? [],
     sectors:        saved.sectors        ?? defaults.sectors,
     bugFolders:     saved.bugFolders     ?? defaults.bugFolders,
@@ -245,10 +276,11 @@ async function hydrateImages(s: AppState): Promise<AppState> {
 
   return {
     ...s,
-    tamers:   await Promise.all(s.tamers.map(hydrateTamer)),
-    bestiary: await Promise.all(s.bestiary.map(hydrateDigimon)),
-    bugs:     await Promise.all(s.bugs.map(hydrateFn)),
-    signs:    await Promise.all((s.signs ?? []).map(hydrateFn)),
+    tamers:    await Promise.all(s.tamers.map(hydrateTamer)),
+    survivors: await Promise.all((s.survivors ?? []).map(hydrateFn)),
+    bestiary:  await Promise.all(s.bestiary.map(hydrateDigimon)),
+    bugs:      await Promise.all(s.bugs.map(hydrateFn)),
+    signs:     await Promise.all((s.signs ?? []).map(hydrateFn)),
   };
 }
 
@@ -2664,6 +2696,7 @@ export function buildDefaultState(): AppState {
       greenChevalier, greenPriestess,
       // haru.white — a ser adicionado
     ],
+    survivors: DEFAULT_SURVIVORS,
     stages: [],
     sectors: defaultSectors,
     bugFolders: defaultBugFolders,
