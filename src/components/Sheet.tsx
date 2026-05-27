@@ -225,16 +225,48 @@ function AttributeGrid({ attrs, editable, pending, onPend, onUnpend, onFreeEdit,
         </div>
       )}
       {attrView === 'classica' ? (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 10, marginTop: 8 }}>
-          {ATTRIBUTE_GROUPS.map(g => (
-            <div key={g.label} style={{ display: 'flex', alignItems: 'flex-start', gap: 12 }}>
+        <div style={{ display: 'flex', flexDirection: 'column', marginTop: 8 }}>
+          {ATTRIBUTE_GROUPS.map((g, gi) => (
+            <div key={g.label} style={{
+              display: 'grid', gridTemplateColumns: '76px repeat(3, 1fr)',
+              borderBottom: gi < ATTRIBUTE_GROUPS.length - 1 ? '1px solid var(--line-soft)' : undefined,
+              padding: '8px 0',
+            }}>
               <div style={{ fontFamily: 'var(--font-mono)', fontSize: 9, letterSpacing: '0.14em',
-                textTransform: 'uppercase', color: 'var(--ink-mute)', minWidth: 76, paddingTop: 4 }}>
+                textTransform: 'uppercase', color: 'var(--ink-mute)',
+                display: 'flex', alignItems: 'center', paddingRight: 8 }}>
                 {g.label}
               </div>
-              <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: 2 }}>
-                {g.keys.map(k => attrCell(k))}
-              </div>
+              {g.keys.map(k => {
+                const base = attrs[k] ?? 0
+                const pend = pending?.[k] ?? 0
+                const displayed = base + pend
+                return (
+                  <div key={k} style={{ padding: '0 6px' }}>
+                    <div style={{ fontFamily: 'var(--font-body)', fontSize: 12,
+                      color: 'var(--ink)', marginBottom: 4 }}>{k}</div>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 4, flexWrap: 'wrap' }}>
+                      <ValueDisplay value={base} max={5} pend={pend} />
+                      {useContext(DisplayModeCtx) === 'number' && pend > 0 && (
+                        <span style={{ fontFamily: 'var(--font-mono)', fontSize: 11, color: 'var(--coral)', fontWeight: 700 }}>+{pend}</span>
+                      )}
+                      {editable && freeMode && (
+                        <>
+                          <button onClick={() => onFreeEdit?.(k, 1)} className={styles.attrFreeBtn} title={`${k} +1`} disabled={base >= 5}>+</button>
+                          <button onClick={() => onFreeEdit?.(k, -1)} className={styles.attrFreeBtn} title={`${k} -1`} disabled={base <= 1}>−</button>
+                        </>
+                      )}
+                      {editable && !freeMode && displayed < 5 && (
+                        <button onClick={() => onPend?.(k)} className={styles.pendBtn}
+                          title={`+1 ${k} (custa ${xpCostAttribute(displayed + 1)} XP)`}>+</button>
+                      )}
+                      {editable && !freeMode && pend > 0 && (
+                        <button onClick={() => onUnpend?.(k)} className={styles.pendBtnUndo} title="Desfazer">−</button>
+                      )}
+                    </div>
+                  </div>
+                )
+              })}
             </div>
           ))}
         </div>
