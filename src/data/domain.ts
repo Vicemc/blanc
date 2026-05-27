@@ -1,4 +1,4 @@
-import type { AppState, Survivor, SurvivorStatus, SurvivorAttributes, Merit, MindLink, SkillSet, Portrait } from '../types'
+import type { AppState, Survivor, SurvivorStatus, SurvivorAttributes, Merit, MindLink, SkillSet, Portrait, SurvivorLoreBlock } from '../types'
 import { DEFAULT_SKILL_SET } from '../types'
 
 export function makeSurvivor(id: string, name: string, portrait: Portrait = 'sage'): Survivor {
@@ -19,6 +19,11 @@ export function makeSurvivor(id: string, name: string, portrait: Portrait = 'sag
     merits:   [],
     mindLink: { digimonId: null, active: false },
     inventory: [],
+    lore: [
+      { text: '', visible: false },
+      { text: '', visible: false },
+      { text: '', visible: false },
+    ] as SurvivorLoreBlock[],
   }
 }
 

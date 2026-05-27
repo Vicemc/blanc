@@ -149,6 +149,11 @@ export interface MindLink {
   active:    boolean;
 }
 
+export interface SurvivorLoreBlock {
+  text:    string;
+  visible: boolean;
+}
+
 export interface Survivor {
   id:         string;
   name:       string;
@@ -169,6 +174,7 @@ export interface Survivor {
   merits:     Merit[];
   mindLink:   MindLink;
   inventory:  InventoryItem[];
+  lore?:      SurvivorLoreBlock[];
 }
 
 // ---------- Digimon Skill ----------

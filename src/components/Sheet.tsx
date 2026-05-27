@@ -2,7 +2,7 @@ import type {
   AppState, Tamer, DigimonLine, DigimonStage, Bug, Sign,
   AttributeKey, Attributes, SkillSet, TamerSkill, DigimonSkill, DigimonStageStatus, PassiveToggleBonus,
   SkillTreePhase, InventoryItem,
-  Survivor, Merit, SurvivorAttributes, SurvivorStatus
+  Survivor, Merit, SurvivorAttributes, SurvivorStatus, SurvivorLoreBlock
 } from '../types'
 import { ATTRIBUTE_GROUPS, ATTRIBUTE_KEYS, AFFINITY_KEYS, PORTRAIT_LIST, BUG_COLORS } from '../types'
 import {
@@ -2829,6 +2829,90 @@ function SurvivorInventoryTab({ sv, editable, onSave }: {
   )
 }
 
+// ── SurvivorLoreTab ────────────────────────────────────────────────
+function SurvivorLoreTab({ sv, editable, isGM, onSave }: {
+  sv: Survivor; editable: boolean; isGM?: boolean; onSave: (sv: Survivor) => void
+}) {
+  const DEFAULT_LORE: SurvivorLoreBlock[] = [
+    { text: '', visible: false },
+    { text: '', visible: false },
+    { text: '', visible: false },
+  ]
+  const lore = sv.lore && sv.lore.length === 3 ? sv.lore : DEFAULT_LORE
+  const LABELS = ['I', 'II', 'III']
+
+  const updateBlock = (i: number, patch: Partial<SurvivorLoreBlock>) => {
+    const next = lore.map((b, j) => j === i ? { ...b, ...patch } : b)
+    onSave({ ...sv, lore: next })
+  }
+
+  const visibleBlocks = lore.filter(b => b.visible)
+
+  if (!isGM && visibleBlocks.length === 0) {
+    return (
+      <div style={{ padding: '32px 0', fontFamily: 'var(--font-mono)', fontSize: 12, color: 'var(--ink-mute)', textAlign: 'center', letterSpacing: '0.08em' }}>
+        Nenhuma informação disponível.
+      </div>
+    )
+  }
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 24, padding: '8px 0' }}>
+      {lore.map((block, i) => {
+        if (!isGM && !block.visible) return null
+        return (
+          <div key={i}>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 }}>
+              <span style={{ fontFamily: 'var(--font-mono)', fontSize: 11, letterSpacing: '0.12em', textTransform: 'uppercase', color: 'var(--ink-mute)', fontWeight: 700 }}>
+                Informação {LABELS[i]}
+              </span>
+              {isGM && editable && (
+                <button
+                  onClick={() => updateBlock(i, { visible: !block.visible })}
+                  style={{
+                    padding: '3px 12px', borderRadius: 999, cursor: 'pointer',
+                    fontFamily: 'var(--font-mono)', fontSize: 10, letterSpacing: '0.08em',
+                    background: block.visible ? 'var(--teal)' : 'transparent',
+                    border: '1px solid var(--teal)',
+                    color: block.visible ? 'var(--paper)' : 'var(--teal)',
+                    transition: 'all 0.15s',
+                  }}>
+                  {block.visible ? '● Visível' : '○ Oculto'}
+                </button>
+              )}
+            </div>
+            {isGM && editable ? (
+              <textarea
+                value={block.text}
+                onChange={e => updateBlock(i, { text: e.target.value })}
+                placeholder="Escreva aqui..."
+                style={{
+                  width: '100%', minHeight: 140, boxSizing: 'border-box',
+                  padding: '12px 14px', borderRadius: 8, border: '1px solid var(--line)',
+                  fontFamily: 'var(--font-body)', fontSize: 14, lineHeight: 1.65,
+                  background: 'var(--paper)', color: 'var(--ink)', resize: 'vertical',
+                  outline: 'none',
+                }}
+              />
+            ) : (
+              <div style={{
+                fontFamily: 'var(--font-body)', fontSize: 14, lineHeight: 1.7,
+                color: block.text ? 'var(--ink)' : 'var(--ink-mute)',
+                whiteSpace: 'pre-wrap',
+                padding: '12px 14px', borderRadius: 8,
+                border: '1px solid var(--line-soft)',
+                background: 'var(--paper-raised, var(--paper))',
+              }}>
+                {block.text || 'Sem conteúdo.'}
+              </div>
+            )}
+          </div>
+        )
+      })}
+    </div>
+  )
+}
+
 // ── SurvivorView ───────────────────────────────────────────────────
 function SurvivorView({ sv, editable, isGM, onSave, state, wide = false }: {
   sv: Survivor; editable: boolean; isGM?: boolean
@@ -2838,6 +2922,7 @@ function SurvivorView({ sv, editable, isGM, onSave, state, wide = false }: {
   const [showAddMerit, setShowAddMerit]   = useState(false)
   const [showAddSkill, setShowAddSkill]   = useState(false)
   const [passiveToggles, setPassiveToggles] = useState<Record<number, { active: boolean; x: number }>>({})
+  const [editInfo, setEditInfo]           = useState(false)
 
   const editAttr = (k: keyof SurvivorAttributes, v: number) =>
     onSave({ ...sv, attributes: { ...sv.attributes, [k]: Math.max(1, Math.min(5, v)) } })
@@ -3049,6 +3134,19 @@ function SurvivorView({ sv, editable, isGM, onSave, state, wide = false }: {
       ) : (
         <>{leftCol}{rightCol}</>
       )}
+      {editable && editInfo && (
+        <>
+          <SectionTitle>Informações</SectionTitle>
+          <SurvivorInfoEditor sv={sv} onSave={s => { onSave(s); setToast('Info salva!') }} />
+        </>
+      )}
+      {editable && (
+        <div style={{ marginBottom: 12 }}>
+          <button className={styles.btnGhost} style={{ fontSize: 11 }} onClick={() => setEditInfo(p => !p)}>
+            {editInfo ? '✕ Fechar info' : '✎ Editar info'}
+          </button>
+        </div>
+      )}
     </div>
   )
 }
@@ -3232,7 +3330,7 @@ export function FullSheet({ subject, state, onSaveState, onClose, editable = fal
         {showTamer && <TamerView tamer={tamer!} line={line} editable={editable} isGM={isGM} onSave={saveTamer} onSaveLine={saveLine} onSaveAll={saveAllAutoridade} state={state} onSaveState={onSaveState} onSpawnToken={onSpawnToken} wide={wide} />}
         {active === 'inventario' && tamer && <DigiviceInventoryTab tamerId={tamer.id} editable={editable} isGM={isGM} />}
         {active === 'survivor' && survivor && <SurvivorView sv={survivor} editable={editable} isGM={isGM} onSave={saveSurvivor} state={state} wide={wide} />}
-        {active === 'sv-info' && survivor && <SurvivorInfoEditor sv={survivor} onSave={saveSurvivor} />}
+        {active === 'sv-info' && survivor && <SurvivorLoreTab sv={survivor} editable={editable} isGM={isGM} onSave={saveSurvivor} />}
         {active === 'sv-inventario' && survivor && <SurvivorInventoryTab sv={survivor} editable={editable} onSave={saveSurvivor} />}
         {stageIdx !== null && line && (
           <DigimonStageView line={line} stageIdx={stageIdx} tamer={tamer} editable={editable} isGM={isGM} onSaveLine={saveLine} onSaveTamer={tamer ? saveTamer : undefined}
