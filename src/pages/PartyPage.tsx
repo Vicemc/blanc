@@ -211,6 +211,7 @@ function AddSurvivorModal({ state, onSave, onClose }: { state: AppState; onSave:
   const [surname, setSurname]   = useState('')
   const [tagline, setTagline]   = useState('')
   const [age, setAge]           = useState('')
+  const [height, setHeight]     = useState('')
   const [sign, setSign]         = useState('')
   const [birthday, setBirthday] = useState('')
   const [voice, setVoice]       = useState('')
@@ -224,6 +225,7 @@ function AddSurvivorModal({ state, onSave, onClose }: { state: AppState; onSave:
       surname:  surname  || undefined,
       tagline:  tagline  || undefined,
       age:      age      || undefined,
+      height:   parseInt(height) || undefined,
       sign:     sign     || undefined,
       birthday: birthday || undefined,
       voice:    voice    || undefined,
@@ -250,8 +252,9 @@ function AddSurvivorModal({ state, onSave, onClose }: { state: AppState; onSave:
             {inp('Sobrenome', surname, setSurname, 'Akugetsu')}
           </div>
           {inp('Tagline', tagline, setTagline, 'Aquela que carrega as cerejeiras')}
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 12 }}>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr 1fr', gap: 12 }}>
             {inp('Idade', age, setAge, '17')}
+            {inp('Altura (cm)', height, setHeight, '160')}
             {inp('Signo', sign, setSign, 'Áries')}
             {inp('Aniversário', birthday, setBirthday, '25 de Março')}
           </div>
@@ -388,7 +391,7 @@ export default function PartyPage({ state, onUpdate, canEdit, isGM }: Props) {
             <div className={styles.info}>
               <div style={{ fontFamily: 'var(--font-mono)', fontSize: 9, letterSpacing: '0.14em', textTransform: 'uppercase', color: 'var(--ink-mute)', marginBottom: 2 }}>Survivor</div>
               <h3 className={styles.name}>{sv.name}</h3>
-              {(sv.age || sv.sign) && <div className={styles.meta}>{[sv.age && `${sv.age} anos`, sv.sign].filter(Boolean).join(' · ')}</div>}
+              {(sv.age || sv.sign || sv.height) && <div className={styles.meta}>{[sv.age && `${sv.age} anos`, sv.sign, sv.height && `${sv.height} cm`].filter(Boolean).join(' · ')}</div>}
               {sv.tagline && <div className={styles.tagline}>~ {sv.tagline} ~</div>}
               <div className={styles.xpBar} style={{ display: 'flex', gap: 8 }}>
                 <span className={styles.xpPill}>HP: <b>{sv.status.HP.v}/{sv.status.HP.max}</b></span>

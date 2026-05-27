@@ -27,6 +27,7 @@ const DEFAULT_SURVIVORS: Survivor[] = [
     ...makeSurvivor('sv-yahiro', 'Yahiro', 'rose'),
     surname: 'Akugetsu',
     tagline: 'Aquela que carrega as cerejeiras',
+    age: 17, height: 158, sign: 'Sagitário', birthday: '17 de Dezembro', voice: 'Yui Ishikawa',
     attributes: { Poder: 2, Refinamento: 3, Resistência: 2 },
     status: { HP: { v: 10, max: 10 }, Digisoul: { v: 8, max: 8 }, Deslocamento: 3, Iniciativa: 3 },
   },

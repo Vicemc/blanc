@@ -154,6 +154,7 @@ export interface Survivor {
   name:       string;
   surname?:   string;
   age?:       string | number;
+  height?:    number;
   birthday?:  string;
   sign?:      string;
   voice?:     string;

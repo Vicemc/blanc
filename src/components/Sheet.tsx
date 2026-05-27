@@ -1236,6 +1236,9 @@ function SurvivorInfoEditor({ sv, onSave }: { sv: Survivor; onSave: (s: Survivor
         <div><label className={styles.formLabel}>Aniversário</label>{inp(d.birthday ?? '', f('birthday'))}</div>
         <div><label className={styles.formLabel}>Signo</label>{inp(d.sign ?? '', f('sign'))}</div>
         <div><label className={styles.formLabel}>Idade</label>{inp(String(d.age ?? ''), v => setD(s => ({ ...s, age: v || undefined })))}</div>
+        <div><label className={styles.formLabel}>Altura (cm)</label>
+          <input type="number" min={0} value={d.height ?? ''} onChange={e => setD(s => ({ ...s, height: parseInt(e.target.value) || undefined }))} className={styles.formInput} />
+        </div>
       </div>
       <div style={{ marginBottom: 10 }}>
         <label className={styles.formLabel}>Cor do retrato</label>
@@ -3082,7 +3085,7 @@ export function FullSheet({ subject, state, onSaveState, onClose, editable = fal
     headMeta = [tamer.surname, tamer.age && `${tamer.age} anos`, tamer.sign, tamer.height && `${tamer.height} cm`, tamer.voice].filter(Boolean).join(' · ')
   } else if (survivor) {
     headPortrait = survivor.portrait; headName = survivor.name; headImage = survivor.image ?? null
-    headMeta = [survivor.surname, survivor.age && `${survivor.age} anos`, survivor.sign, survivor.voice].filter(Boolean).join(' · ') || 'Survivor'
+    headMeta = [survivor.surname, survivor.age && `${survivor.age} anos`, survivor.sign, survivor.height && `${survivor.height} cm`, survivor.voice].filter(Boolean).join(' · ') || 'Survivor'
   } else if (line) {
     const displayIdx = stageIdx ?? line.currentStage
     const curS = line.stages[displayIdx] ?? line.stages[1] ?? line.stages[0]
