@@ -6,6 +6,7 @@ import { useState, useEffect, useRef, useCallback } from 'react'
 import type { AppState } from '../types'
 import type { UserProfile } from '../lib/auth'
 import { supabase } from '../lib/supabase'
+import { useSettings } from '../lib/settings'
 
 interface Props {
   state:            AppState
@@ -109,6 +110,7 @@ function markGroupSeen(groupId: string) {
 // ── DigiZapPage ───────────────────────────────────────────────────────────────
 
 export default function DigiZapPage({ state, profile, isGM, onUnreadChange }: Props) {
+  const { settings } = useSettings()
   const [groups,         setGroups]         = useState<DigiZapGroup[]>([])
   const [activeGroupId,  setActiveGroupId]  = useState<string | null>(null)
   const [messages,       setMessages]       = useState<DigiZapMessage[]>([])
@@ -126,6 +128,8 @@ export default function DigiZapPage({ state, profile, isGM, onUnreadChange }: Pr
   const [newGroupMembers, setNewGroupMembers] = useState<string[]>([])
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const activeGroupIdRef = useRef<string | null>(null)
+  const digizapSoundRef  = useRef(settings.digizapSound)
+  useEffect(() => { digizapSoundRef.current = settings.digizapSound }, [settings.digizapSound])
 
   // Mantém ref sincronizado para uso dentro de callbacks de realtime
   useEffect(() => { activeGroupIdRef.current = activeGroupId }, [activeGroupId])
@@ -233,7 +237,7 @@ export default function DigiZapPage({ state, profile, isGM, onUnreadChange }: Pr
             onUnreadChange?.(computeTotal(next))
             return next
           })
-          playPing()
+          if (digizapSoundRef.current) playPing()
         }
       })
       .subscribe()

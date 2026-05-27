@@ -175,6 +175,41 @@ function AttributeGrid({ attrs, editable, pending, onPend, onUnpend, onFreeEdit,
     setFreeModeInternal(next)
     onFreeModeChange?.(next)
   }
+  const { settings } = useSettings()
+  const attrView = settings.attrView
+
+  const attrCell = (k: AttributeKey) => {
+    const base = attrs[k] ?? 0
+    const pend = pending?.[k] ?? 0
+    const displayed = base + pend
+    return (
+      <div key={k} className={styles.attrRow}>
+        <span className={styles.attrName}>{k}</span>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexShrink: 0 }}>
+          <ValueDisplay value={base} max={5} pend={pend} />
+          {useContext(DisplayModeCtx) === 'number' && pend > 0 && (
+            <span style={{ fontFamily: 'var(--font-mono)', fontSize: 11, color: 'var(--coral)', fontWeight: 700 }}>
+              +{pend}
+            </span>
+          )}
+          {editable && freeMode && (
+            <>
+              <button onClick={() => onFreeEdit?.(k, 1)} className={styles.attrFreeBtn} title={`${k} +1 (sem XP)`} disabled={base >= 5}>+</button>
+              <button onClick={() => onFreeEdit?.(k, -1)} className={styles.attrFreeBtn} title={`${k} -1 (sem XP)`} disabled={base <= 1}>−</button>
+            </>
+          )}
+          {editable && !freeMode && displayed < 5 && (
+            <button onClick={() => onPend?.(k)} className={styles.pendBtn}
+              title={`+1 ${k} (custa ${xpCostAttribute(displayed + 1)} XP)`}>+</button>
+          )}
+          {editable && !freeMode && pend > 0 && (
+            <button onClick={() => onUnpend?.(k)} className={styles.pendBtnUndo} title="Desfazer">−</button>
+          )}
+        </div>
+      </div>
+    )
+  }
+
   return (
     <div>
       {editable && (
@@ -189,44 +224,30 @@ function AttributeGrid({ attrs, editable, pending, onPend, onUnpend, onFreeEdit,
           {freeMode && <span style={{ fontFamily: 'var(--font-mono)', fontSize: 10, color: 'var(--ink-mute)', letterSpacing: '0.1em' }}>edição direta · sem custo</span>}
         </div>
       )}
-      <div className={styles.attrGrid}>
-        {ATTRIBUTE_GROUPS.map(g => (
-          <div key={g.label} className={styles.attrGroup}>
-            <div className={styles.attrGroupLabel}>{g.label}</div>
-            {g.keys.map(k => {
-              const base = attrs[k] ?? 0
-              const pend = pending?.[k] ?? 0
-              const displayed = base + pend
-              return (
-                <div key={k} className={styles.attrRow}>
-                  <span className={styles.attrName}>{k}</span>
-                  <div style={{ display: "flex", alignItems: "center", gap: 6, flexShrink: 0 }}>
-                    <ValueDisplay value={base} max={5} pend={pend} />
-                    {useContext(DisplayModeCtx) === 'number' && pend > 0 && (
-                      <span style={{ fontFamily: 'var(--font-mono)', fontSize: 11, color: 'var(--coral)', fontWeight: 700 }}>
-                        +{pend}
-                      </span>
-                    )}
-                    {editable && freeMode && (
-                      <>
-                        <button onClick={() => onFreeEdit?.(k, 1)} className={styles.attrFreeBtn} title={`${k} +1 (sem XP)`} disabled={base >= 5}>+</button>
-                        <button onClick={() => onFreeEdit?.(k, -1)} className={styles.attrFreeBtn} title={`${k} -1 (sem XP)`} disabled={base <= 1}>−</button>
-                      </>
-                    )}
-                    {editable && !freeMode && displayed < 5 && (
-                      <button onClick={() => onPend?.(k)} className={styles.pendBtn}
-                        title={`+1 ${k} (custa ${xpCostAttribute(displayed + 1)} XP)`}>+</button>
-                    )}
-                    {editable && !freeMode && pend > 0 && (
-                      <button onClick={() => onUnpend?.(k)} className={styles.pendBtnUndo} title="Desfazer">−</button>
-                    )}
-                  </div>
-                </div>
-              )
-            })}
-          </div>
-        ))}
-      </div>
+      {attrView === 'classica' ? (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 10, marginTop: 8 }}>
+          {ATTRIBUTE_GROUPS.map(g => (
+            <div key={g.label} style={{ display: 'flex', alignItems: 'flex-start', gap: 12 }}>
+              <div style={{ fontFamily: 'var(--font-mono)', fontSize: 9, letterSpacing: '0.14em',
+                textTransform: 'uppercase', color: 'var(--ink-mute)', minWidth: 76, paddingTop: 4 }}>
+                {g.label}
+              </div>
+              <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: 2 }}>
+                {g.keys.map(k => attrCell(k))}
+              </div>
+            </div>
+          ))}
+        </div>
+      ) : (
+        <div className={styles.attrGrid}>
+          {ATTRIBUTE_GROUPS.map(g => (
+            <div key={g.label} className={styles.attrGroup}>
+              <div className={styles.attrGroupLabel}>{g.label}</div>
+              {g.keys.map(k => attrCell(k))}
+            </div>
+          ))}
+        </div>
+      )}
     </div>
   )
 }
@@ -1900,8 +1921,7 @@ function TamerView({ tamer, line, editable, isGM, onSave, onSaveLine, onSaveAll,
     </>
   )
 
-  {/* ── Coluna direita (skills + tamer skills) ─── */}
-  const rightCol = (
+  const skillsSection = (
     <>
       <SectionTitle>Skills</SectionTitle>
       <SkillGrid skills={tamer.skills} editable={editable} freeMode={freeMode}
@@ -1911,7 +1931,12 @@ function TamerView({ tamer, line, editable, isGM, onSave, onSaveLine, onSaveAll,
           const nv  = Math.max(0, Math.min(5, cur + delta))
           onSave({ ...tamer, skills: { ...tamer.skills, [cat]: { ...tamer.skills[cat], [name]: nv } } })
         }} />
+    </>
+  )
 
+  {/* ── Coluna direita (tamer skills + parceiro + skill tree) ─── */}
+  const rightCol = (
+    <>
       <SectionTitle action={editable && !showAdd && (
         <button className={styles.btnGhost} style={{ fontSize:11 }} onClick={() => setShowAdd(true)}>+ Nova Skill</button>
       )}>Tamer Skills</SectionTitle>
@@ -1983,12 +2008,13 @@ function TamerView({ tamer, line, editable, isGM, onSave, onSaveLine, onSaveAll,
       )}
       {wide ? (
         <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:'0 48px', alignItems:'start' }}>
-          <div>{leftCol}</div>
+          <div>{leftCol}{skillsSection}</div>
           <div>{rightCol}</div>
         </div>
       ) : (
         <>
           {leftCol}
+          {skillsSection}
           {rightCol}
         </>
       )}
@@ -2610,7 +2636,8 @@ export function FullSheet({ subject, state, onSaveState, onClose, editable = fal
 
   const initial = (kind === 'pair' && (subject as any).stage != null) ? `stage-${(subject as any).stage}` : tabs[0]?.id ?? ''
   const [active, setActive] = useState(initial)
-  const [displayMode, setDisplayMode] = useState<'number' | 'dots'>('number')
+  const { settings } = useSettings()
+  const displayMode = settings.sheetDotMode
   const [showDelete, setShowDelete] = useState(false)
   const [deleteInput, setDeleteInput] = useState('')
 
@@ -2717,12 +2744,6 @@ export function FullSheet({ subject, state, onSaveState, onClose, editable = fal
               + Estágio
             </button>
           )}
-          <button
-            onClick={() => setDisplayMode(m => m === 'number' ? 'dots' : 'number')}
-            title={displayMode === 'number' ? 'Mudar para bolinhas' : 'Mudar para números'}
-            style={{ background:'transparent', border:'1px solid var(--line)', borderRadius:6, cursor:'pointer', fontFamily:'var(--font-mono)', fontSize:11, letterSpacing:'0.08em', color:'var(--ink-mute)', padding:'3px 10px', lineHeight:1, transition:'all 0.15s' }}>
-            {displayMode === 'number' ? '◌◌◌' : '1 2 3'}
-          </button>
         </div>
       </div>
 

@@ -1,15 +1,23 @@
 import React, { createContext, useContext, useState, useCallback } from 'react'
 
 export interface AppSettings {
-  hideTaglines: { enabled: boolean; pages: string[] }
-  roundPopup:   boolean
-  sheetView:    'vertical' | 'horizontal'
+  hideTaglines:  { enabled: boolean; pages: string[] }
+  roundPopup:    boolean
+  sheetView:     'vertical' | 'horizontal'
+  sheetDotMode:  'number' | 'dots'
+  partyCompact:  boolean
+  attrView:      'blanc' | 'classica'
+  digizapSound:  boolean
 }
 
 const DEFAULT: AppSettings = {
-  hideTaglines: { enabled: false, pages: ['all'] },
-  roundPopup:   true,
-  sheetView:    'vertical',
+  hideTaglines:  { enabled: false, pages: ['all'] },
+  roundPopup:    true,
+  sheetView:     'vertical',
+  sheetDotMode:  'number',
+  partyCompact:  false,
+  attrView:      'blanc',
+  digizapSound:  true,
 }
 
 const KEY = 'survive_settings'

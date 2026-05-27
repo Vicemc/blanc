@@ -190,6 +190,7 @@ function AppInner() {
             )}
           </NavLink>
         )}
+        <NavLink to="/configuracoes" className={({ isActive }) => isActive ? styles.active : ''}>Config</NavLink>
         {isGM && (
           <NavLink to="/backstage"  className={({ isActive }) => isActive ? styles.active : ''}>Backstage</NavLink>
         )}
@@ -237,7 +238,6 @@ function AppInner() {
         {isSupabaseReady && session && (
           <button className={styles.navBtn} onClick={signOut}>Sair</button>
         )}
-        <NavLink to="/configuracoes" className={({ isActive }) => isActive ? styles.active : ''}>⚙</NavLink>
       </nav>
 
       {showSetupBanner && (

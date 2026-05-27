@@ -7,6 +7,7 @@ import { PageHead } from '../components/PageHead'
 import { GrainFill } from '../components/GrainFill'
 import { SheetModal } from '../components/Sheet'
 import type { SheetSubject } from '../components/Sheet'
+import { useSettings } from '../lib/settings'
 import styles from './PartyPage.module.css'
 
 interface Props {
@@ -207,7 +208,12 @@ function AddTamerModal({ state, onSave, onClose }: { state: AppState; onSave: (s
 export default function PartyPage({ state, onUpdate, canEdit, isGM }: Props) {
   const [open, setOpen]       = useState<SheetSubject | null>(null)
   const [showAdd, setShowAdd] = useState(false)
-  const [compactGrid, setCompactGrid] = useState(false)
+  const { settings, update: updateSettings } = useSettings()
+  const compactGrid = settings.partyCompact
+  const setCompactGrid = (v: boolean | ((prev: boolean) => boolean)) => {
+    const next = typeof v === 'function' ? v(compactGrid) : v
+    updateSettings({ partyCompact: next })
+  }
 
   const handleImageUpload = useCallback(async (tamerId: string, dataUrl: string) => {
     const url = await uploadImage(dataUrl, tamerId)

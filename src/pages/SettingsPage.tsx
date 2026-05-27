@@ -3,11 +3,11 @@ import { PageHead } from '../components/PageHead'
 import { useSettings } from '../lib/settings'
 
 const PAGE_OPTIONS = [
-  { id: 'party',     label: 'Party'      },
-  { id: 'goggle',    label: 'Goggle Girl' },
-  { id: 'teatro',    label: 'Teatro'     },
-  { id: 'sistema',   label: 'Sistema'    },
-  { id: 'backstage', label: 'Backstage'  },
+  { id: 'party',     label: 'Party'       },
+  { id: 'goggle',    label: 'Goggle Girl'  },
+  { id: 'teatro',    label: 'Teatro'      },
+  { id: 'sistema',   label: 'Sistema'     },
+  { id: 'backstage', label: 'Backstage'   },
 ]
 
 const row: React.CSSProperties = {
@@ -28,7 +28,6 @@ const sectionHead: React.CSSProperties = {
   marginBottom: 0,
 }
 
-// ── Toggle switch ─────────────────────────────────────────────────────────────
 function Toggle({ checked, onChange }: { checked: boolean; onChange: (v: boolean) => void }) {
   return (
     <button
@@ -50,7 +49,6 @@ function Toggle({ checked, onChange }: { checked: boolean; onChange: (v: boolean
   )
 }
 
-// ── Radio card ────────────────────────────────────────────────────────────────
 function RadioCard({ active, onClick, title, desc }: {
   active: boolean; onClick: () => void; title: string; desc: string
 }) {
@@ -74,7 +72,7 @@ function RadioCard({ active, onClick, title, desc }: {
 
 export default function SettingsPage() {
   const { settings, update } = useSettings()
-  const { hideTaglines, roundPopup, sheetView } = settings
+  const { hideTaglines, roundPopup, sheetView, sheetDotMode, attrView, digizapSound } = settings
 
   function toggleTaglinePage(pageId: string) {
     const current = hideTaglines.pages.filter(p => p !== 'all')
@@ -89,12 +87,18 @@ export default function SettingsPage() {
     update({ hideTaglines: { ...hideTaglines, pages: isAll ? [] : ['all'] } })
   }
 
+  function setPresetPalcoParty() {
+    // Oculta tudo exceto teatro e party
+    update({ hideTaglines: { enabled: true, pages: ['goggle', 'sistema', 'backstage'] } })
+  }
+
   return (
     <div style={{ maxWidth: 720, margin: '0 auto', paddingBottom: 80 }}>
       <PageHead title="Configurações" tag="preferências de exibição" pageId="configuracoes" />
 
-      {/* ── Taglines ─────────────────────────────────────────────────────── */}
       <div style={{ padding: '0 56px' }}>
+
+        {/* ── Exibição ─────────────────────────────────────────────────────── */}
         <div style={sectionHead}>Exibição</div>
 
         <div style={row}>
@@ -106,13 +110,23 @@ export default function SettingsPage() {
             </div>
             {hideTaglines.enabled && (
               <div style={{ marginTop: 14, display: 'flex', flexDirection: 'column', gap: 8 }}>
-                <label style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer',
-                  fontFamily: 'var(--font-body)', fontSize: 13 }}>
-                  <input type="checkbox" checked={hideTaglines.pages.includes('all')}
-                    onChange={toggleAllPages}
-                    style={{ width: 15, height: 15, accentColor: 'var(--teal)', cursor: 'pointer' }} />
-                  Todas as páginas
-                </label>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
+                  <label style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer',
+                    fontFamily: 'var(--font-body)', fontSize: 13 }}>
+                    <input type="checkbox" checked={hideTaglines.pages.includes('all')}
+                      onChange={toggleAllPages}
+                      style={{ width: 15, height: 15, accentColor: 'var(--teal)', cursor: 'pointer' }} />
+                    Todas as páginas
+                  </label>
+                  <button
+                    onClick={setPresetPalcoParty}
+                    style={{ fontFamily: 'var(--font-mono)', fontSize: 10, letterSpacing: '0.1em',
+                      textTransform: 'uppercase', padding: '3px 10px', borderRadius: 999,
+                      border: '1px solid var(--line)', background: 'var(--paper-deep)',
+                      color: 'var(--ink-mute)', cursor: 'pointer' }}>
+                    Preset: só Palco e Party
+                  </button>
+                </div>
                 {!hideTaglines.pages.includes('all') && (
                   <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px 16px', paddingLeft: 4 }}>
                     {PAGE_OPTIONS.map(p => (
@@ -134,24 +148,38 @@ export default function SettingsPage() {
             onChange={v => update({ hideTaglines: { ...hideTaglines, enabled: v } })} />
         </div>
 
-        {/* ── Teatro ───────────────────────────────────────────────────────── */}
+        {/* ── Teatro / Palco ───────────────────────────────────────────────── */}
         <div style={sectionHead}>Teatro / Palco</div>
 
         <div style={row}>
           <div>
             <div style={label}>Pop-up de Round</div>
             <div style={sub}>
-              Exibe uma notificação central com o número do novo Round quando o contador avança no
-              Palco. Fecha automaticamente após 2,5 segundos e toca um som.
+              Exibe uma notificação central com o número do novo Round quando o contador avança.
+              Fecha automaticamente após 2,5 segundos e toca um som.
             </div>
           </div>
           <Toggle checked={roundPopup} onChange={v => update({ roundPopup: v })} />
         </div>
 
-        {/* ── Ficha ─────────────────────────────────────────────────────────── */}
+        {/* ── Digi-Zap ─────────────────────────────────────────────────────── */}
+        <div style={sectionHead}>Digi-Zap</div>
+
+        <div style={row}>
+          <div>
+            <div style={label}>Som de notificação</div>
+            <div style={sub}>
+              Toca um ping sonoro quando uma nova mensagem chega em um grupo que não está ativo
+              no momento.
+            </div>
+          </div>
+          <Toggle checked={digizapSound} onChange={v => update({ digizapSound: v })} />
+        </div>
+
+        {/* ── Ficha de Personagem ───────────────────────────────────────────── */}
         <div style={sectionHead}>Ficha de Personagem</div>
 
-        <div style={{ ...row, flexDirection: 'column', borderBottom: 0 }}>
+        <div style={{ ...row, flexDirection: 'column' }}>
           <div>
             <div style={label}>Modo de Visualização</div>
             <div style={sub}>
@@ -174,6 +202,54 @@ export default function SettingsPage() {
             />
           </div>
         </div>
+
+        <div style={{ ...row, flexDirection: 'column' }}>
+          <div>
+            <div style={label}>Exibição de Valores</div>
+            <div style={sub}>
+              Escolha como os valores numéricos (atributos, skills) são exibidos nas fichas.
+            </div>
+          </div>
+          <div style={{ display: 'flex', gap: 12, width: '100%', marginTop: 14 }}>
+            <RadioCard
+              active={sheetDotMode === 'number'}
+              onClick={() => update({ sheetDotMode: 'number' })}
+              title="Número"
+              desc="Valores exibidos como dígitos (1–5). Mais compacto."
+            />
+            <RadioCard
+              active={sheetDotMode === 'dots'}
+              onClick={() => update({ sheetDotMode: 'dots' })}
+              title="Bolinha"
+              desc="Valores exibidos como bolinhas preenchidas (●●●○○). Visual mais intuitivo."
+            />
+          </div>
+        </div>
+
+        <div style={{ ...row, flexDirection: 'column', borderBottom: 0 }}>
+          <div>
+            <div style={label}>Layout de Atributos</div>
+            <div style={sub}>
+              Blanc exibe os grupos (Poder / Refinamento / Resistência) em colunas verticais.
+              Clássica exibe cada grupo como uma linha horizontal com o rótulo à esquerda.
+            </div>
+          </div>
+          <div style={{ display: 'flex', gap: 12, width: '100%', marginTop: 14 }}>
+            <RadioCard
+              active={attrView === 'blanc'}
+              onClick={() => update({ attrView: 'blanc' })}
+              title="Blanc"
+              desc="Grupos em colunas lado a lado. Layout atual do sistema."
+            />
+            <RadioCard
+              active={attrView === 'classica'}
+              onClick={() => update({ attrView: 'classica' })}
+              title="Clássica"
+              desc="Cada grupo ocupa uma linha — Poder / Refinamento / Resistência como rótulos à esquerda."
+            />
+          </div>
+        </div>
+
       </div>
     </div>
   )
