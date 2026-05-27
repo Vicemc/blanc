@@ -65,6 +65,7 @@ function buildDefaultState(): AppState {
     skillTree: [],
     customClimas: [],
     customKeywords: [],
+    customConditions: [],
     tokenDefs: [],
     visibility: { intro: true, bestiary: true },
   }

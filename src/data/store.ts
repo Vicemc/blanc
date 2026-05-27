@@ -127,8 +127,9 @@ function mergeWithDefaults(saved: AppState, defaults: AppState): AppState {
     bugFolders:     saved.bugFolders     ?? defaults.bugFolders,
     signs:          saved.signs          ?? defaults.signs,
     skillTree:      saved.skillTree      ?? defaults.skillTree,
-    customClimas:   saved.customClimas   ?? [],
-    customKeywords: saved.customKeywords ?? [],
+    customClimas:     saved.customClimas     ?? [],
+    customKeywords:   saved.customKeywords   ?? [],
+    customConditions: saved.customConditions ?? [],
     tokenDefs:      saved.tokenDefs      ?? [],
     visibility:     saved.visibility     ?? {},
 
@@ -2668,8 +2669,9 @@ export function buildDefaultState(): AppState {
     bugFolders: defaultBugFolders,
     signs: [],
     skillTree: [],
-    customClimas: [],
-    customKeywords: [],
+    customClimas:     [],
+    customKeywords:   [],
+    customConditions: [],
     tokenDefs: DEFAULT_TOKEN_DEFS,
     visibility: {},
   };

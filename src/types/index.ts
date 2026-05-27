@@ -316,8 +316,9 @@ export interface AppState {
   bugFolders:  BugFolder[];
   skillTree:   SkillTreePhase[];
   // Extensões pelo GM
-  customClimas:   ClimaEntry[];    // climas adicionados pelo GM (mesclados com os padrão)
-  customKeywords: KeywordEntry[];  // keywords adicionadas pelo GM
+  customClimas:     ClimaEntry[];      // climas gerenciados pelo GM (vazio = usar padrões)
+  customKeywords:   KeywordEntry[];    // keywords gerenciadas pelo GM (vazio = usar padrões)
+  customConditions: ConditionEntry[];  // condições gerenciadas pelo GM (vazio = usar padrões)
   tokenDefs:      TokenDef[];      // tokens definidos (aba Tokens da Goggle Girl)
   // Controle de visibilidade (GM only)
   visibility:  VisibilityMap;      // chave: 'tipo:id', valor: true = visível para players
@@ -361,11 +362,21 @@ export interface ClimaEntry {
 // ---------- Keyword (extensível pelo GM) ----------
 
 export interface KeywordEntry {
-  id:      string
-  keyword: string
-  desc:    string
-  type:    'wound' | 'stack' | 'positive' | 'neg' | 'reaction' | 'neutral'
-  resist?: string
+  id:       string
+  keyword:  string
+  desc:     string
+  type:     'wound' | 'stack' | 'positive' | 'neg' | 'reaction' | 'neutral'
+  resist?:  string
+  category?: string
+}
+
+export interface ConditionEntry {
+  id:       string
+  name:     string
+  category: string
+  desc:     string
+  type:     'wound' | 'stack' | 'positive' | 'neg' | 'reaction' | 'neutral'
+  resist?:  string
 }
 
 // ---------- Token definition (Goggle Girl aba Tokens) ----------

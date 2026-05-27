@@ -1,15 +1,16 @@
 // src/pages/BackstagePage.tsx
 // Painel exclusivo do GM: gerenciar usuários, vincular tamers, liberar Skill Tree.
 
-import { useState, useEffect, useCallback } from 'react'
+import React, { useState, useEffect, useCallback } from 'react'
 import { listProfiles, setUserRole } from '../lib/auth'
 import type { UserProfile } from '../lib/auth'
 import { useAuth } from '../components/AuthProvider'
-import type { AppState, SkillTreePhase, TamerSkill } from '../types'
+import type { AppState, SkillTreePhase, TamerSkill, ClimaEntry, KeywordEntry, ConditionEntry } from '../types'
 import { saveStateToDB } from '../lib/db'
 import { supabase } from '../lib/supabase'
 import { SheetModal } from '../components/Sheet'
 import type { SheetSubject } from '../components/Sheet'
+import { BASE_CLIMAS, BASE_KEYWORDS, BASE_CONDITIONS, getEffectiveClimas, groupBy } from '../data/rulesData'
 
 interface Props {
   state:    AppState
@@ -379,9 +380,496 @@ function SkillTreeSection({ state, onUpdate }: Props) {
   )
 }
 
+// ── Seção: Regras (Climas / Keywords / Condições) ────────────────────────────
+
+const fld: React.CSSProperties = {
+  border: '1px solid var(--line)', borderRadius: 8, padding: '7px 12px',
+  fontFamily: 'var(--font-body)', fontSize: 13, background: 'var(--paper)', color: 'var(--ink)',
+  width: '100%',
+}
+const fldSm: React.CSSProperties = { ...fld, width: 'auto' }
+
+type RulesTab = 'climas' | 'keywords' | 'condicoes'
+
+const KW_TYPES = ['neutral','reaction','wound','stack','positive','neg'] as const
+type KwType = typeof KW_TYPES[number]
+const KW_TYPE_LABELS: Record<KwType, string> = {
+  neutral:'Neutro', reaction:'Reação', wound:'Ferimento', stack:'Acumulação', positive:'Positiva', neg:'Negativa',
+}
+
+// ── Clima CRUD ─────────────────────────────────────────────────────────────────
+function ClimaCrud({ state, onUpdate }: Props) {
+  const effective = getEffectiveClimas(state.customClimas ?? [])
+  const isCustomized = (state.customClimas ?? []).length > 0
+
+  const [editId, setEditId]   = useState<string | null>(null)
+  const [editDraft, setED]    = useState<ClimaEntry | null>(null)
+  const [adding, setAdding]   = useState(false)
+  const [addDraft, setAD]     = useState({ name:'', type:'Natural' as 'Natural'|'Especial', color:'teal', icon:'🌀', effectsRaw:'' })
+
+  function parseEffects(raw: string): ClimaEntry['effects'] {
+    return raw.trim()
+      ? raw.split('\n').filter(Boolean).map(l => {
+          const [tag, ...rest] = l.split(':')
+          return { tag: tag.trim(), desc: rest.join(':').trim(), color: 'ink-soft' }
+        })
+      : [{ tag: 'Neutro', desc: 'Sem efeitos adicionais.', color: 'ink-mute' }]
+  }
+
+  function effectsToRaw(effects: ClimaEntry['effects']): string {
+    return effects.map(e => `${e.tag}: ${e.desc}`).join('\n')
+  }
+
+  function startEdit(c: ClimaEntry) {
+    setEditId(c.id); setED({ ...c })
+    setAdding(false)
+  }
+
+  function saveEdit() {
+    if (!editDraft) return
+    onUpdate({ ...state, customClimas: effective.map(c => c.id === editDraft.id ? editDraft : c) })
+    setEditId(null); setED(null)
+  }
+
+  function deleteEntry(id: string) {
+    if (!confirm('Remover este clima?')) return
+    onUpdate({ ...state, customClimas: effective.filter(c => c.id !== id) })
+  }
+
+  function addEntry() {
+    if (!addDraft.name.trim()) return
+    const entry: ClimaEntry = {
+      id: `clima-${Date.now().toString(36)}`,
+      name: addDraft.name.trim(), type: addDraft.type,
+      color: addDraft.color, icon: addDraft.icon,
+      effects: parseEffects(addDraft.effectsRaw), gm_only: false,
+    }
+    onUpdate({ ...state, customClimas: [...effective, entry] })
+    setAdding(false); setAD({ name:'', type:'Natural', color:'teal', icon:'🌀', effectsRaw:'' })
+  }
+
+  return (
+    <div style={{ display:'flex', flexDirection:'column', gap:8 }}>
+      {!isCustomized && (
+        <div style={{ padding:'10px 14px', borderRadius:8, background:'var(--paper-deep)',
+          fontFamily:'var(--font-mono)', fontSize:10, color:'var(--ink-mute)', marginBottom:4 }}>
+          Exibindo padrões. Ao editar ou adicionar, a lista completa será salva e personalizável.
+        </div>
+      )}
+
+      {effective.map(c => (
+        <div key={c.id}>
+          {editId === c.id && editDraft ? (
+            <div style={{ padding:'14px', border:'1px solid var(--teal)', borderRadius:10, background:'var(--paper-deep)' }}>
+              <div style={{ display:'grid', gridTemplateColumns:'2fr 1fr 60px 100px', gap:6, marginBottom:6 }}>
+                <input value={editDraft.name} onChange={e => setED(p => p && ({ ...p, name: e.target.value }))}
+                  placeholder="Nome" style={fld} />
+                <select value={editDraft.type} onChange={e => setED(p => p && ({ ...p, type: e.target.value as any }))} style={fld}>
+                  <option value="Natural">Natural</option><option value="Especial">Especial</option>
+                </select>
+                <input value={editDraft.icon} onChange={e => setED(p => p && ({ ...p, icon: e.target.value }))}
+                  placeholder="🌀" style={fld} />
+                <input value={editDraft.color} onChange={e => setED(p => p && ({ ...p, color: e.target.value }))}
+                  placeholder="teal" style={fld} />
+              </div>
+              <textarea value={effectsToRaw(editDraft.effects)}
+                onChange={e => setED(p => p && ({ ...p, effects: parseEffects(e.target.value) }))}
+                placeholder="tag: descrição (uma por linha)" rows={3}
+                style={{ ...fld, resize:'vertical', marginBottom:6 }} />
+              <div style={{ display:'flex', gap:6 }}>
+                <button onClick={saveEdit} style={{ padding:'5px 14px', borderRadius:999, cursor:'pointer',
+                  border:'1px solid var(--teal)', background:'var(--teal)', color:'#f6f2e9',
+                  fontFamily:'var(--font-body)', fontWeight:600, fontSize:12 }}>Salvar</button>
+                <button onClick={() => { setEditId(null); setED(null) }}
+                  style={{ padding:'5px 12px', borderRadius:999, cursor:'pointer',
+                    border:'1px solid var(--line)', background:'transparent',
+                    fontFamily:'var(--font-body)', fontSize:12, color:'var(--ink-mute)' }}>Cancelar</button>
+              </div>
+            </div>
+          ) : (
+            <div style={{ display:'flex', alignItems:'center', gap:10, padding:'10px 14px',
+              border:'1px solid var(--line)', borderRadius:10, background:'var(--paper)' }}>
+              <span style={{ fontSize:20, minWidth:28 }}>{c.icon}</span>
+              <div style={{ flex:1, minWidth:0 }}>
+                <span style={{ fontFamily:'var(--font-display)', fontSize:13, textTransform:'uppercase' }}>{c.name}</span>
+                <span style={{ marginLeft:8, fontFamily:'var(--font-mono)', fontSize:9,
+                  padding:'1px 6px', borderRadius:999, background:'var(--paper-deep)',
+                  border:'1px solid var(--line)', color:'var(--ink-mute)' }}>{c.type}</span>
+                <span style={{ marginLeft:6, fontFamily:'var(--font-mono)', fontSize:9,
+                  color:'var(--ink-mute)' }}>· {c.color}</span>
+              </div>
+              <button onClick={() => startEdit(c)}
+                style={{ padding:'3px 10px', borderRadius:999, cursor:'pointer',
+                  fontFamily:'var(--font-mono)', fontSize:9, border:'1px solid var(--line)',
+                  background:'transparent', color:'var(--ink-mute)' }}>✎ Editar</button>
+              <button onClick={() => deleteEntry(c.id)}
+                style={{ padding:'3px 8px', borderRadius:999, cursor:'pointer',
+                  fontFamily:'var(--font-mono)', fontSize:10, border:'1px solid var(--line)',
+                  background:'transparent', color:'var(--coral)' }}>×</button>
+            </div>
+          )}
+        </div>
+      ))}
+
+      {/* Restaurar / Adicionar */}
+      <div style={{ display:'flex', gap:8, marginTop:4 }}>
+        {!adding && (
+          <button onClick={() => { setAdding(true); setEditId(null) }}
+            style={{ padding:'6px 16px', borderRadius:999, cursor:'pointer',
+              border:'1px solid var(--line)', background:'transparent',
+              fontFamily:'var(--font-body)', fontWeight:600, fontSize:12, color:'var(--ink-soft)' }}>
+            + Adicionar Clima
+          </button>
+        )}
+        {isCustomized && (
+          <button onClick={() => { if (confirm('Restaurar climas padrão? Alterações serão perdidas.')) onUpdate({ ...state, customClimas: [] }) }}
+            style={{ padding:'6px 16px', borderRadius:999, cursor:'pointer',
+              border:'1px solid var(--line)', background:'transparent',
+              fontFamily:'var(--font-body)', fontSize:12, color:'var(--ink-mute)' }}>
+            ↺ Restaurar padrões
+          </button>
+        )}
+      </div>
+
+      {adding && (
+        <div style={{ padding:'14px', border:'1px solid var(--line)', borderRadius:10, background:'var(--paper-deep)' }}>
+          <div style={{ display:'grid', gridTemplateColumns:'2fr 1fr 60px 100px', gap:6, marginBottom:6 }}>
+            <input value={addDraft.name} onChange={e => setAD(p=>({...p,name:e.target.value}))}
+              placeholder="Nome *" style={fld} />
+            <select value={addDraft.type} onChange={e => setAD(p=>({...p,type:e.target.value as any}))} style={fld}>
+              <option value="Natural">Natural</option><option value="Especial">Especial</option>
+            </select>
+            <input value={addDraft.icon} onChange={e => setAD(p=>({...p,icon:e.target.value}))} placeholder="🌀" style={fld} />
+            <input value={addDraft.color} onChange={e => setAD(p=>({...p,color:e.target.value}))} placeholder="teal" style={fld} />
+          </div>
+          <textarea value={addDraft.effectsRaw} onChange={e => setAD(p=>({...p,effectsRaw:e.target.value}))}
+            placeholder="tag: descrição (uma por linha)" rows={2}
+            style={{ ...fld, resize:'vertical', marginBottom:6 }} />
+          <div style={{ display:'flex', gap:6 }}>
+            <button onClick={addEntry} style={{ padding:'5px 14px', borderRadius:999, cursor:'pointer',
+              border:'1px solid var(--ink)', background:'var(--ink)', color:'var(--paper)',
+              fontFamily:'var(--font-body)', fontWeight:600, fontSize:12 }}>Adicionar</button>
+            <button onClick={() => setAdding(false)} style={{ padding:'5px 12px', borderRadius:999,
+              cursor:'pointer', border:'1px solid var(--line)', background:'transparent',
+              fontFamily:'var(--font-body)', fontSize:12, color:'var(--ink-mute)' }}>Cancelar</button>
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}
+
+// ── Keyword CRUD ───────────────────────────────────────────────────────────────
+function KeywordCrud({ state, onUpdate }: Props) {
+  const effective = (state.customKeywords ?? []).length > 0 ? state.customKeywords : BASE_KEYWORDS
+  const isCustomized = (state.customKeywords ?? []).length > 0
+
+  const [editId, setEditId]   = useState<string | null>(null)
+  const [editDraft, setED]    = useState<KeywordEntry | null>(null)
+  const [adding, setAdding]   = useState(false)
+  const [addDraft, setAD]     = useState<Omit<KeywordEntry,'id'>>({ keyword:'', category:'Ação', type:'neutral', desc:'', resist:'' })
+
+  const groups = groupBy(effective, k => k.category ?? 'Outros')
+
+  function startEdit(k: KeywordEntry) { setEditId(k.id); setED({...k}); setAdding(false) }
+
+  function saveEdit() {
+    if (!editDraft) return
+    onUpdate({ ...state, customKeywords: effective.map(k => k.id === editDraft.id ? editDraft : k) })
+    setEditId(null); setED(null)
+  }
+
+  function deleteEntry(id: string) {
+    if (!confirm('Remover esta keyword?')) return
+    onUpdate({ ...state, customKeywords: effective.filter(k => k.id !== id) })
+  }
+
+  function addEntry() {
+    if (!addDraft.keyword.trim()) return
+    const entry: KeywordEntry = { id: `kw-${Date.now().toString(36)}`, ...addDraft,
+      keyword: addDraft.keyword.trim(), desc: addDraft.desc.trim(),
+      resist: addDraft.resist?.trim() || undefined }
+    onUpdate({ ...state, customKeywords: [...effective, entry] })
+    setAdding(false); setAD({ keyword:'', category:'Ação', type:'neutral', desc:'', resist:'' })
+  }
+
+  return (
+    <div style={{ display:'flex', flexDirection:'column', gap:12 }}>
+      {!isCustomized && (
+        <div style={{ padding:'10px 14px', borderRadius:8, background:'var(--paper-deep)',
+          fontFamily:'var(--font-mono)', fontSize:10, color:'var(--ink-mute)' }}>
+          Exibindo padrões. Ao editar ou adicionar, a lista completa será salva e personalizável.
+        </div>
+      )}
+
+      {groups.map(([cat, entries]) => (
+        <div key={cat}>
+          <div style={{ fontFamily:'var(--font-mono)', fontSize:9, letterSpacing:'0.12em',
+            textTransform:'uppercase', color:'var(--ink-mute)', marginBottom:6 }}>{cat}</div>
+          <div style={{ display:'flex', flexDirection:'column', gap:6 }}>
+            {entries.map(kw => (
+              <div key={kw.id}>
+                {editId === kw.id && editDraft ? (
+                  <KwCondForm<KeywordEntry>
+                    draft={editDraft} setDraft={setED as any}
+                    nameField="keyword" namePlaceholder="Keyword"
+                    onSave={saveEdit} onCancel={() => { setEditId(null); setED(null) }}
+                  />
+                ) : (
+                  <div style={{ display:'grid', gridTemplateColumns:'auto 1fr auto auto',
+                    gap:8, alignItems:'start', padding:'10px 14px',
+                    border:'1px solid var(--line)', borderRadius:10, background:'var(--paper)' }}>
+                    <span style={{ fontFamily:'var(--font-mono)', fontSize:9, padding:'2px 6px',
+                      borderRadius:999, background:'var(--paper-deep)', border:'1px solid var(--line)',
+                      color:'var(--ink-mute)', whiteSpace:'nowrap' }}>{kw.type}</span>
+                    <div>
+                      <b style={{ fontFamily:'var(--font-display)', fontSize:12, textTransform:'uppercase' }}>{kw.keyword}</b>
+                      <p style={{ margin:'3px 0 0', fontFamily:'var(--font-body)', fontSize:12,
+                        color:'var(--ink-soft)', lineHeight:1.4 }}>{kw.desc}</p>
+                      {kw.resist && <div style={{ fontFamily:'var(--font-mono)', fontSize:9,
+                        color:'var(--ink-mute)', marginTop:3 }}>Resistir: {kw.resist}</div>}
+                    </div>
+                    <button onClick={() => startEdit(kw)}
+                      style={{ padding:'3px 10px', borderRadius:999, cursor:'pointer',
+                        fontFamily:'var(--font-mono)', fontSize:9, border:'1px solid var(--line)',
+                        background:'transparent', color:'var(--ink-mute)', whiteSpace:'nowrap' }}>✎ Editar</button>
+                    <button onClick={() => deleteEntry(kw.id)}
+                      style={{ padding:'3px 8px', borderRadius:999, cursor:'pointer',
+                        fontFamily:'var(--font-mono)', fontSize:10, border:'1px solid var(--line)',
+                        background:'transparent', color:'var(--coral)' }}>×</button>
+                  </div>
+                )}
+              </div>
+            ))}
+          </div>
+        </div>
+      ))}
+
+      <div style={{ display:'flex', gap:8, marginTop:4 }}>
+        {!adding && (
+          <button onClick={() => { setAdding(true); setEditId(null) }}
+            style={{ padding:'6px 16px', borderRadius:999, cursor:'pointer',
+              border:'1px solid var(--line)', background:'transparent',
+              fontFamily:'var(--font-body)', fontWeight:600, fontSize:12, color:'var(--ink-soft)' }}>
+            + Adicionar Keyword
+          </button>
+        )}
+        {isCustomized && (
+          <button onClick={() => { if (confirm('Restaurar keywords padrão?')) onUpdate({ ...state, customKeywords: [] }) }}
+            style={{ padding:'6px 16px', borderRadius:999, cursor:'pointer',
+              border:'1px solid var(--line)', background:'transparent',
+              fontFamily:'var(--font-body)', fontSize:12, color:'var(--ink-mute)' }}>
+            ↺ Restaurar padrões
+          </button>
+        )}
+      </div>
+
+      {adding && (
+        <KwCondForm<Omit<KeywordEntry,'id'>>
+          draft={addDraft} setDraft={setAD as any}
+          nameField="keyword" namePlaceholder="Keyword"
+          onSave={addEntry} onCancel={() => setAdding(false)}
+        />
+      )}
+    </div>
+  )
+}
+
+// ── Condition CRUD ─────────────────────────────────────────────────────────────
+function ConditionCrud({ state, onUpdate }: Props) {
+  const effective = (state.customConditions ?? []).length > 0 ? state.customConditions : BASE_CONDITIONS
+  const isCustomized = (state.customConditions ?? []).length > 0
+
+  const [editId, setEditId]   = useState<string | null>(null)
+  const [editDraft, setED]    = useState<ConditionEntry | null>(null)
+  const [adding, setAdding]   = useState(false)
+  const [addDraft, setAD]     = useState<Omit<ConditionEntry,'id'>>({ name:'', category:'Ferimento', type:'wound', desc:'', resist:'' })
+
+  const groups = groupBy(effective, c => c.category)
+
+  function startEdit(c: ConditionEntry) { setEditId(c.id); setED({...c}); setAdding(false) }
+
+  function saveEdit() {
+    if (!editDraft) return
+    onUpdate({ ...state, customConditions: effective.map(c => c.id === editDraft.id ? editDraft : c) })
+    setEditId(null); setED(null)
+  }
+
+  function deleteEntry(id: string) {
+    if (!confirm('Remover esta condição?')) return
+    onUpdate({ ...state, customConditions: effective.filter(c => c.id !== id) })
+  }
+
+  function addEntry() {
+    if (!addDraft.name.trim()) return
+    const entry: ConditionEntry = { id: `cond-${Date.now().toString(36)}`, ...addDraft,
+      name: addDraft.name.trim(), desc: addDraft.desc.trim(),
+      resist: addDraft.resist?.trim() || undefined }
+    onUpdate({ ...state, customConditions: [...effective, entry] })
+    setAdding(false); setAD({ name:'', category:'Ferimento', type:'wound', desc:'', resist:'' })
+  }
+
+  return (
+    <div style={{ display:'flex', flexDirection:'column', gap:12 }}>
+      {!isCustomized && (
+        <div style={{ padding:'10px 14px', borderRadius:8, background:'var(--paper-deep)',
+          fontFamily:'var(--font-mono)', fontSize:10, color:'var(--ink-mute)' }}>
+          Exibindo padrões. Ao editar ou adicionar, a lista completa será salva e personalizável.
+        </div>
+      )}
+
+      {groups.map(([cat, entries]) => (
+        <div key={cat}>
+          <div style={{ fontFamily:'var(--font-mono)', fontSize:9, letterSpacing:'0.12em',
+            textTransform:'uppercase', color:'var(--ink-mute)', marginBottom:6 }}>{cat}</div>
+          <div style={{ display:'flex', flexDirection:'column', gap:6 }}>
+            {entries.map(cond => (
+              <div key={cond.id}>
+                {editId === cond.id && editDraft ? (
+                  <KwCondForm<ConditionEntry>
+                    draft={editDraft} setDraft={setED as any}
+                    nameField="name" namePlaceholder="Nome da Condição"
+                    onSave={saveEdit} onCancel={() => { setEditId(null); setED(null) }}
+                  />
+                ) : (
+                  <div style={{ display:'grid', gridTemplateColumns:'auto 1fr auto auto',
+                    gap:8, alignItems:'start', padding:'10px 14px',
+                    border:'1px solid var(--line)', borderRadius:10, background:'var(--paper)' }}>
+                    <span style={{ fontFamily:'var(--font-mono)', fontSize:9, padding:'2px 6px',
+                      borderRadius:999, background:'var(--paper-deep)', border:'1px solid var(--line)',
+                      color:'var(--ink-mute)', whiteSpace:'nowrap' }}>{cond.type}</span>
+                    <div>
+                      <b style={{ fontFamily:'var(--font-display)', fontSize:12, textTransform:'uppercase' }}>{cond.name}</b>
+                      <p style={{ margin:'3px 0 0', fontFamily:'var(--font-body)', fontSize:12,
+                        color:'var(--ink-soft)', lineHeight:1.4 }}>{cond.desc}</p>
+                      {cond.resist && <div style={{ fontFamily:'var(--font-mono)', fontSize:9,
+                        color:'var(--ink-mute)', marginTop:3 }}>Resistir: {cond.resist}</div>}
+                    </div>
+                    <button onClick={() => startEdit(cond)}
+                      style={{ padding:'3px 10px', borderRadius:999, cursor:'pointer',
+                        fontFamily:'var(--font-mono)', fontSize:9, border:'1px solid var(--line)',
+                        background:'transparent', color:'var(--ink-mute)', whiteSpace:'nowrap' }}>✎ Editar</button>
+                    <button onClick={() => deleteEntry(cond.id)}
+                      style={{ padding:'3px 8px', borderRadius:999, cursor:'pointer',
+                        fontFamily:'var(--font-mono)', fontSize:10, border:'1px solid var(--line)',
+                        background:'transparent', color:'var(--coral)' }}>×</button>
+                  </div>
+                )}
+              </div>
+            ))}
+          </div>
+        </div>
+      ))}
+
+      <div style={{ display:'flex', gap:8, marginTop:4 }}>
+        {!adding && (
+          <button onClick={() => { setAdding(true); setEditId(null) }}
+            style={{ padding:'6px 16px', borderRadius:999, cursor:'pointer',
+              border:'1px solid var(--line)', background:'transparent',
+              fontFamily:'var(--font-body)', fontWeight:600, fontSize:12, color:'var(--ink-soft)' }}>
+            + Adicionar Condição
+          </button>
+        )}
+        {isCustomized && (
+          <button onClick={() => { if (confirm('Restaurar condições padrão?')) onUpdate({ ...state, customConditions: [] }) }}
+            style={{ padding:'6px 16px', borderRadius:999, cursor:'pointer',
+              border:'1px solid var(--line)', background:'transparent',
+              fontFamily:'var(--font-body)', fontSize:12, color:'var(--ink-mute)' }}>
+            ↺ Restaurar padrões
+          </button>
+        )}
+      </div>
+
+      {adding && (
+        <KwCondForm<Omit<ConditionEntry,'id'>>
+          draft={addDraft} setDraft={setAD as any}
+          nameField="name" namePlaceholder="Nome da Condição"
+          onSave={addEntry} onCancel={() => setAdding(false)}
+        />
+      )}
+    </div>
+  )
+}
+
+// ── Shared form for Keyword / Condition ────────────────────────────────────────
+function KwCondForm<T extends { category?: string; type: KwType; desc: string; resist?: string }>({
+  draft, setDraft, nameField, namePlaceholder, onSave, onCancel,
+}: {
+  draft: T
+  setDraft: (v: T) => void
+  nameField: 'keyword' | 'name'
+  namePlaceholder: string
+  onSave: () => void
+  onCancel: () => void
+}) {
+  const nameVal = (draft as any)[nameField] as string ?? ''
+  return (
+    <div style={{ padding:'14px', border:'1px solid var(--teal)', borderRadius:10, background:'var(--paper-deep)' }}>
+      <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr 1fr', gap:6, marginBottom:6 }}>
+        <input value={nameVal}
+          onChange={e => setDraft({ ...draft, [nameField]: e.target.value })}
+          placeholder={namePlaceholder} style={fld} />
+        <input value={draft.category ?? ''}
+          onChange={e => setDraft({ ...draft, category: e.target.value })}
+          placeholder="Categoria (ex: Ação, Ferimento)" style={fld} />
+        <select value={draft.type} onChange={e => setDraft({ ...draft, type: e.target.value as KwType })} style={fld}>
+          {KW_TYPES.map(t => <option key={t} value={t}>{KW_TYPE_LABELS[t]}</option>)}
+        </select>
+      </div>
+      <textarea value={draft.desc}
+        onChange={e => setDraft({ ...draft, desc: e.target.value })}
+        placeholder="Descrição (use **negrito** para destaque)" rows={2}
+        style={{ ...fld, resize:'vertical', marginBottom:6 }} />
+      <input value={draft.resist ?? ''}
+        onChange={e => setDraft({ ...draft, resist: e.target.value })}
+        placeholder="Resistir (opcional, ex: Vigor + Resistência)" style={{ ...fld, marginBottom:8 }} />
+      <div style={{ display:'flex', gap:6 }}>
+        <button onClick={onSave} style={{ padding:'5px 14px', borderRadius:999, cursor:'pointer',
+          border:'1px solid var(--teal)', background:'var(--teal)', color:'#f6f2e9',
+          fontFamily:'var(--font-body)', fontWeight:600, fontSize:12 }}>Salvar</button>
+        <button onClick={onCancel} style={{ padding:'5px 12px', borderRadius:999, cursor:'pointer',
+          border:'1px solid var(--line)', background:'transparent',
+          fontFamily:'var(--font-body)', fontSize:12, color:'var(--ink-mute)' }}>Cancelar</button>
+      </div>
+    </div>
+  )
+}
+
+// ── RulesSection ───────────────────────────────────────────────────────────────
+function RulesSection({ state, onUpdate }: Props) {
+  const [tab, setTab] = useState<RulesTab>('climas')
+
+  const RULES_TABS: { id: RulesTab; label: string }[] = [
+    { id: 'climas',    label: 'Climas'   },
+    { id: 'keywords',  label: 'Keywords' },
+    { id: 'condicoes', label: 'Condições'},
+  ]
+
+  return (
+    <div>
+      <div style={{ display:'flex', gap:0, marginBottom:20, borderBottom:'1px solid var(--line-soft)' }}>
+        {RULES_TABS.map(t => (
+          <button key={t.id} onClick={() => setTab(t.id)}
+            style={{ padding:'8px 18px', border:'none', background:'transparent', cursor:'pointer',
+              fontFamily:'var(--font-mono)', fontSize:10, letterSpacing:'0.12em',
+              textTransform:'uppercase',
+              color: tab === t.id ? 'var(--ink)' : 'var(--ink-mute)',
+              borderBottom: `2px solid ${tab === t.id ? 'var(--teal)' : 'transparent'}`,
+              transition:'color 0.15s' }}>
+            {t.label}
+          </button>
+        ))}
+      </div>
+      {tab === 'climas'    && <ClimaCrud    state={state} onUpdate={onUpdate} />}
+      {tab === 'keywords'  && <KeywordCrud  state={state} onUpdate={onUpdate} />}
+      {tab === 'condicoes' && <ConditionCrud state={state} onUpdate={onUpdate} />}
+    </div>
+  )
+}
+
 // ── BackstagePage ─────────────────────────────────────────────────────────────
 
-type Tab = 'usuarios' | 'fichas' | 'skilltree'
+type Tab = 'usuarios' | 'fichas' | 'skilltree' | 'regras'
 
 export default function BackstagePage({ state, onUpdate }: Props) {
   const { isGM } = useAuth()
@@ -401,6 +889,7 @@ export default function BackstagePage({ state, onUpdate }: Props) {
     { id: 'usuarios',  label: 'Usuários'   },
     { id: 'fichas',    label: 'Fichas'     },
     { id: 'skilltree', label: 'Skill Tree' },
+    { id: 'regras',    label: 'Regras'     },
   ]
 
   return (
@@ -435,9 +924,10 @@ export default function BackstagePage({ state, onUpdate }: Props) {
 
       {/* Conteúdo */}
       <div style={{ padding: '0 56px' }}>
-        {tab === 'usuarios'  && <UsersSection state={state} onUpdate={onUpdate} />}
-        {tab === 'fichas'    && <SheetSection state={state} onUpdate={onUpdate} />}
+        {tab === 'usuarios'  && <UsersSection    state={state} onUpdate={onUpdate} />}
+        {tab === 'fichas'    && <SheetSection    state={state} onUpdate={onUpdate} />}
         {tab === 'skilltree' && <SkillTreeSection state={state} onUpdate={onUpdate} />}
+        {tab === 'regras'    && <RulesSection    state={state} onUpdate={onUpdate} />}
       </div>
     </div>
   )
