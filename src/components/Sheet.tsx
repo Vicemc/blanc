@@ -15,10 +15,11 @@ import {
 import { GrainFill } from "./GrainFill"
 import { Toast } from './Toast'
 import { uploadImage, saveStateToDB } from '../lib/db'
+import { supabase } from '../lib/supabase'
 import styles from './Sheet.module.css'
 
 // ── Modo de visualização: número ou bolinhas ─────────────────────
-import React, { useState, useMemo, useCallback, useRef, createContext, useContext } from 'react'
+import React, { useState, useEffect, useMemo, useCallback, useRef, createContext, useContext } from 'react'
 type DisplayMode = 'number' | 'dots'
 const DisplayModeCtx = createContext<DisplayMode>('number')
 
@@ -1918,13 +1919,6 @@ function TamerView({ tamer, line, editable, isGM, onSave, onSaveLine, onSaveAll,
         </>
       )}
 
-      <SectionTitle>Inventário</SectionTitle>
-      <InventorySection
-        items={tamer.inventory ?? []}
-        editable={editable}
-        onSave={inv => onSave({ ...tamer, inventory: inv })}
-      />
-
       <SectionTitle action={editable && !showAdd && (
         <button className={styles.btnGhost} style={{ fontSize:11 }} onClick={() => setShowAdd(true)}>+ Nova Skill</button>
       )}>Tamer Skills</SectionTitle>
@@ -2395,6 +2389,179 @@ function SignView({ sign: sg, editable, onSave }: { sign: Sign; editable: boolea
   )
 }
 
+// ── Inventário do Digivice (aba da ficha) ──────────────────────────
+
+interface DigiviceItem {
+  id:          string
+  name:        string
+  type:        'item' | 'weapon' | 'accessory' | 'key'
+  description: string
+  quantity:    number
+  effects:     string
+  gm_only:     boolean
+}
+
+const TYPE_LABEL: Record<string, string> = {
+  item: 'Item', weapon: 'Arma', accessory: 'Acessório', key: 'Chave',
+}
+const TYPE_COLOR_INV: Record<string, string> = {
+  item: 'var(--ink-mute)', weapon: 'var(--coral)', accessory: 'var(--teal)', key: 'var(--gold)',
+}
+
+const ITEM_EMPTY: Omit<DigiviceItem,'id'> = { name:'', type:'item', description:'', quantity:1, effects:'', gm_only:false }
+
+function DigiviceInventoryTab({ tamerId, editable, isGM }: {
+  tamerId: string; editable: boolean; isGM: boolean
+}) {
+  const [items,     setItems]     = useState<DigiviceItem[]>([])
+  const [dvId,      setDvId]      = useState<string | null>(null)
+  const [loading,   setLoading]   = useState(true)
+  const [adding,    setAdding]    = useState(false)
+  const [editingId, setEditingId] = useState<string | null>(null)
+  const [editDraft, setEditDraft] = useState<DigiviceItem | null>(null)
+  const [draft,     setDraft]     = useState<Omit<DigiviceItem,'id'>>(ITEM_EMPTY)
+
+  useEffect(() => {
+    if (!supabase) { setLoading(false); return }
+    supabase.from('digivices').select('id, inventory').eq('character_id', tamerId).maybeSingle()
+      .then(({ data }) => {
+        if (data) { setDvId(data.id); setItems(data.inventory ?? []) }
+        setLoading(false)
+      })
+  }, [tamerId])
+
+  const persist = async (newItems: DigiviceItem[]) => {
+    setItems(newItems)
+    if (!supabase || !dvId) return
+    await supabase.from('digivices').update({ inventory: newItems }).eq('id', dvId)
+  }
+
+  const addItem = () => {
+    if (!draft.name.trim()) return
+    persist([...items, { ...draft, id: `item-${Date.now().toString(36)}`, name: draft.name.trim() }])
+    setDraft(ITEM_EMPTY); setAdding(false)
+  }
+  const removeItem  = (id: string) => persist(items.filter(i => i.id !== id))
+  const updateQty   = (id: string, delta: number) =>
+    persist(items.map(i => i.id === id ? { ...i, quantity: Math.max(0, i.quantity + delta) } : i))
+  const startEdit   = (item: DigiviceItem) => { setEditDraft({ ...item }); setEditingId(item.id); setAdding(false) }
+  const confirmEdit = () => {
+    if (!editDraft?.name.trim()) return
+    persist(items.map(i => i.id === editingId ? editDraft : i))
+    setEditingId(null); setEditDraft(null)
+  }
+
+  const visible = isGM ? items : items.filter(i => !i.gm_only)
+
+  const invInputStyle: React.CSSProperties = {
+    border:'1px solid var(--line)', borderRadius:8, padding:'7px 10px',
+    fontFamily:'var(--font-body)', fontSize:13, background:'var(--paper)', color:'var(--ink)',
+  }
+  const invBtnStyle: React.CSSProperties = {
+    display:'inline-flex', alignItems:'center', padding:'7px 16px', borderRadius:999,
+    border:'1px solid var(--line)', background:'var(--paper)', color:'var(--ink-soft)',
+    fontFamily:'var(--font-body)', fontSize:13, cursor:'pointer',
+  }
+  const miniBtn: React.CSSProperties = {
+    width:26, height:26, borderRadius:'50%', border:'1px solid var(--line)',
+    background:'transparent', cursor:'pointer', fontSize:14, fontFamily:'var(--font-mono)',
+    display:'flex', alignItems:'center', justifyContent:'center', flexShrink:0,
+    color:'var(--ink)',
+  }
+
+  if (loading) return <div style={{ padding:'24px 0', textAlign:'center', fontFamily:'var(--font-mono)', fontSize:11, color:'var(--ink-mute)' }}>Carregando...</div>
+
+  if (!dvId) return <div style={{ padding:'24px 0', textAlign:'center', fontFamily:'var(--font-serif)', fontStyle:'italic', fontSize:15, color:'var(--ink-mute)' }}>~ Digivice não encontrado ~</div>
+
+  const formBlock = (d: Omit<DigiviceItem,'id'>, set: React.Dispatch<React.SetStateAction<any>>, onConfirm: () => void, onCancel: () => void) => (
+    <div style={{ border:'1px solid var(--line)', borderRadius:10, padding:'16px', background:'var(--paper-deep)', marginBottom:8 }}>
+      <div style={{ display:'grid', gridTemplateColumns:'2fr 1fr 80px', gap:8, marginBottom:8 }}>
+        <input value={d.name} onChange={e => set((p: any) => ({ ...p, name: e.target.value }))}
+          placeholder="Nome do item *" style={{ ...invInputStyle, width:'100%' }} />
+        <select value={d.type} onChange={e => set((p: any) => ({ ...p, type: e.target.value }))} style={{ ...invInputStyle, width:'100%' }}>
+          <option value="item">Item</option>
+          <option value="weapon">Arma</option>
+          <option value="accessory">Acessório</option>
+          <option value="key">Chave</option>
+        </select>
+        <input type="number" min={0} value={d.quantity}
+          onChange={e => set((p: any) => ({ ...p, quantity: parseInt(e.target.value)||0 }))}
+          style={{ ...invInputStyle, width:'100%' }} />
+      </div>
+      <input value={d.description} onChange={e => set((p: any) => ({ ...p, description: e.target.value }))}
+        placeholder="Descrição" style={{ ...invInputStyle, width:'100%', marginBottom:8 }} />
+      <input value={d.effects} onChange={e => set((p: any) => ({ ...p, effects: e.target.value }))}
+        placeholder="Efeitos" style={{ ...invInputStyle, width:'100%', marginBottom:8 }} />
+      <label style={{ display:'flex', alignItems:'center', gap:8, fontFamily:'var(--font-mono)', fontSize:11, color:'var(--ink-mute)', letterSpacing:'0.08em', marginBottom:12, cursor:'pointer' }}>
+        <input type="checkbox" checked={d.gm_only} onChange={e => set((p: any) => ({ ...p, gm_only: e.target.checked }))} />
+        Visível apenas para o GM
+      </label>
+      <div style={{ display:'flex', gap:8 }}>
+        <button onClick={onConfirm} style={{ ...invBtnStyle, background:'var(--ink)', color:'var(--paper)', borderColor:'var(--ink)' }}>Salvar</button>
+        <button onClick={onCancel} style={invBtnStyle}>Cancelar</button>
+      </div>
+    </div>
+  )
+
+  return (
+    <div>
+      {visible.length === 0 && !adding && (
+        <div style={{ fontFamily:'var(--font-serif)', fontStyle:'italic', fontSize:15,
+          color:'var(--ink-mute)', padding:'24px 0', textAlign:'center' }}>
+          ~ inventário vazio ~
+        </div>
+      )}
+
+      <div style={{ display:'flex', flexDirection:'column', gap:8, marginBottom:16 }}>
+        {visible.map(item => {
+          if (isGM && editingId === item.id && editDraft)
+            return <div key={item.id}>{formBlock(editDraft, setEditDraft, confirmEdit, () => { setEditingId(null); setEditDraft(null) })}</div>
+
+          return (
+            <div key={item.id} style={{ display:'flex', gap:12, alignItems:'flex-start',
+              padding:'12px 16px', background:'var(--paper)',
+              border:`1px solid ${item.gm_only ? 'var(--coral)' : 'var(--line)'}`, borderRadius:10 }}>
+              <div style={{ flex:1 }}>
+                <div style={{ display:'flex', alignItems:'center', gap:8, marginBottom:4 }}>
+                  <span style={{ fontFamily:'var(--font-display)', fontSize:15, textTransform:'uppercase' }}>{item.name}</span>
+                  <span style={{ fontFamily:'var(--font-mono)', fontSize:9, letterSpacing:'0.1em', textTransform:'uppercase',
+                    padding:'1px 7px', borderRadius:999, background:'var(--paper-deep)', color: TYPE_COLOR_INV[item.type] }}>
+                    {TYPE_LABEL[item.type] ?? item.type}
+                  </span>
+                  {item.gm_only && isGM && (
+                    <span style={{ fontFamily:'var(--font-mono)', fontSize:9, letterSpacing:'0.1em', textTransform:'uppercase',
+                      padding:'1px 7px', borderRadius:999, background:'rgba(196,51,33,0.1)', color:'var(--coral)' }}>
+                      GM only
+                    </span>
+                  )}
+                </div>
+                {item.description && <div style={{ fontSize:13, color:'var(--ink-soft)', marginBottom:4 }}>{item.description}</div>}
+                {item.effects    && <div style={{ fontFamily:'var(--font-mono)', fontSize:11, color:'var(--teal)', letterSpacing:'0.04em' }}>{item.effects}</div>}
+              </div>
+              <div style={{ display:'flex', alignItems:'center', gap:6, flexShrink:0 }}>
+                <button onClick={() => updateQty(item.id, -1)} style={miniBtn as React.CSSProperties}>−</button>
+                <span style={{ fontFamily:'var(--font-mono)', fontSize:14, fontWeight:700, minWidth:20, textAlign:'center' }}>{item.quantity}</span>
+                <button onClick={() => updateQty(item.id, +1)} style={miniBtn as React.CSSProperties}>+</button>
+                {isGM && (
+                  <>
+                    <button onClick={() => startEdit(item)} style={{ ...miniBtn as React.CSSProperties, marginLeft:4 }} title="Editar">✎</button>
+                    <button onClick={() => removeItem(item.id)} style={{ ...miniBtn as React.CSSProperties, color:'var(--coral)', borderColor:'var(--coral)' }}>×</button>
+                  </>
+                )}
+              </div>
+            </div>
+          )
+        })}
+      </div>
+
+      {isGM && !adding && !editingId && (
+        <button onClick={() => setAdding(true)} style={invBtnStyle}>+ Adicionar item</button>
+      )}
+      {isGM && adding && formBlock(draft, setDraft, addItem, () => { setDraft(ITEM_EMPTY); setAdding(false) })}
+    </div>
+  )
+}
+
 // ── FullSheet ──────────────────────────────────────────────────────
 interface FullSheetProps { subject: SheetSubject; state: AppState; onSaveState?: (s: AppState) => void; onClose?: () => void; editable?: boolean; isGM?: boolean; onSpawnToken?: (token: TokenSpawn) => void }
 
@@ -2413,6 +2580,7 @@ export function FullSheet({ subject, state, onSaveState, onClose, editable = fal
 
   const tabs: { id: string; label: string; locked?: boolean; hidden?: boolean }[] = []
   if (tamer) tabs.push({ id:'tamer', label: tamer.name })
+  if (tamer) tabs.push({ id:'inventario', label: 'Inventário' })
   if (line)  line.stages.forEach((s,i) => {
     if (s.hidden && !isGM) return
     tabs.push({ id:`stage-${i}`, label: s.stageName, locked: s.locked, hidden: s.hidden })
@@ -2540,6 +2708,7 @@ export function FullSheet({ subject, state, onSaveState, onClose, editable = fal
 
       <div className={styles.sheetBody}>
         {showTamer && <TamerView tamer={tamer!} line={line} editable={editable} isGM={isGM} onSave={saveTamer} onSaveLine={saveLine} onSaveAll={saveAllAutoridade} state={state} onSaveState={onSaveState} onSpawnToken={onSpawnToken} />}
+        {active === 'inventario' && tamer && <DigiviceInventoryTab tamerId={tamer.id} editable={editable} isGM={isGM} />}
         {stageIdx !== null && line && (
           <DigimonStageView line={line} stageIdx={stageIdx} tamer={tamer} editable={editable} isGM={isGM} onSaveLine={saveLine} onSaveTamer={tamer ? saveTamer : undefined}
             onDeleteStage={editable && isGM ? () => {
