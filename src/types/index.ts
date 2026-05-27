@@ -100,11 +100,18 @@ export interface AlwaysOnBonus {
   inheritable?: boolean;
 }
 
+export type ItemTipo = 'Item' | 'Arma' | 'Chave' | 'Acessório';
+
 export interface InventoryItem {
-  id:     string;
-  name:   string;
-  qty:    number;
-  notes?: string;
+  id:         string;
+  name:       string;
+  qty:        number;
+  notes?:     string;
+  tipo?:      ItemTipo;
+  alcance?:   string;
+  usos?:      number;
+  descricao?: string;
+  efeito?:    string;
 }
 
 export interface TamerSkill {

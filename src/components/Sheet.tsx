@@ -2788,17 +2788,154 @@ function AddMeritForm({ onAdd, onCancel }: { onAdd: (m: Merit) => void; onCancel
 }
 
 // ── SurvivorInventoryTab ───────────────────────────────────────────
+const TIPO_COLORS: Record<string, string> = {
+  Arma: 'var(--coral)', Chave: 'var(--gold, #c8972a)', Acessório: 'var(--teal)', Item: 'var(--ink-mute)',
+}
+
+function SurvivorItemForm({ draft, setDraft, onConfirm, onCancel }: {
+  draft: InventoryItem
+  setDraft: (fn: (d: InventoryItem) => InventoryItem) => void
+  onConfirm: () => void
+  onCancel: () => void
+}) {
+  return (
+    <div style={{ background: 'var(--paper-deep)', border: '1px solid var(--line)', borderRadius: 10, padding: '14px 14px 10px', marginBottom: 10, display: 'flex', flexDirection: 'column', gap: 8 }}>
+      <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+        <select value={draft.tipo ?? ''} onChange={e => setDraft(d => ({ ...d, tipo: (e.target.value as any) || undefined }))}
+          className={styles.formInput} style={{ flex: '0 0 130px', padding: '7px 10px', fontSize: 13 }}>
+          <option value="">— Tipo —</option>
+          {(['Item', 'Arma', 'Chave', 'Acessório'] as const).map(t => <option key={t}>{t}</option>)}
+        </select>
+        <input value={draft.name} onChange={e => setDraft(d => ({ ...d, name: e.target.value }))}
+          placeholder="Nome *" className={styles.formInput}
+          style={{ flex: '1 1 160px', padding: '7px 10px', fontSize: 13 }} />
+        <input type="number" min={0} value={draft.qty}
+          onChange={e => setDraft(d => ({ ...d, qty: parseInt(e.target.value) || 0 }))}
+          className={styles.formInput} style={{ flex: '0 0 60px', padding: '7px 10px', fontSize: 13 }} />
+      </div>
+      {draft.tipo === 'Arma' && (
+        <div style={{ display: 'flex', gap: 8 }}>
+          <input value={draft.alcance ?? ''} onChange={e => setDraft(d => ({ ...d, alcance: e.target.value || undefined }))}
+            placeholder="Alcance" className={styles.formInput}
+            style={{ flex: 1, padding: '7px 10px', fontSize: 13 }} />
+          <input type="number" min={0} value={draft.usos ?? ''}
+            onChange={e => setDraft(d => ({ ...d, usos: parseInt(e.target.value) || undefined }))}
+            placeholder="Usos" className={styles.formInput}
+            style={{ flex: '0 0 80px', padding: '7px 10px', fontSize: 13 }} />
+        </div>
+      )}
+      <textarea value={draft.descricao ?? ''} onChange={e => setDraft(d => ({ ...d, descricao: e.target.value || undefined }))}
+        placeholder="Descrição" rows={2}
+        style={{ width: '100%', boxSizing: 'border-box', padding: '7px 10px', borderRadius: 7, border: '1px solid var(--line)', fontFamily: 'var(--font-body)', fontSize: 13, background: 'var(--paper)', color: 'var(--ink)', resize: 'vertical' }} />
+      <textarea value={draft.efeito ?? ''} onChange={e => setDraft(d => ({ ...d, efeito: e.target.value || undefined }))}
+        placeholder="Efeito" rows={2}
+        style={{ width: '100%', boxSizing: 'border-box', padding: '7px 10px', borderRadius: 7, border: '1px solid var(--line)', fontFamily: 'var(--font-body)', fontSize: 13, background: 'var(--paper)', color: 'var(--ink)', resize: 'vertical' }} />
+      <div style={{ display: 'flex', gap: 8 }}>
+        <button className={styles.btnSolid} style={{ fontSize: 12, padding: '7px 16px' }} onClick={onConfirm}>✓ Salvar</button>
+        <button className={styles.btnGhost} style={{ fontSize: 12, padding: '7px 16px' }} onClick={onCancel}>Cancelar</button>
+      </div>
+    </div>
+  )
+}
+
+function SurvivorItemRow({ item, editable, onEdit, onDelete }: {
+  item: InventoryItem; editable: boolean
+  onEdit: (item: InventoryItem) => void; onDelete: () => void
+}) {
+  const [editing, setEditing] = useState(false)
+  const [draft, setDraft] = useState(item)
+
+  if (editing) {
+    return (
+      <SurvivorItemForm
+        draft={draft} setDraft={setDraft}
+        onConfirm={() => { onEdit(draft); setEditing(false) }}
+        onCancel={() => { setDraft(item); setEditing(false) }}
+      />
+    )
+  }
+
+  return (
+    <div style={{ borderBottom: '1px dotted var(--line-soft)', padding: '9px 4px' }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+        {item.tipo && (
+          <span style={{ fontFamily: 'var(--font-mono)', fontSize: 10, letterSpacing: '0.08em', textTransform: 'uppercase',
+            color: TIPO_COLORS[item.tipo] ?? 'var(--ink-mute)',
+            border: `1px solid ${TIPO_COLORS[item.tipo] ?? 'var(--ink-mute)'}`,
+            borderRadius: 4, padding: '1px 6px', flexShrink: 0 }}>
+            {item.tipo}
+          </span>
+        )}
+        <span style={{ fontFamily: 'var(--font-body)', fontSize: 14, flex: 1, fontWeight: 500 }}>{item.name}</span>
+        {item.tipo === 'Arma' && item.alcance && (
+          <span style={{ fontFamily: 'var(--font-mono)', fontSize: 11, color: 'var(--ink-mute)' }}>Alc. {item.alcance}</span>
+        )}
+        {item.tipo === 'Arma' && item.usos != null && (
+          <span style={{ fontFamily: 'var(--font-mono)', fontSize: 11, color: 'var(--ink-mute)' }}>{item.usos}× usos</span>
+        )}
+        <span style={{ fontFamily: 'var(--font-mono)', fontSize: 11, color: 'var(--ink-mute)', flexShrink: 0 }}>×{item.qty}</span>
+        {editable && (
+          <div style={{ display: 'flex', gap: 6, flexShrink: 0 }}>
+            <button className={styles.cardEdit} onClick={() => { setDraft(item); setEditing(true) }} title="Editar">✎</button>
+            <button className={styles.cardDel}  onClick={onDelete} title="Remover">×</button>
+          </div>
+        )}
+      </div>
+      {(item.descricao || item.efeito) && (
+        <div style={{ paddingLeft: item.tipo ? 0 : 0, marginTop: 5, display: 'flex', flexDirection: 'column', gap: 3 }}>
+          {item.descricao && (
+            <span style={{ fontFamily: 'var(--font-body)', fontSize: 12, color: 'var(--ink-soft, var(--ink-mute))', lineHeight: 1.5 }}>{item.descricao}</span>
+          )}
+          {item.efeito && (
+            <span style={{ fontFamily: 'var(--font-body)', fontSize: 12, color: 'var(--ink)', lineHeight: 1.5 }}>
+              <span style={{ fontFamily: 'var(--font-mono)', fontSize: 10, textTransform: 'uppercase', letterSpacing: '0.08em', color: 'var(--ink-mute)', marginRight: 4 }}>Efeito</span>
+              {item.efeito}
+            </span>
+          )}
+        </div>
+      )}
+    </div>
+  )
+}
+
 function SurvivorInventoryTab({ sv, editable, onSave }: {
   sv: Survivor; editable: boolean; onSave: (sv: Survivor) => void
 }) {
+  const emptyDraft = (): InventoryItem => ({ id: '', name: '', qty: 1, tipo: 'Item' })
+  const [adding, setAdding] = useState(false)
+  const [draft, setDraft] = useState<InventoryItem>(emptyDraft)
+
+  const handleAdd = () => {
+    if (!draft.name.trim()) return
+    const item = { ...draft, id: `inv-${Date.now().toString(36)}` }
+    onSave({ ...sv, inventory: [...sv.inventory, item] })
+    setDraft(emptyDraft())
+    setAdding(false)
+  }
+
   return (
     <div>
       <SectionTitle>Inventário</SectionTitle>
-      <InventorySection
-        items={sv.inventory}
-        editable={editable}
-        onSave={items => onSave({ ...sv, inventory: items })}
-      />
+      {sv.inventory.length === 0 && !adding && (
+        <div style={{ fontFamily: 'var(--font-mono)', fontSize: 11, color: 'var(--ink-mute)', padding: '8px 4px 12px' }}>~ inventário vazio ~</div>
+      )}
+      {sv.inventory.map((item, idx) => (
+        <SurvivorItemRow key={item.id} item={item} editable={editable}
+          onEdit={updated => onSave({ ...sv, inventory: sv.inventory.map((x, i) => i === idx ? updated : x) })}
+          onDelete={() => onSave({ ...sv, inventory: sv.inventory.filter((_, i) => i !== idx) })}
+        />
+      ))}
+      {editable && adding && (
+        <SurvivorItemForm draft={draft} setDraft={setDraft}
+          onConfirm={handleAdd}
+          onCancel={() => { setDraft(emptyDraft()); setAdding(false) }}
+        />
+      )}
+      {editable && !adding && (
+        <button className={styles.btnGhost} style={{ fontSize: 11, marginTop: 8 }} onClick={() => setAdding(true)}>
+          + Adicionar item
+        </button>
+      )}
     </div>
   )
 }
