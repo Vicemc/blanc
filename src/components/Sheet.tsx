@@ -1221,6 +1221,44 @@ function TamerInfoEditor({ tamer, onSave }: { tamer: Tamer; onSave: (t: Tamer) =
   )
 }
 
+// ── Survivor info editor ───────────────────────────────────────────
+function SurvivorInfoEditor({ sv, onSave }: { sv: Survivor; onSave: (s: Survivor) => void }) {
+  const [d, setD] = useState(sv)
+  const f = (k: keyof Survivor) => (v: string) => setD(s => ({ ...s, [k]: v || undefined }))
+  const changed = JSON.stringify(d) !== JSON.stringify(sv)
+  return (
+    <div className={styles.infoEditor}>
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, marginBottom: 10 }}>
+        <div><label className={styles.formLabel}>Nome</label>{inp(d.name, v => setD(s => ({ ...s, name: v })))}</div>
+        <div><label className={styles.formLabel}>Sobrenome</label>{inp(d.surname ?? '', f('surname'))}</div>
+        <div><label className={styles.formLabel}>Tagline</label>{inp(d.tagline ?? '', f('tagline'))}</div>
+        <div><label className={styles.formLabel}>Voz</label>{inp(d.voice ?? '', f('voice'))}</div>
+        <div><label className={styles.formLabel}>Aniversário</label>{inp(d.birthday ?? '', f('birthday'))}</div>
+        <div><label className={styles.formLabel}>Signo</label>{inp(d.sign ?? '', f('sign'))}</div>
+        <div><label className={styles.formLabel}>Idade</label>{inp(String(d.age ?? ''), v => setD(s => ({ ...s, age: v || undefined })))}</div>
+      </div>
+      <div style={{ marginBottom: 10 }}>
+        <label className={styles.formLabel}>Cor do retrato</label>
+        <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginTop: 4 }}>
+          {PORTRAIT_LIST.map(p => (
+            <div key={p} onClick={() => setD(s => ({ ...s, portrait: p }))}
+              style={{ width: 26, height: 26, borderRadius: 6, overflow: 'hidden', cursor: 'pointer', position: 'relative',
+                outline: d.portrait === p ? '2px solid var(--ink)' : 'none', outlineOffset: 2 }}>
+              <GrainFill color={p} />
+            </div>
+          ))}
+        </div>
+      </div>
+      {changed && (
+        <div style={{ display: 'flex', gap: 8 }}>
+          <button className={styles.btnSolid} style={{ fontSize: 12 }} onClick={() => onSave(d)}>Salvar info</button>
+          <button className={styles.btnGhost} style={{ fontSize: 12 }} onClick={() => setD(sv)}>Descartar</button>
+        </div>
+      )}
+    </div>
+  )
+}
+
 // ── Digimon info editor ────────────────────────────────────────────
 function DigiInfoEditor({ line, stageIdx, onSaveLine }: {
   line: DigimonLine; stageIdx: number; onSaveLine: (l: DigimonLine) => void
@@ -2959,29 +2997,17 @@ function SurvivorView({ sv, editable, isGM, onSave, state, wide = false }: {
       {toast && <Toast msg={toast} onDone={() => setToast(null)} />}
 
       {/* Info editable */}
-      {isGM && editable && (
-        <button className={styles.btnGhost} style={{ fontSize: 11, marginBottom: 12 }} onClick={() => setEditInfo(p => !p)}>
-          {editInfo ? '✕ Fechar' : '✎ Editar info'}
-        </button>
+      {editable && isGM && editInfo && (
+        <>
+          <SectionTitle>Informações</SectionTitle>
+          <SurvivorInfoEditor sv={sv} onSave={s => { onSave(s); setToast('Info salva!') }} />
+        </>
       )}
-      {editInfo && isGM && editable && (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginBottom: 16, padding: '14px 16px', background: 'var(--paper-deep)', border: '1px solid var(--line-soft)', borderRadius: 8 }}>
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
-            {inp(sv.name, v => onSave({ ...sv, name: v }), 'Nome')}
-            {inp(sv.surname ?? '', v => onSave({ ...sv, surname: v || undefined }), 'Sobrenome')}
-          </div>
-          {inp(sv.tagline ?? '', v => onSave({ ...sv, tagline: v || undefined }), 'Tagline')}
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 8 }}>
-            {inp(String(sv.age ?? ''), v => onSave({ ...sv, age: v || undefined }), 'Idade')}
-            {inp(sv.sign ?? '', v => onSave({ ...sv, sign: v || undefined }), 'Signo')}
-            {inp(sv.birthday ?? '', v => onSave({ ...sv, birthday: v || undefined }), 'Aniversário')}
-          </div>
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
-            {inp(sv.voice ?? '', v => onSave({ ...sv, voice: v || undefined }), 'Voz')}
-            <select value={sv.portrait} onChange={e => onSave({ ...sv, portrait: e.target.value as any })} className={styles.formInput}>
-              {PORTRAIT_LIST.map(p => <option key={p} value={p}>{p}</option>)}
-            </select>
-          </div>
+      {editable && isGM && (
+        <div style={{ marginBottom: 12 }}>
+          <button className={styles.btnGhost} style={{ fontSize: 11 }} onClick={() => setEditInfo(p => !p)}>
+            {editInfo ? '✕ Fechar info' : '✎ Editar info'}
+          </button>
         </div>
       )}
 
