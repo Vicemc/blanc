@@ -131,6 +131,7 @@ export interface SurvivorStatus {
   HP:           { v: number; max: number };
   Digisoul:     { v: number; max: number };
   Deslocamento: number;
+  Iniciativa:   number;
 }
 
 export interface Merit {

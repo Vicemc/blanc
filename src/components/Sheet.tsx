@@ -2851,6 +2851,17 @@ function SurvivorView({ sv, editable, isGM, onSave, state, wide = false }: {
             <span className={styles.statVal}>{sv.status.Deslocamento}</span>
           )}
         </div>
+        {/* Iniciativa */}
+        <div className={styles.statCell}>
+          <span className={styles.statKey}>Init.</span>
+          {isGM && editable ? (
+            <input type="number" min={0} max={20} value={sv.status.Iniciativa ?? 0}
+              onChange={e => editStatus({ Iniciativa: Math.max(0, parseInt(e.target.value) || 0) })}
+              className={styles.numInput} style={{ width: 44 }} />
+          ) : (
+            <span className={styles.statVal}>{sv.status.Iniciativa ?? 0}</span>
+          )}
+        </div>
       </div>
     </>
   )

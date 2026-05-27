@@ -9,7 +9,7 @@ export function makeSurvivor(id: string, name: string, portrait: Portrait = 'sag
     image:      null,
     imageKey:   null,
     attributes: { Poder: 2, Refinamento: 2, Resistência: 2 },
-    status:     { HP: { v: 10, max: 10 }, Digisoul: { v: 5, max: 5 }, Deslocamento: 3 },
+    status:     { HP: { v: 10, max: 10 }, Digisoul: { v: 5, max: 5 }, Deslocamento: 3, Iniciativa: 3 },
     skills:     {
       Mental: { ...DEFAULT_SKILL_SET.Mental },
       Físico: { ...DEFAULT_SKILL_SET.Físico },
@@ -28,7 +28,7 @@ const DEFAULT_SURVIVORS: Survivor[] = [
     surname: 'Akugetsu',
     tagline: 'Aquela que carrega as cerejeiras',
     attributes: { Poder: 2, Refinamento: 3, Resistência: 2 },
-    status: { HP: { v: 10, max: 10 }, Digisoul: { v: 8, max: 8 }, Deslocamento: 3 },
+    status: { HP: { v: 10, max: 10 }, Digisoul: { v: 8, max: 8 }, Deslocamento: 3, Iniciativa: 3 },
   },
 ]
 
