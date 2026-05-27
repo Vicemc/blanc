@@ -15,6 +15,7 @@ export function makeSurvivor(id: string, name: string, portrait: Portrait = 'sag
       Físico: { ...DEFAULT_SKILL_SET.Físico },
       Social: { ...DEFAULT_SKILL_SET.Social },
     },
+    survivorSkills: [],
     merits:   [],
     mindLink: { digimonId: null, active: false },
     inventory: [],

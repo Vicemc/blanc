@@ -165,6 +165,7 @@ export interface Survivor {
   attributes: SurvivorAttributes;
   status:     SurvivorStatus;
   skills:     SkillSet;
+  survivorSkills: TamerSkill[];
   merits:     Merit[];
   mindLink:   MindLink;
   inventory:  InventoryItem[];

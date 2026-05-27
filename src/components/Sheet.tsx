@@ -2787,15 +2787,57 @@ function AddMeritForm({ onAdd, onCancel }: { onAdd: (m: Merit) => void; onCancel
   )
 }
 
+// ── SurvivorInventoryTab ───────────────────────────────────────────
+function SurvivorInventoryTab({ sv, editable, onSave }: {
+  sv: Survivor; editable: boolean; onSave: (sv: Survivor) => void
+}) {
+  const [newItem, setNewItem] = useState<{ name: string; qty: string; notes: string } | null>(null)
+  return (
+    <div>
+      <SectionTitle action={editable && !newItem && (
+        <button className={styles.btnGhost} style={{ fontSize: 11 }} onClick={() => setNewItem({ name: '', qty: '1', notes: '' })}>+ Item</button>
+      )}>Inventário</SectionTitle>
+      {sv.inventory.length === 0 && !newItem && (
+        <div style={{ fontFamily: 'var(--font-mono)', fontSize: 11, color: 'var(--ink-mute)', padding: '8px 0 12px' }}>Inventário vazio.</div>
+      )}
+      {sv.inventory.map((item, i) => (
+        <div key={item.id} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '6px 0', borderBottom: '1px solid var(--line-soft)', fontFamily: 'var(--font-body)', fontSize: 13 }}>
+          <span style={{ fontFamily: 'var(--font-mono)', fontSize: 12, color: 'var(--ink-mute)', minWidth: 28, textAlign: 'right' }}>×{item.qty}</span>
+          <span style={{ flex: 1 }}>{item.name}</span>
+          {item.notes && <span style={{ fontSize: 11, color: 'var(--ink-mute)', fontStyle: 'italic' }}>{item.notes}</span>}
+          {editable && (
+            <button onClick={() => onSave({ ...sv, inventory: sv.inventory.filter((_, j) => j !== i) })}
+              className={styles.cardDel} style={{ position: 'static', opacity: 1 }}>×</button>
+          )}
+        </div>
+      ))}
+      {newItem && (
+        <div style={{ display: 'flex', gap: 6, marginTop: 10, flexWrap: 'wrap' }}>
+          <input value={newItem.name} onChange={e => setNewItem(n => ({ ...n!, name: e.target.value }))} placeholder="Nome do item" className={styles.formInput} style={{ flex: 2, minWidth: 120 }} />
+          <input type="number" min={1} value={newItem.qty} onChange={e => setNewItem(n => ({ ...n!, qty: e.target.value }))} className={styles.numInput} style={{ width: 56 }} />
+          <input value={newItem.notes} onChange={e => setNewItem(n => ({ ...n!, notes: e.target.value }))} placeholder="Nota (opcional)" className={styles.formInput} style={{ flex: 1, minWidth: 80 }} />
+          <button className={styles.btnSolid} style={{ fontSize: 12 }} onClick={() => {
+            if (!newItem.name.trim()) return
+            const item: InventoryItem = { id: `inv-${Date.now().toString(36)}`, name: newItem.name.trim(), qty: parseInt(newItem.qty) || 1, notes: newItem.notes || undefined }
+            onSave({ ...sv, inventory: [...sv.inventory, item] })
+            setNewItem(null)
+          }}>+ Add</button>
+          <button className={styles.btnGhost} style={{ fontSize: 12 }} onClick={() => setNewItem(null)}>Cancelar</button>
+        </div>
+      )}
+    </div>
+  )
+}
+
 // ── SurvivorView ───────────────────────────────────────────────────
 function SurvivorView({ sv, editable, isGM, onSave, state, wide = false }: {
   sv: Survivor; editable: boolean; isGM?: boolean
   onSave: (sv: Survivor) => void; state: AppState; wide?: boolean
 }) {
-  const [toast, setToast]       = useState<string | null>(null)
-  const [showAddMerit, setShowAddMerit] = useState(false)
-  const [editInfo, setEditInfo] = useState(false)
-  const [newItem, setNewItem]   = useState<{ name: string; qty: string; notes: string } | null>(null)
+  const [toast, setToast]           = useState<string | null>(null)
+  const [showAddMerit, setShowAddMerit]   = useState(false)
+  const [showAddSkill, setShowAddSkill]   = useState(false)
+  const [passiveToggles, setPassiveToggles] = useState<Record<number, { active: boolean; x: number }>>({})
 
   const editAttr = (k: keyof SurvivorAttributes, v: number) =>
     onSave({ ...sv, attributes: { ...sv.attributes, [k]: Math.max(1, Math.min(5, v)) } })
@@ -2804,12 +2846,12 @@ function SurvivorView({ sv, editable, isGM, onSave, state, wide = false }: {
     onSave({ ...sv, status: { ...sv.status, ...patch } as SurvivorStatus })
 
   const wildDigimons = (state.bestiary ?? []).filter(d => !d.tamerId)
+  const svSkills = sv.survivorSkills ?? []
 
   const statusSection = (
     <>
       <SectionTitle>Status</SectionTitle>
       <div className={styles.statRow}>
-        {/* HP */}
         <div className={styles.statCell}>
           <span className={styles.statKey}>HP</span>
           {isGM && editable ? (
@@ -2826,7 +2868,6 @@ function SurvivorView({ sv, editable, isGM, onSave, state, wide = false }: {
             <span className={styles.statVal}>{sv.status.HP.v}/{sv.status.HP.max}</span>
           )}
         </div>
-        {/* Digisoul */}
         <div className={styles.statCell}>
           <span className={styles.statKey}>Digisoul</span>
           {isGM && editable ? (
@@ -2843,7 +2884,6 @@ function SurvivorView({ sv, editable, isGM, onSave, state, wide = false }: {
             <span className={styles.statVal}>{sv.status.Digisoul.v}/{sv.status.Digisoul.max}</span>
           )}
         </div>
-        {/* Deslocamento */}
         <div className={styles.statCell}>
           <span className={styles.statKey}>Desl.</span>
           {isGM && editable ? (
@@ -2854,7 +2894,6 @@ function SurvivorView({ sv, editable, isGM, onSave, state, wide = false }: {
             <span className={styles.statVal}>{sv.status.Deslocamento}</span>
           )}
         </div>
-        {/* Iniciativa */}
         <div className={styles.statCell}>
           <span className={styles.statKey}>Init.</span>
           {isGM && editable ? (
@@ -2905,13 +2944,42 @@ function SurvivorView({ sv, editable, isGM, onSave, state, wide = false }: {
     </>
   )
 
+  const survivorSkillsSection = (
+    <>
+      <SectionTitle action={editable && isGM && !showAddSkill && (
+        <button className={styles.btnGhost} style={{ fontSize: 11 }} onClick={() => setShowAddSkill(true)}>+ Nova Skill</button>
+      )}>Survivor Skills</SectionTitle>
+      {svSkills.length === 0 && !showAddSkill && (
+        <div style={{ fontFamily: 'var(--font-mono)', fontSize: 11, color: 'var(--ink-mute)', padding: '8px 0 12px' }}>Nenhuma skill.</div>
+      )}
+      {[...svSkills]
+        .map((s, origIdx) => ({ s, origIdx }))
+        .sort((a, b) => (a.s.type === 'passive' ? 1 : 0) - (b.s.type === 'passive' ? 1 : 0))
+        .map(({ s, origIdx }) => (
+          <SkillCard key={origIdx} s={s} editable={!!(isGM && editable)}
+            onChange={sk => onSave({ ...sv, survivorSkills: svSkills.map((x, j) => j === origIdx ? sk as TamerSkill : x) })}
+            onDelete={isGM && editable ? () => onSave({ ...sv, survivorSkills: svSkills.filter((_, j) => j !== origIdx) }) : undefined}
+            onToggle={s.toggleBonus ? (active, x) =>
+              setPassiveToggles(p => ({ ...p, [origIdx]: { active, x: x ?? 0 } }))
+            : undefined}
+            toggleActive={passiveToggles[origIdx]?.active ?? false}
+            toggleX={passiveToggles[origIdx]?.x ?? 0}
+          />
+        ))
+      }
+      {showAddSkill && (
+        <AddSkillForm isTamer onAdd={sk => { onSave({ ...sv, survivorSkills: [...svSkills, sk as TamerSkill] }); setShowAddSkill(false); setToast('Skill adicionada!') }} onCancel={() => setShowAddSkill(false)} />
+      )}
+    </>
+  )
+
   const meritsSection = (
     <>
       <SectionTitle action={isGM && editable && !showAddMerit && (
-        <button className={styles.btnGhost} style={{ fontSize: 11 }} onClick={() => setShowAddMerit(true)}>+ Mérito</button>
-      )}>Méritos</SectionTitle>
+        <button className={styles.btnGhost} style={{ fontSize: 11 }} onClick={() => setShowAddMerit(true)}>+ Mérito/Falha</button>
+      )}>Méritos e Falhas</SectionTitle>
       {sv.merits.length === 0 && !showAddMerit && (
-        <div style={{ fontFamily: 'var(--font-mono)', fontSize: 11, color: 'var(--ink-mute)', padding: '8px 0 12px' }}>Nenhum mérito.</div>
+        <div style={{ fontFamily: 'var(--font-mono)', fontSize: 11, color: 'var(--ink-mute)', padding: '8px 0 12px' }}>Nenhum mérito ou falha.</div>
       )}
       {sv.merits.map((m, i) => (
         <MeritCard key={i} m={m} editable={!!(isGM && editable)}
@@ -2967,64 +3035,12 @@ function SurvivorView({ sv, editable, isGM, onSave, state, wide = false }: {
     </>
   )
 
-  const inventorySection = (
-    <>
-      <SectionTitle action={editable && !newItem && (
-        <button className={styles.btnGhost} style={{ fontSize: 11 }} onClick={() => setNewItem({ name: '', qty: '1', notes: '' })}>+ Item</button>
-      )}>Inventário</SectionTitle>
-      {sv.inventory.length === 0 && !newItem && (
-        <div style={{ fontFamily: 'var(--font-mono)', fontSize: 11, color: 'var(--ink-mute)', padding: '8px 0 12px' }}>Inventário vazio.</div>
-      )}
-      {sv.inventory.map((item, i) => (
-        <div key={item.id} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '6px 0', borderBottom: '1px solid var(--line-soft)', fontFamily: 'var(--font-body)', fontSize: 13 }}>
-          <span style={{ fontFamily: 'var(--font-mono)', fontSize: 12, color: 'var(--ink-mute)', minWidth: 28, textAlign: 'right' }}>×{item.qty}</span>
-          <span style={{ flex: 1 }}>{item.name}</span>
-          {item.notes && <span style={{ fontSize: 11, color: 'var(--ink-mute)', fontStyle: 'italic' }}>{item.notes}</span>}
-          {editable && (
-            <button onClick={() => onSave({ ...sv, inventory: sv.inventory.filter((_, j) => j !== i) })}
-              className={styles.cardDel} style={{ position: 'static', opacity: 1 }}>×</button>
-          )}
-        </div>
-      ))}
-      {newItem && (
-        <div style={{ display: 'flex', gap: 6, marginTop: 10, flexWrap: 'wrap' }}>
-          <input value={newItem.name} onChange={e => setNewItem(n => ({ ...n!, name: e.target.value }))} placeholder="Nome do item" className={styles.formInput} style={{ flex: 2, minWidth: 120 }} />
-          <input type="number" min={1} value={newItem.qty} onChange={e => setNewItem(n => ({ ...n!, qty: e.target.value }))} className={styles.numInput} style={{ width: 56 }} />
-          <input value={newItem.notes} onChange={e => setNewItem(n => ({ ...n!, notes: e.target.value }))} placeholder="Nota (opcional)" className={styles.formInput} style={{ flex: 1, minWidth: 80 }} />
-          <button className={styles.btnSolid} style={{ fontSize: 12 }} onClick={() => {
-            if (!newItem.name.trim()) return
-            const item: InventoryItem = { id: `inv-${Date.now().toString(36)}`, name: newItem.name.trim(), qty: parseInt(newItem.qty) || 1, notes: newItem.notes || undefined }
-            onSave({ ...sv, inventory: [...sv.inventory, item] })
-            setNewItem(null)
-          }}>+ Add</button>
-          <button className={styles.btnGhost} style={{ fontSize: 12 }} onClick={() => setNewItem(null)}>Cancelar</button>
-        </div>
-      )}
-    </>
-  )
-
-  const leftCol = <>{statusSection}{attrSection}{skillsSection}</>
-  const rightCol = <>{meritsSection}{mindLinkSection}{inventorySection}</>
+  const leftCol  = <>{statusSection}{attrSection}{skillsSection}</>
+  const rightCol = <>{survivorSkillsSection}{meritsSection}{mindLinkSection}</>
 
   return (
     <div>
       {toast && <Toast msg={toast} onDone={() => setToast(null)} />}
-
-      {/* Info editable */}
-      {editable && isGM && editInfo && (
-        <>
-          <SectionTitle>Informações</SectionTitle>
-          <SurvivorInfoEditor sv={sv} onSave={s => { onSave(s); setToast('Info salva!') }} />
-        </>
-      )}
-      {editable && isGM && (
-        <div style={{ marginBottom: 12 }}>
-          <button className={styles.btnGhost} style={{ fontSize: 11 }} onClick={() => setEditInfo(p => !p)}>
-            {editInfo ? '✕ Fechar info' : '✎ Editar info'}
-          </button>
-        </div>
-      )}
-
       {wide ? (
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0 48px', alignItems: 'start' }}>
           <div>{leftCol}</div>
@@ -3059,6 +3075,8 @@ export function FullSheet({ subject, state, onSaveState, onClose, editable = fal
   if (tamer)    tabs.push({ id: 'tamer',    label: tamer.name })
   if (tamer)    tabs.push({ id: 'inventario', label: 'Inventário' })
   if (survivor) tabs.push({ id: 'survivor', label: survivor.name })
+  if (survivor) tabs.push({ id: 'sv-info', label: 'Informações' })
+  if (survivor) tabs.push({ id: 'sv-inventario', label: 'Inventário' })
   if (line)  line.stages.forEach((s,i) => {
     if (s.hidden && !isGM) return
     tabs.push({ id:`stage-${i}`, label: s.stageName, locked: s.locked, hidden: s.hidden })
@@ -3214,6 +3232,8 @@ export function FullSheet({ subject, state, onSaveState, onClose, editable = fal
         {showTamer && <TamerView tamer={tamer!} line={line} editable={editable} isGM={isGM} onSave={saveTamer} onSaveLine={saveLine} onSaveAll={saveAllAutoridade} state={state} onSaveState={onSaveState} onSpawnToken={onSpawnToken} wide={wide} />}
         {active === 'inventario' && tamer && <DigiviceInventoryTab tamerId={tamer.id} editable={editable} isGM={isGM} />}
         {active === 'survivor' && survivor && <SurvivorView sv={survivor} editable={editable} isGM={isGM} onSave={saveSurvivor} state={state} wide={wide} />}
+        {active === 'sv-info' && survivor && <SurvivorInfoEditor sv={survivor} onSave={saveSurvivor} />}
+        {active === 'sv-inventario' && survivor && <SurvivorInventoryTab sv={survivor} editable={editable} onSave={saveSurvivor} />}
         {stageIdx !== null && line && (
           <DigimonStageView line={line} stageIdx={stageIdx} tamer={tamer} editable={editable} isGM={isGM} onSaveLine={saveLine} onSaveTamer={tamer ? saveTamer : undefined}
             onDeleteStage={editable && isGM ? () => {
