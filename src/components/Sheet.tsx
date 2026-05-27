@@ -3125,6 +3125,8 @@ function SurvivorView({ sv, editable, isGM, onSave, state, wide = false }: {
   return (
     <div>
       {toast && <Toast msg={toast} onDone={() => setToast(null)} />}
+      <SectionTitle>Informações</SectionTitle>
+      <SurvivorInfoEditor sv={sv} onSave={s => { onSave(s); setToast('Info salva!') }} />
       {wide ? (
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0 48px', alignItems: 'start' }}>
           <div>{leftCol}</div>
@@ -3133,8 +3135,6 @@ function SurvivorView({ sv, editable, isGM, onSave, state, wide = false }: {
       ) : (
         <>{leftCol}{rightCol}</>
       )}
-      <SectionTitle>Informações</SectionTitle>
-      <SurvivorInfoEditor sv={sv} onSave={s => { onSave(s); setToast('Info salva!') }} />
     </div>
   )
 }
