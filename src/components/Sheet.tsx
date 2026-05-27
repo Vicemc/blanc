@@ -1,7 +1,7 @@
 import type {
   AppState, Tamer, DigimonLine, DigimonStage, Bug, Sign,
   AttributeKey, Attributes, SkillSet, TamerSkill, DigimonSkill, DigimonStageStatus, PassiveToggleBonus,
-  SkillTreePhase
+  SkillTreePhase, InventoryItem
 } from '../types'
 import { ATTRIBUTE_GROUPS, ATTRIBUTE_KEYS, AFFINITY_KEYS, PORTRAIT_LIST, BUG_COLORS } from '../types'
 import {
@@ -14,7 +14,7 @@ import {
 } from '../data/store'
 import { GrainFill } from "./GrainFill"
 import { Toast } from './Toast'
-import { uploadImage } from '../lib/db'
+import { uploadImage, saveStateToDB } from '../lib/db'
 import styles from './Sheet.module.css'
 
 // ── Modo de visualização: número ou bolinhas ─────────────────────
@@ -1330,6 +1330,124 @@ function TamerSkillsWithDomainTabs({ tamer, editable, passiveToggles, setPassive
   )
 }
 
+// ── Inventário ──────────────────────────────────────────────────────
+
+function InventoryRow({ item, editable, onEdit, onDelete }: {
+  item: InventoryItem; editable: boolean
+  onEdit: (item: InventoryItem) => void; onDelete: () => void
+}) {
+  const [editing, setEditing] = useState(false)
+  const [draft, setDraft]     = useState(item)
+
+  if (editing) {
+    return (
+      <div style={{ display:'flex', gap:8, flexWrap:'wrap', alignItems:'center',
+        background:'var(--paper-deep)', border:'1px solid var(--line)',
+        borderRadius:8, padding:'10px 12px', marginBottom:6 }}>
+        <input value={draft.name} onChange={e => setDraft(d => ({ ...d, name: e.target.value }))}
+          placeholder="Nome *" className={styles.formInput}
+          style={{ flex:'1 1 150px', width:'auto', padding:'7px 10px', fontSize:13 }} />
+        <input type="number" value={draft.qty} min={0}
+          onChange={e => setDraft(d => ({ ...d, qty: parseInt(e.target.value) || 0 }))}
+          className={styles.formInput}
+          style={{ width:60, flex:'0 0 auto', padding:'7px 10px', fontSize:13 }} />
+        <input value={draft.notes ?? ''} onChange={e => setDraft(d => ({ ...d, notes: e.target.value || undefined }))}
+          placeholder="Notas" className={styles.formInput}
+          style={{ flex:'2 1 200px', width:'auto', padding:'7px 10px', fontSize:13 }} />
+        <button className={styles.btnSolid} style={{ fontSize:12, padding:'7px 14px' }}
+          onClick={() => { onEdit(draft); setEditing(false) }}>✓</button>
+        <button className={styles.btnGhost} style={{ fontSize:12, padding:'7px 14px' }}
+          onClick={() => { setDraft(item); setEditing(false) }}>✕</button>
+      </div>
+    )
+  }
+
+  return (
+    <div style={{ display:'flex', alignItems:'center', gap:10, padding:'7px 12px',
+      borderBottom:'1px dotted var(--line-soft)', position:'relative' }}>
+      <span style={{ fontFamily:'var(--font-mono)', fontSize:11, color:'var(--ink-mute)',
+        flexShrink:0, minWidth:24, textAlign:'right' }}>×{item.qty}</span>
+      <span style={{ fontFamily:'var(--font-body)', fontSize:14, flex:1 }}>{item.name}</span>
+      {item.notes && (
+        <span style={{ fontFamily:'var(--font-mono)', fontSize:11, color:'var(--ink-mute)', flex:2 }}>
+          {item.notes}
+        </span>
+      )}
+      {editable && (
+        <div style={{ display:'flex', gap:6, flexShrink:0 }}>
+          <button className={styles.cardEdit} onClick={() => { setDraft(item); setEditing(true) }} title="Editar">✎</button>
+          <button className={styles.cardDel}  onClick={onDelete} title="Remover">×</button>
+        </div>
+      )}
+    </div>
+  )
+}
+
+function InventorySection({ items, editable, onSave }: {
+  items: InventoryItem[]; editable: boolean
+  onSave: (items: InventoryItem[]) => void
+}) {
+  const [addOpen, setAddOpen] = useState(false)
+  const [draft, setDraft]     = useState({ name:'', qty:'1', notes:'' })
+
+  const handleAdd = () => {
+    if (!draft.name.trim()) return
+    const item: InventoryItem = {
+      id: `inv-${Date.now().toString(36)}`,
+      name: draft.name.trim(),
+      qty: parseInt(draft.qty) || 1,
+      notes: draft.notes.trim() || undefined,
+    }
+    onSave([...items, item])
+    setDraft({ name:'', qty:'1', notes:'' })
+    setAddOpen(false)
+  }
+
+  return (
+    <div style={{ marginBottom:16 }}>
+      {items.length === 0 && !addOpen && (
+        <div style={{ fontFamily:'var(--font-mono)', fontSize:11, color:'var(--ink-mute)',
+          padding:'8px 12px' }}>
+          ~ inventário vazio ~
+        </div>
+      )}
+      {items.map((item, idx) => (
+        <InventoryRow key={item.id} item={item} editable={editable}
+          onEdit={updated => onSave(items.map((x, i) => i === idx ? updated : x))}
+          onDelete={() => onSave(items.filter((_, i) => i !== idx))} />
+      ))}
+      {editable && !addOpen && (
+        <button className={styles.btnGhost} style={{ fontSize:11, marginTop:6 }}
+          onClick={() => setAddOpen(true)}>
+          + Adicionar item
+        </button>
+      )}
+      {editable && addOpen && (
+        <div style={{ display:'flex', gap:8, flexWrap:'wrap', alignItems:'center',
+          background:'var(--paper-deep)', border:'1px solid var(--line)',
+          borderRadius:8, padding:'10px 12px', marginTop:6 }}>
+          <input value={draft.name} onChange={e => setDraft(d => ({ ...d, name: e.target.value }))}
+            placeholder="Nome do item *" className={styles.formInput}
+            style={{ flex:'1 1 150px', width:'auto', padding:'7px 10px', fontSize:13 }} />
+          <input type="number" value={draft.qty} min={0}
+            onChange={e => setDraft(d => ({ ...d, qty: e.target.value }))}
+            placeholder="Qtd" className={styles.formInput}
+            style={{ width:60, flex:'0 0 auto', padding:'7px 10px', fontSize:13 }} />
+          <input value={draft.notes} onChange={e => setDraft(d => ({ ...d, notes: e.target.value }))}
+            placeholder="Notas" className={styles.formInput}
+            style={{ flex:'2 1 200px', width:'auto', padding:'7px 10px', fontSize:13 }} />
+          <button className={styles.btnSolid} style={{ fontSize:12, padding:'7px 14px' }}
+            onClick={handleAdd}>Adicionar</button>
+          <button className={styles.btnGhost} style={{ fontSize:12, padding:'7px 14px' }}
+            onClick={() => { setDraft({ name:'', qty:'1', notes:'' }); setAddOpen(false) }}>
+            Cancelar
+          </button>
+        </div>
+      )}
+    </div>
+  )
+}
+
 // ── TamerView ──────────────────────────────────────────────────────
 // ── SkillTreeSection ───────────────────────────────────────────────
 // Mostra as fases de Skill Tree do tamer. GM pode adicionar e desbloquear fases;
@@ -1799,6 +1917,13 @@ function TamerView({ tamer, line, editable, isGM, onSave, onSaveLine, onSaveAll,
           </div>
         </>
       )}
+
+      <SectionTitle>Inventário</SectionTitle>
+      <InventorySection
+        items={tamer.inventory ?? []}
+        editable={editable}
+        onSave={inv => onSave({ ...tamer, inventory: inv })}
+      />
 
       <SectionTitle action={editable && !showAdd && (
         <button className={styles.btnGhost} style={{ fontSize:11 }} onClick={() => setShowAdd(true)}>+ Nova Skill</button>
@@ -2345,9 +2470,11 @@ export function FullSheet({ subject, state, onSaveState, onClose, editable = fal
     if (tamer) {
       const url = await uploadImage(dataUrl, tamer.id)
       const toStorage = url != null && !url.startsWith('data:')
-      saveTamer({ ...tamer, image: url ?? dataUrl, imageKey: toStorage ? `${tamer.id}.${ext}` : null })
+      const newTamer = { ...tamer, image: url ?? dataUrl, imageKey: toStorage ? `${tamer.id}.${ext}` : null }
+      const newState = { ...state, tamers: state.tamers.map(x => x.id === newTamer.id ? newTamer : x) }
+      onSaveState?.(newState)
+      if (toStorage) void saveStateToDB(newState)
     } else if (line) {
-      // Salva a imagem no estágio ativo, não na line inteira
       const displayIdx = stageIdx ?? line.currentStage
       const stId = `${line.id}-stage-${displayIdx}`
       const url = await uploadImage(dataUrl, stId)
@@ -2355,7 +2482,10 @@ export function FullSheet({ subject, state, onSaveState, onClose, editable = fal
       const newStages = line.stages.map((s, i) =>
         i === displayIdx ? { ...s, image: url ?? dataUrl, imageKey: toStorage ? `${stId}.${ext}` : null } : s
       )
-      saveLine({ ...line, stages: newStages })
+      const newLine = { ...line, stages: newStages }
+      const newState = { ...state, bestiary: state.bestiary.map(x => x.id === newLine.id ? newLine : x) }
+      onSaveState?.(newState)
+      if (toStorage) void saveStateToDB(newState)
     }
     else if (bug)  saveBug({ ...bug, image: dataUrl })
     else if (sign) saveSign({ ...sign, image: dataUrl })

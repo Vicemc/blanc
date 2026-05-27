@@ -2,7 +2,7 @@ import { useState, useCallback } from 'react'
 import type { AppState, Tamer } from '../types'
 import { PORTRAIT_LIST } from '../types'
 import { findDigimon, makeTamer, makeSlimLine } from '../data/store'
-import { uploadImage } from '../lib/db'
+import { uploadImage, saveStateToDB } from '../lib/db'
 import { PageHead } from '../components/PageHead'
 import { GrainFill } from '../components/GrainFill'
 import { SheetModal } from '../components/Sheet'
@@ -214,7 +214,9 @@ export default function PartyPage({ state, onUpdate, canEdit, isGM }: Props) {
     const uploadedToStorage = url != null && !url.startsWith('data:')
     const ext = dataUrl.match(/data:image\/([^;]+);/)?.[1] ?? 'webp'
     const imageKey = uploadedToStorage ? `${tamerId}.${ext}` : null
-    onUpdate({ ...state, tamers: state.tamers.map(t => t.id === tamerId ? { ...t, image: url ?? dataUrl, imageKey } : t) })
+    const newState = { ...state, tamers: state.tamers.map(t => t.id === tamerId ? { ...t, image: url ?? dataUrl, imageKey } : t) }
+    onUpdate(newState)
+    if (uploadedToStorage) void saveStateToDB(newState)
   }, [state, onUpdate])
 
   return (
@@ -250,7 +252,7 @@ export default function PartyPage({ state, onUpdate, canEdit, isGM }: Props) {
             <div key={t.id} className={styles.card} onClick={() => setOpen({ kind:'tamer', id:t.id })}>
               <div className={`${styles.portrait} fill-${t.portrait}`}>
                 {t.image
-                  ? <img src={t.image} alt="" style={{ width:'100%', height:'100%', objectFit:'cover' }}
+                  ? <img key={t.image} src={t.image} alt="" style={{ width:'100%', height:'100%', objectFit:'cover' }}
                       onError={e => { (e.currentTarget as HTMLImageElement).style.display = 'none' }} />
                   : <div className="grain" />}
                 <label className={styles.uploadHint} onClick={e => e.stopPropagation()}>

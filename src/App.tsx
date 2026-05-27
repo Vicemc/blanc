@@ -46,8 +46,9 @@ function AppInner() {
   const [isDirty, setIsDirty] = useState(false)
   const [isSaving, setIsSaving] = useState(false)
   const [digizapUnread, setDigizapUnread] = useState(0)
-  const realtimeUnsub = useRef<(() => void) | null>(null)
-  const lastSaveRef   = useRef(0)
+  const realtimeUnsub  = useRef<(() => void) | null>(null)
+  const lastSaveRef    = useRef(0)
+  const saveDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   const isGuest = !localMode && profile?.role === 'guest'
 
@@ -82,10 +83,15 @@ function AppInner() {
     saveStateToDB(s)
   }, [])
 
-  // Edição local — só marca dirty, não salva no banco
+  // Edição local — marca dirty e auto-salva após 1.5s de inatividade
   const onUpdateLocal = useCallback((s: AppState) => {
     setState(s)
     setIsDirty(true)
+    if (saveDebounceRef.current) clearTimeout(saveDebounceRef.current)
+    saveDebounceRef.current = setTimeout(() => {
+      lastSaveRef.current = Date.now()
+      void saveStateToDB(s).then(() => setIsDirty(false))
+    }, 1500)
   }, [])
 
   const handleSave = useCallback(async () => {

@@ -148,10 +148,25 @@ function InventoryTab({ items, isGM, onSave }: {
   isGM:   boolean
   onSave: (items: InventoryItem[]) => void
 }) {
-  const [adding, setAdding] = useState(false)
-  const [draft, setDraft]   = useState<Partial<InventoryItem>>({
+  const [adding,    setAdding]    = useState(false)
+  const [editingId, setEditingId] = useState<string | null>(null)
+  const [draft, setDraft]         = useState<Partial<InventoryItem>>({
     name: '', type: 'item', description: '', quantity: 1, effects: '', gm_only: false,
   })
+  const [editDraft, setEditDraft] = useState<InventoryItem | null>(null)
+
+  const startEdit = (item: InventoryItem) => {
+    setEditDraft({ ...item })
+    setEditingId(item.id)
+    setAdding(false)
+  }
+  const confirmEdit = () => {
+    if (!editDraft || !editDraft.name.trim()) return
+    onSave(items.map(i => i.id === editingId ? editDraft : i))
+    setEditingId(null)
+    setEditDraft(null)
+  }
+  const cancelEdit = () => { setEditingId(null); setEditDraft(null) }
 
   const visible = isGM ? items : items.filter(i => !i.gm_only)
 
@@ -198,57 +213,104 @@ function InventoryTab({ items, isGM, onSave }: {
   return (
     <div>
       <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginBottom: 16 }}>
-        {visible.map(item => (
-          <div key={item.id} style={{ display: 'flex', gap: 12, alignItems: 'flex-start',
-            padding: '12px 16px', background: 'var(--paper)',
-            border: `1px solid ${item.gm_only ? 'var(--coral)' : 'var(--line)'}`,
-            borderRadius: 10 }}>
-            <div style={{ flex: 1 }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4 }}>
-                <span style={{ fontFamily: 'var(--font-display)', fontSize: 15,
-                  textTransform: 'uppercase' }}>{item.name}</span>
-                <span style={{ fontFamily: 'var(--font-mono)', fontSize: 9,
-                  letterSpacing: '0.1em', textTransform: 'uppercase',
-                  padding: '1px 7px', borderRadius: 999,
-                  background: 'var(--paper-deep)', color: TYPE_COLOR[item.type] }}>
-                  {item.type}
-                </span>
-                {item.gm_only && isGM && (
+        {visible.map(item => {
+          if (isGM && editingId === item.id && editDraft) {
+            return (
+              <div key={item.id} style={{ border: '1px solid var(--line)', borderRadius: 10,
+                padding: '16px', background: 'var(--paper-deep)' }}>
+                <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr 80px', gap: 8, marginBottom: 8 }}>
+                  <input value={editDraft.name}
+                    onChange={e => setEditDraft(d => d && ({ ...d, name: e.target.value }))}
+                    placeholder="Nome do item *" style={inputStyle} />
+                  <select value={editDraft.type}
+                    onChange={e => setEditDraft(d => d && ({ ...d, type: e.target.value as any }))}
+                    style={inputStyle}>
+                    <option value="item">Item</option>
+                    <option value="weapon">Arma</option>
+                    <option value="accessory">Acessório</option>
+                    <option value="key">Chave</option>
+                  </select>
+                  <input type="number" min={0} value={editDraft.quantity}
+                    onChange={e => setEditDraft(d => d && ({ ...d, quantity: parseInt(e.target.value)||0 }))}
+                    style={inputStyle} />
+                </div>
+                <input value={editDraft.description}
+                  onChange={e => setEditDraft(d => d && ({ ...d, description: e.target.value }))}
+                  placeholder="Descrição" style={{ ...inputStyle, width: '100%', marginBottom: 8 }} />
+                <input value={editDraft.effects}
+                  onChange={e => setEditDraft(d => d && ({ ...d, effects: e.target.value }))}
+                  placeholder="Efeitos" style={{ ...inputStyle, width: '100%', marginBottom: 8 }} />
+                <label style={{ display: 'flex', alignItems: 'center', gap: 8,
+                  fontFamily: 'var(--font-mono)', fontSize: 11, color: 'var(--ink-mute)',
+                  letterSpacing: '0.08em', marginBottom: 12, cursor: 'pointer' }}>
+                  <input type="checkbox" checked={editDraft.gm_only}
+                    onChange={e => setEditDraft(d => d && ({ ...d, gm_only: e.target.checked }))} />
+                  Visível apenas para o GM
+                </label>
+                <div style={{ display: 'flex', gap: 8 }}>
+                  <button onClick={confirmEdit} style={{ ...btnStyle, background: 'var(--ink)',
+                    color: 'var(--paper)', borderColor: 'var(--ink)' }}>Salvar</button>
+                  <button onClick={cancelEdit} style={btnStyle}>Cancelar</button>
+                </div>
+              </div>
+            )
+          }
+
+          return (
+            <div key={item.id} style={{ display: 'flex', gap: 12, alignItems: 'flex-start',
+              padding: '12px 16px', background: 'var(--paper)',
+              border: `1px solid ${item.gm_only ? 'var(--coral)' : 'var(--line)'}`,
+              borderRadius: 10 }}>
+              <div style={{ flex: 1 }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4 }}>
+                  <span style={{ fontFamily: 'var(--font-display)', fontSize: 15,
+                    textTransform: 'uppercase' }}>{item.name}</span>
                   <span style={{ fontFamily: 'var(--font-mono)', fontSize: 9,
                     letterSpacing: '0.1em', textTransform: 'uppercase',
                     padding: '1px 7px', borderRadius: 999,
-                    background: 'rgba(196,51,33,0.1)', color: 'var(--coral)' }}>
-                    GM only
+                    background: 'var(--paper-deep)', color: TYPE_COLOR[item.type] }}>
+                    {item.type}
                   </span>
+                  {item.gm_only && isGM && (
+                    <span style={{ fontFamily: 'var(--font-mono)', fontSize: 9,
+                      letterSpacing: '0.1em', textTransform: 'uppercase',
+                      padding: '1px 7px', borderRadius: 999,
+                      background: 'rgba(196,51,33,0.1)', color: 'var(--coral)' }}>
+                      GM only
+                    </span>
+                  )}
+                </div>
+                {item.description && (
+                  <div style={{ fontSize: 13, color: 'var(--ink-soft)', marginBottom: 4 }}>
+                    {item.description}
+                  </div>
+                )}
+                {item.effects && (
+                  <div style={{ fontFamily: 'var(--font-mono)', fontSize: 11,
+                    color: 'var(--teal)', letterSpacing: '0.04em' }}>
+                    {item.effects}
+                  </div>
                 )}
               </div>
-              {item.description && (
-                <div style={{ fontSize: 13, color: 'var(--ink-soft)', marginBottom: 4 }}>
-                  {item.description}
-                </div>
-              )}
-              {item.effects && (
-                <div style={{ fontFamily: 'var(--font-mono)', fontSize: 11,
-                  color: 'var(--teal)', letterSpacing: '0.04em' }}>
-                  {item.effects}
-                </div>
-              )}
+              <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexShrink: 0 }}>
+                <button onClick={() => updateQty(item.id, -1)} style={miniBtn}>−</button>
+                <span style={{ fontFamily: 'var(--font-mono)', fontSize: 14,
+                  fontWeight: 700, minWidth: 20, textAlign: 'center' }}>
+                  {item.quantity}
+                </span>
+                <button onClick={() => updateQty(item.id, +1)} style={miniBtn}>+</button>
+                {isGM && (
+                  <>
+                    <button onClick={() => startEdit(item)}
+                      style={{ ...miniBtn, marginLeft: 4 }} title="Editar">✎</button>
+                    <button onClick={() => removeItem(item.id)}
+                      style={{ ...miniBtn, color: 'var(--coral)', borderColor: 'var(--coral)' }}>×</button>
+                  </>
+                )}
+              </div>
             </div>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexShrink: 0 }}>
-              <button onClick={() => updateQty(item.id, -1)} style={miniBtn}>−</button>
-              <span style={{ fontFamily: 'var(--font-mono)', fontSize: 14,
-                fontWeight: 700, minWidth: 20, textAlign: 'center' }}>
-                {item.quantity}
-              </span>
-              <button onClick={() => updateQty(item.id, +1)} style={miniBtn}>+</button>
-              {isGM && (
-                <button onClick={() => removeItem(item.id)}
-                  style={{ ...miniBtn, color: 'var(--coral)', borderColor: 'var(--coral)',
-                    marginLeft: 4 }}>×</button>
-              )}
-            </div>
-          </div>
-        ))}
+          )
+        })}
       </div>
 
       {isGM && !adding && (

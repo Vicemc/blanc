@@ -100,6 +100,13 @@ export interface AlwaysOnBonus {
   inheritable?: boolean;
 }
 
+export interface InventoryItem {
+  id:     string;
+  name:   string;
+  qty:    number;
+  notes?: string;
+}
+
 export interface TamerSkill {
   type: SkillCardType;
   keyword: string;
@@ -230,6 +237,7 @@ export interface Tamer {
   attributes: Attributes;
   skills:     SkillSet;
   tamerSkills: TamerSkill[];
+  inventory:   InventoryItem[];
   digimonId:  string | null;
 }
 

@@ -478,6 +478,7 @@ export function makeTamer(
     attributes: attrs,
     skills: JSON.parse(JSON.stringify(DEFAULT_SKILL_SET)),
     tamerSkills: [],
+    inventory:   [],
     digimonId,
   };
 }
@@ -788,6 +789,7 @@ export function buildDefaultState(): AppState {
         effect: 'Durante o seu turno, caso Naoki tenha causado dano em um inimigo, a ação de digievoluir Tinkermon tem [Blitz] e seu custo é reduzido em -1.',
       },
     ] as TamerSkill[],
+    inventory:   [],
     digimonId: 'd-tinkermon-line',
   };
 
@@ -1000,6 +1002,7 @@ export function buildDefaultState(): AppState {
         effect: 'Mori escolhe uma Skill de ação e causa X de dano em Kudamon e suas evoluções; X é equivalente ao custo de Memory da Skill escolhida multiplicado por 2. Até o final desse Round, a Skill escolhida terá seu custo reduzido para 0 e terá [Blitz].',
       },
     ] as TamerSkill[],
+    inventory:   [],
     digimonId: 'd-kudamon-line',
   };
 
@@ -1201,6 +1204,7 @@ export function buildDefaultState(): AppState {
         effect: 'No início do Round, caso tenha usado uma ação que tenha [Glossary of Magic] no nome durante o Round anterior, Memory +1.',
       },
     ] as TamerSkill[],
+    inventory:   [],
     digimonId: 'd-blucomon-line',
   };
 
@@ -1404,6 +1408,7 @@ export function buildDefaultState(): AppState {
         effect: 'No início da batalha, Yuri escolhe um aliado humano; a pessoa escolhida será tratado como um [Apprentice] para as Skills de Yuri. No início do turno de Yuri, se ela tiver menos Memory que seu [Apprentice], Yuri recebe Memory +1. Se tanto Yuri quanto seu [Apprentice] tiverem 0 de Memory, ambos ganham Memory +1.',
       },
     ] as TamerSkill[],
+    inventory:   [],
     digimonId: 'd-wormmon-line',
   };
 
@@ -1579,6 +1584,7 @@ export function buildDefaultState(): AppState {
         toggleBonus: { statusBonus: { Defesa: 1 } },
       },
     ] as TamerSkill[],
+    inventory:   [],
     digimonId: 'd-solarmon-line',
   };
 
@@ -1783,6 +1789,7 @@ export function buildDefaultState(): AppState {
         effect: 'Quando [Spectator\'s Chair] ativar, permite que Sachi faça uma cura extra para o aliado com menor HP na batalha — em caso de empate, Sachi escolhe — que ela consiga ver.',
       },
     ] as TamerSkill[],
+    inventory:   [],
     digimonId: null, // Digimon a ser revelado futuramente
   };
 
@@ -1857,6 +1864,7 @@ export function buildDefaultState(): AppState {
       { type: 'passive', keyword: 'Domain of Time', title: 'The Flame That Counts the Years',
         effect: 'Enquanto esse Domain estiver ativo, [Humanos] são imunes a ataques. No final do Round, 3 personagens aleatórios são afetados por 4 cargas de [Burn].' },
     ] as TamerSkill[],
+    inventory:   [],
     digimonId: 'd-toyagumon-line',
   };
 
@@ -1919,6 +1927,7 @@ export function buildDefaultState(): AppState {
         effect: 'Libera a afinidade [Cura] para Kanade. Adiciona [Cura] a todas as rolagens que recuperem HP.',
         alwaysOn: { affinityBonus: { Cura: 1 } } },
     ] as TamerSkill[],
+    inventory:   [],
     digimonId: 'd-penmon-line',
   };
 
@@ -1980,6 +1989,7 @@ export function buildDefaultState(): AppState {
       { type: 'passive', keyword: 'Domain of Nature', title: 'Queendom',
         effect: 'A rainha do Domain é invocada no início da batalha e adiciona a barra Queen\'s Favor [máx. 10]. Para cada sucesso nas rolagens de Shinra, ganha Queen\'s Favor. No início do Round, pode gastar Queen\'s Favor em múltiplos de 5 para dar Memory +1 para Shinra e todos os aliados dentro do Domain.' },
     ] as TamerSkill[],
+    inventory:   [],
     digimonId: 'd-floramon-line',
   };
 
@@ -2041,6 +2051,7 @@ export function buildDefaultState(): AppState {
       { type: 'passive', keyword: 'Domain of Logic', title: 'Co-Sign Asset',
         effect: 'No início do Round, Kumo escolhe um aliado com 4 ou mais de Memory e aplica 1 carga de [Haste] nele. Só 1 aliado afetado por vez.' },
     ] as TamerSkill[],
+    inventory:   [],
     digimonId: 'd-hyokomon-line',
   };
 
@@ -2112,6 +2123,7 @@ export function buildDefaultState(): AppState {
       { type: 'passive', keyword: 'Domain of Time', title: 'Twilight Memories',
         effect: 'Durante o seu turno, Hibito pode invocar 1 [Silhouette Token] adjacente a ele como Ação Livre. Se o clima for [Intense Sunlight], pode criar 1 Token extra. Máximo de 3 Silhouette Tokens em campo.' },
     ] as TamerSkill[],
+    inventory:   [],
     digimonId: 'd-ghostmon-line',
   };
 
@@ -2174,6 +2186,7 @@ export function buildDefaultState(): AppState {
       { type: 'passive', keyword: 'Domain of Emotion', title: 'Longing',
         effect: 'Quando Emi ou aliados causarem 15+ dano no Round, Emi pode reduzir o custo de 1 Skill em -1. Quando o HP de um inimigo for a 0, Emi pode reduzir o custo de 1 Skill para 0. Máximo de 2 Skills afetadas. Após usar, a Skill ganha [Cooldown: 3].' },
     ] as TamerSkill[],
+    inventory:   [],
     digimonId: 'd-betamon-line',
   };
 
