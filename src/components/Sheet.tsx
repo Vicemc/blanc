@@ -2922,7 +2922,6 @@ function SurvivorView({ sv, editable, isGM, onSave, state, wide = false }: {
   const [showAddMerit, setShowAddMerit]   = useState(false)
   const [showAddSkill, setShowAddSkill]   = useState(false)
   const [passiveToggles, setPassiveToggles] = useState<Record<number, { active: boolean; x: number }>>({})
-  const [editInfo, setEditInfo]           = useState(false)
 
   const editAttr = (k: keyof SurvivorAttributes, v: number) =>
     onSave({ ...sv, attributes: { ...sv.attributes, [k]: Math.max(1, Math.min(5, v)) } })
@@ -3134,19 +3133,8 @@ function SurvivorView({ sv, editable, isGM, onSave, state, wide = false }: {
       ) : (
         <>{leftCol}{rightCol}</>
       )}
-      {editable && editInfo && (
-        <>
-          <SectionTitle>Informações</SectionTitle>
-          <SurvivorInfoEditor sv={sv} onSave={s => { onSave(s); setToast('Info salva!') }} />
-        </>
-      )}
-      {editable && (
-        <div style={{ marginBottom: 12 }}>
-          <button className={styles.btnGhost} style={{ fontSize: 11 }} onClick={() => setEditInfo(p => !p)}>
-            {editInfo ? '✕ Fechar info' : '✎ Editar info'}
-          </button>
-        </div>
-      )}
+      <SectionTitle>Informações</SectionTitle>
+      <SurvivorInfoEditor sv={sv} onSave={s => { onSave(s); setToast('Info salva!') }} />
     </div>
   )
 }
