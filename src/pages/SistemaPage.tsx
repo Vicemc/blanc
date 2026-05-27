@@ -2,6 +2,7 @@ import React, { useState } from 'react'
 import type { AppState, ClimaEntry, KeywordEntry, ConditionEntry } from '../types'
 import { PageHead } from '../components/PageHead'
 import { BASE_CLIMAS, BASE_KEYWORDS, BASE_CONDITIONS, getEffectiveClimas, groupBy } from '../data/rulesData'
+import { useSettings } from '../lib/settings'
 import styles from './SistemaPage.module.css'
 
 // ── Tooltip ──────────────────────────────────────────────────────────────────
@@ -44,11 +45,12 @@ function Kw({ tag, tagVariant, title, resist, children }: KwProps) {
 // ── Rule section ─────────────────────────────────────────────────────────────
 interface RuleProps { num: string; id: string; title: string; sub: string; children: React.ReactNode }
 function Rule({ num, id, title, sub, children }: RuleProps) {
+  const { isTaglineHidden } = useSettings()
   return (
     <section className={styles.rule} id={id}>
       <div className={styles.ruleNum}>{num}</div>
       <h2 className={styles.ruleTitle}>{title}</h2>
-      <div className={styles.ruleSub}>{sub}</div>
+      {!isTaglineHidden('sistema') && <div className={styles.ruleSub}>{sub}</div>}
       {children}
     </section>
   )
@@ -400,7 +402,7 @@ export default function SistemaPage({ state, onUpdate, isGM = false }: SistemaPr
   const [tab, setTab] = useState<'regras'|'climas'|'digivice'>('regras')
   return (
     <div>
-      <PageHead title="Sistema" tag="o vocabulário escondido das fichas" />
+      <PageHead title="Sistema" tag="o vocabulário escondido das fichas" pageId="sistema" />
       <div className={styles.subTabs}>
         {TABS.map(t => (
           <button key={t.id} onClick={() => setTab(t.id as any)}

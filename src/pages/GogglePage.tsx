@@ -789,7 +789,7 @@ export default function GogglePage({ state, onUpdate, canEdit, isGM = false }: P
 
   return (
     <div className={styles.page}>
-      <PageHead title="Goggle Girl" tag="tudo que foi visto, anotado e catalogado" />
+      <PageHead title="Goggle Girl" tag="tudo que foi visto, anotado e catalogado" pageId="goggle" />
 
       <div className={styles.toolbar}>
         <div className={styles.tabs}>

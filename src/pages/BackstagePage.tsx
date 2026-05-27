@@ -5,6 +5,7 @@ import React, { useState, useEffect, useCallback } from 'react'
 import { listProfiles, setUserRole } from '../lib/auth'
 import type { UserProfile } from '../lib/auth'
 import { useAuth } from '../components/AuthProvider'
+import { useSettings } from '../lib/settings'
 import type { AppState, SkillTreePhase, TamerSkill, ClimaEntry, KeywordEntry, ConditionEntry } from '../types'
 import { saveStateToDB } from '../lib/db'
 import { supabase } from '../lib/supabase'
@@ -873,6 +874,7 @@ type Tab = 'usuarios' | 'fichas' | 'skilltree' | 'regras'
 
 export default function BackstagePage({ state, onUpdate }: Props) {
   const { isGM } = useAuth()
+  const { isTaglineHidden } = useSettings()
   const [tab, setTab] = useState<Tab>('usuarios')
 
   if (!isGM) {
@@ -900,10 +902,12 @@ export default function BackstagePage({ state, onUpdate }: Props) {
           textTransform: 'uppercase', letterSpacing: '-0.02em', margin: '0 0 4px' }}>
           Backstage
         </h1>
-        <div style={{ fontFamily: 'var(--font-serif)', fontStyle: 'italic',
-          fontSize: 18, color: 'var(--ink-soft)', marginBottom: 24 }}>
-          ~ painel exclusivo do GM ~
-        </div>
+        {!isTaglineHidden('backstage') && (
+          <div style={{ fontFamily: 'var(--font-serif)', fontStyle: 'italic',
+            fontSize: 18, color: 'var(--ink-soft)', marginBottom: 24 }}>
+            ~ painel exclusivo do GM ~
+          </div>
+        )}
       </div>
 
       {/* Tabs */}

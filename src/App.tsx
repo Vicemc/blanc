@@ -5,6 +5,7 @@ import { loadState, exportStateToFile, importStateFromFile } from './data/store'
 import { loadStateFromDB, saveStateToDB, subscribeToState, migrateLocalToSupabase } from './lib/db'
 import { signOut, canEditTamer } from './lib/auth'
 import { AuthProvider, useAuth } from './components/AuthProvider'
+import { SettingsProvider } from './lib/settings'
 import { isSupabaseReady } from './lib/supabase'
 import type { AppState } from './types'
 import styles from './App.module.css'
@@ -36,6 +37,7 @@ const BackstagePage = lazyLoad(() => import('./pages/BackstagePage'))
 const DigivicePage  = lazyLoad(() => import('./pages/DigivicePage'))
 const DigiZapPage   = lazyLoad(() => import('./pages/DigiZapPage'))
 const ViewerPage    = lazyLoad(() => import('./pages/ViewerPage'))
+const SettingsPage  = lazyLoad(() => import('./pages/SettingsPage'))
 
 function AppInner() {
   const { session, profile, loading, isGM, localMode, refresh } = useAuth()
@@ -235,6 +237,7 @@ function AppInner() {
         {isSupabaseReady && session && (
           <button className={styles.navBtn} onClick={signOut}>Sair</button>
         )}
+        <NavLink to="/configuracoes" className={({ isActive }) => isActive ? styles.active : ''}>⚙</NavLink>
       </nav>
 
       {showSetupBanner && (
@@ -270,7 +273,8 @@ function AppInner() {
             <Route path="/backstage" element={<BackstagePage state={state} onUpdate={onUpdateLocal} />} />
             <Route path="/digivice"  element={<DigivicePage  state={state} onUpdate={onUpdateLocal} profile={profile} isGM={isGM} />} />
             <Route path="/digizap"   element={<DigiZapPage   state={state} profile={profile} isGM={isGM} onUnreadChange={setDigizapUnread} />} />
-            <Route path="/view"      element={<ViewerPage    state={state} />} />
+            <Route path="/view"          element={<ViewerPage    state={state} />} />
+            <Route path="/configuracoes" element={<SettingsPage />} />
           </Routes>
         </Suspense>
       </main>
@@ -280,8 +284,10 @@ function AppInner() {
 
 export default function App() {
   return (
-    <AuthProvider>
-      <AppInner />
-    </AuthProvider>
+    <SettingsProvider>
+      <AuthProvider>
+        <AppInner />
+      </AuthProvider>
+    </SettingsProvider>
   )
 }

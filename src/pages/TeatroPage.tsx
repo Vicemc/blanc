@@ -1,11 +1,32 @@
-import React, { useState, useCallback, useMemo } from 'react'
+import React, { useState, useCallback, useMemo, useEffect, useRef } from 'react'
 import type { AppState, Stage, ActorRef, TamerSkill } from '../types'
 import { findTamer, findDigimon, findBug, makeStage, DIGIMON_DEFAULT_IMAGES } from '../data/store'
 import { PageHead } from '../components/PageHead'
 import { GrainFill } from '../components/GrainFill'
 import { SheetModal } from '../components/Sheet'
 import type { SheetSubject, TokenSpawn } from '../components/Sheet'
+import { useSettings } from '../lib/settings'
 import styles from './TeatroPage.module.css'
+
+function playRoundChime() {
+  try {
+    const AudioCtx = window.AudioContext || (window as any).webkitAudioContext
+    if (!AudioCtx) return
+    const ctx = new AudioCtx()
+    const notes = [523.25, 783.99]  // C5, G5
+    notes.forEach((freq, i) => {
+      const osc = ctx.createOscillator()
+      const gain = ctx.createGain()
+      osc.connect(gain); gain.connect(ctx.destination)
+      osc.type = 'sine'; osc.frequency.value = freq
+      const t = ctx.currentTime + i * 0.18
+      gain.gain.setValueAtTime(0, t)
+      gain.gain.linearRampToValueAtTime(0.22, t + 0.02)
+      gain.gain.exponentialRampToValueAtTime(0.001, t + 0.9)
+      osc.start(t); osc.stop(t + 0.9)
+    })
+  } catch {}
+}
 
 interface Props { state: AppState; onUpdate: (s: AppState) => void; isGM?: boolean }
 
@@ -1580,14 +1601,31 @@ function PalcoView({ stage, state, onUpdate, onBack, isGM = false }: {
   const [open, setOpen]             = useState<SheetSubject | null>(null)
   const [openSide, setOpenSide]     = useState<'allies'|'enemies'>('allies')
   const [pickerSide, setPickerSide] = useState<'allies'|'enemies'|null>(null)
+  const [roundPopupNum, setRoundPopupNum] = useState<number | null>(null)
+  const prevRoundRef = useRef<number | null>(null)
+  const { settings } = useSettings()
+
+  const rt = getRuntime(stage)
+
+  // Round popup
+  useEffect(() => {
+    const cur = rt.roundCurrent ?? 0
+    const prev = prevRoundRef.current
+    if (prev !== null && cur > prev && settings.roundPopup) {
+      setRoundPopupNum(cur)
+      playRoundChime()
+      const t = setTimeout(() => setRoundPopupNum(null), 2500)
+      prevRoundRef.current = cur
+      return () => clearTimeout(t)
+    }
+    prevRoundRef.current = cur
+  }, [rt.roundCurrent, settings.roundPopup])
 
   // Quando o usuário abre uma ficha, guarda de qual lado o ator está
   const openSheet = (subject: SheetSubject, side: 'allies'|'enemies') => {
     setOpen(subject)
     setOpenSide(side)
   }
-
-  const rt = getRuntime(stage)
 
   const mutateStage = useCallback((fn: (s: Stage) => Stage) => {
     onUpdate({ ...state, stages: state.stages.map(s => s.id === stage.id ? fn(s) : s) })
@@ -1831,6 +1869,21 @@ function PalcoView({ stage, state, onUpdate, onBack, isGM = false }: {
 
   return (
     <div className={styles.palco}>
+      {/* Round popup */}
+      {roundPopupNum !== null && (
+        <div style={{ position:'fixed', inset:0, zIndex:9999, display:'flex',
+          alignItems:'center', justifyContent:'center', pointerEvents:'none' }}>
+          <div style={{ background:'var(--paper)', border:'2px solid var(--ink)',
+            borderRadius:20, padding:'36px 72px', boxShadow:'0 8px 40px rgba(0,0,0,0.35)',
+            textAlign:'center', animation:'popIn 0.3s cubic-bezier(0.34,1.56,0.64,1)' }}>
+            <div style={{ fontFamily:'var(--font-mono)', fontSize:10, letterSpacing:'0.2em',
+              textTransform:'uppercase', color:'var(--ink-mute)', marginBottom:6 }}>Round</div>
+            <div style={{ fontFamily:'var(--font-display)', fontSize:96, lineHeight:1,
+              letterSpacing:'-0.02em' }}>{roundPopupNum}</div>
+          </div>
+        </div>
+      )}
+
       <button className={styles.backLink} onClick={onBack}>← voltar aos palcos</button>
 
       <div className={styles.palcoHead}>
@@ -1969,7 +2022,7 @@ export default function TeatroPage({ state, onUpdate, isGM = false }: Props) {
 
   return (
     <div>
-      <PageHead title="Teatro" tag="crie o palco, chame os atores" />
+      <PageHead title="Teatro" tag="crie o palco, chame os atores" pageId="teatro" />
       <div className={styles.index}>
         {isGM && (
           <div className={`${styles.stageCard} ${styles.newCard}`} onClick={newStage}>

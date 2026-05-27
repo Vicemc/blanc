@@ -16,6 +16,7 @@ import { GrainFill } from "./GrainFill"
 import { Toast } from './Toast'
 import { uploadImage, saveStateToDB } from '../lib/db'
 import { supabase } from '../lib/supabase'
+import { useSettings } from '../lib/settings'
 import styles from './Sheet.module.css'
 
 // ── Modo de visualização: número ou bolinhas ─────────────────────
@@ -1716,12 +1717,12 @@ function SkillTreeSection({ tamer, state, onSave, onSaveState, msg }: {
 
 const NPC_FECHADURA_IDS = new Set(['t-hare', 't-kanade', 't-shinra', 't-kumo', 't-hibito', 't-emi'])
 
-function TamerView({ tamer, line, editable, isGM, onSave, onSaveLine, onSaveAll, state, onSaveState, onSpawnToken }: {
+function TamerView({ tamer, line, editable, isGM, onSave, onSaveLine, onSaveAll, state, onSaveState, onSpawnToken, wide = false }: {
   tamer: Tamer; line?: DigimonLine; editable: boolean; isGM?: boolean
   onSave: (t: Tamer) => void; onSaveLine?: (l: DigimonLine) => void
   onSaveAll?: (autoridade: number) => void
   state?: AppState; onSaveState?: (s: AppState) => void
-  onSpawnToken?: (token: TokenSpawn) => void
+  onSpawnToken?: (token: TokenSpawn) => void; wide?: boolean
 }) {
   const [toast, setToast]    = useState<string | null>(null)
   const [showAdd, setShowAdd] = useState(false)
@@ -1828,31 +1829,18 @@ function TamerView({ tamer, line, editable, isGM, onSave, onSaveLine, onSaveAll,
     ['XP livre', tamer.xp],
   ]
 
-  return (
-    <div>
-      {toast && <Toast msg={toast} onDone={() => setToast(null)} />}
-
-      {/* Adicionar XP individual ao tamer */}
-      {editable && (
-        <InlineXpAward
-          tamerXp={tamer.xp}
-          tamerName={tamer.name}
-          onAward={(tXp) => {
-            onSave({ ...tamer, xp: tamer.xp + tXp })
-            msg(`+${tXp} XP adicionado a ${tamer.name}`)
-          }}
-        />
-      )}
-
+  {/* ── Coluna esquerda (status + atributos) ─── */}
+  const leftCol = (
+    <>
       <StatRow entries={statusEntries} />
 
       {editable && freeMode && (
         <div style={{ display:'flex', flexWrap:'wrap', gap:12, padding:'8px 0 4px',
           fontFamily:'var(--font-mono)', fontSize:11, color:'var(--ink-mute)' }}>
           {([
-            ['HP máx',      maxHP,      (d: number) => onSave({ ...tamer, status: { ...tamer.status, hpMaxBonus:      (tamer.status.hpMaxBonus       ?? 0) + d } })],
-            ['DS máx',      maxDigisoul,(d: number) => onSave({ ...tamer, status: { ...tamer.status, digisoulMaxBonus: (tamer.status.digisoulMaxBonus  ?? 0) + d } })],
-            ['Mem máx',     tamer.status.Memory.max,   (d: number) => onSave({ ...tamer, status: { ...tamer.status, Memory: { ...tamer.status.Memory, max: tamer.status.Memory.max + d } } })],
+            ['HP máx',  maxHP,      (d: number) => onSave({ ...tamer, status: { ...tamer.status, hpMaxBonus:      (tamer.status.hpMaxBonus       ?? 0) + d } })],
+            ['DS máx',  maxDigisoul,(d: number) => onSave({ ...tamer, status: { ...tamer.status, digisoulMaxBonus: (tamer.status.digisoulMaxBonus  ?? 0) + d } })],
+            ['Mem máx', tamer.status.Memory.max, (d: number) => onSave({ ...tamer, status: { ...tamer.status, Memory: { ...tamer.status.Memory, max: tamer.status.Memory.max + d } } })],
           ] as [string, number, (d: number) => void][]).map(([label, val, adj]) => (
             <div key={label} style={{ display:'flex', alignItems:'center', gap:4 }}>
               <span>{label}:</span>
@@ -1883,15 +1871,6 @@ function TamerView({ tamer, line, editable, isGM, onSave, onSaveLine, onSaveAll,
         freeMode={freeMode} onFreeModeChange={setFreeMode}
         onFreeEdit={(k, delta) => { onSave({ ...tamer, attributes: { ...tamer.attributes, [k]: Math.max(1, Math.min(10, tamer.attributes[k] + delta)) } }) }} />
 
-      <SectionTitle>Skills</SectionTitle>
-      <SkillGrid skills={tamer.skills} editable={editable} freeMode={freeMode}
-        pending={pendSkill} onPend={pendSkillUp} onUnpend={pendSkillDown}
-        onFreeEdit={(cat, name, delta) => {
-          const cur = tamer.skills[cat][name] ?? 0
-          const nv  = Math.max(0, Math.min(5, cur + delta))
-          onSave({ ...tamer, skills: { ...tamer.skills, [cat]: { ...tamer.skills[cat], [name]: nv } } })
-        }} />
-
       {hasPending && (
         <XpConfirmBar cost={pendCost} xpAvail={tamer.xp} onConfirm={confirmXp} onCancel={cancelXp} />
       )}
@@ -1918,6 +1897,20 @@ function TamerView({ tamer, line, editable, isGM, onSave, onSaveLine, onSaveAll,
           </div>
         </>
       )}
+    </>
+  )
+
+  {/* ── Coluna direita (skills + tamer skills) ─── */}
+  const rightCol = (
+    <>
+      <SectionTitle>Skills</SectionTitle>
+      <SkillGrid skills={tamer.skills} editable={editable} freeMode={freeMode}
+        pending={pendSkill} onPend={pendSkillUp} onUnpend={pendSkillDown}
+        onFreeEdit={(cat, name, delta) => {
+          const cur = tamer.skills[cat][name] ?? 0
+          const nv  = Math.max(0, Math.min(5, cur + delta))
+          onSave({ ...tamer, skills: { ...tamer.skills, [cat]: { ...tamer.skills[cat], [name]: nv } } })
+        }} />
 
       <SectionTitle action={editable && !showAdd && (
         <button className={styles.btnGhost} style={{ fontSize:11 }} onClick={() => setShowAdd(true)}>+ Nova Skill</button>
@@ -1972,6 +1965,33 @@ function TamerView({ tamer, line, editable, isGM, onSave, onSaveLine, onSaveAll,
 
       {/* Skill Tree — fases liberadas pelo GM */}
       <SkillTreeSection tamer={tamer} state={state} onSave={onSave} onSaveState={onSaveState} msg={msg} />
+    </>
+  )
+
+  return (
+    <div>
+      {toast && <Toast msg={toast} onDone={() => setToast(null)} />}
+      {editable && (
+        <InlineXpAward
+          tamerXp={tamer.xp}
+          tamerName={tamer.name}
+          onAward={(tXp) => {
+            onSave({ ...tamer, xp: tamer.xp + tXp })
+            msg(`+${tXp} XP adicionado a ${tamer.name}`)
+          }}
+        />
+      )}
+      {wide ? (
+        <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:'0 48px', alignItems:'start' }}>
+          <div>{leftCol}</div>
+          <div>{rightCol}</div>
+        </div>
+      ) : (
+        <>
+          {leftCol}
+          {rightCol}
+        </>
+      )}
     </div>
   )
 }
@@ -2563,9 +2583,9 @@ function DigiviceInventoryTab({ tamerId, editable, isGM }: {
 }
 
 // ── FullSheet ──────────────────────────────────────────────────────
-interface FullSheetProps { subject: SheetSubject; state: AppState; onSaveState?: (s: AppState) => void; onClose?: () => void; editable?: boolean; isGM?: boolean; onSpawnToken?: (token: TokenSpawn) => void }
+interface FullSheetProps { subject: SheetSubject; state: AppState; onSaveState?: (s: AppState) => void; onClose?: () => void; editable?: boolean; isGM?: boolean; onSpawnToken?: (token: TokenSpawn) => void; wide?: boolean }
 
-export function FullSheet({ subject, state, onSaveState, onClose, editable = false, isGM = false, onSpawnToken }: FullSheetProps) {
+export function FullSheet({ subject, state, onSaveState, onClose, editable = false, isGM = false, onSpawnToken, wide = false }: FullSheetProps) {
   const { kind } = subject
   let tamer: Tamer | undefined
   let line:  DigimonLine | undefined
@@ -2707,7 +2727,7 @@ export function FullSheet({ subject, state, onSaveState, onClose, editable = fal
       </div>
 
       <div className={styles.sheetBody}>
-        {showTamer && <TamerView tamer={tamer!} line={line} editable={editable} isGM={isGM} onSave={saveTamer} onSaveLine={saveLine} onSaveAll={saveAllAutoridade} state={state} onSaveState={onSaveState} onSpawnToken={onSpawnToken} />}
+        {showTamer && <TamerView tamer={tamer!} line={line} editable={editable} isGM={isGM} onSave={saveTamer} onSaveLine={saveLine} onSaveAll={saveAllAutoridade} state={state} onSaveState={onSaveState} onSpawnToken={onSpawnToken} wide={wide} />}
         {active === 'inventario' && tamer && <DigiviceInventoryTab tamerId={tamer.id} editable={editable} isGM={isGM} />}
         {stageIdx !== null && line && (
           <DigimonStageView line={line} stageIdx={stageIdx} tamer={tamer} editable={editable} isGM={isGM} onSaveLine={saveLine} onSaveTamer={tamer ? saveTamer : undefined}
@@ -2789,12 +2809,15 @@ export function SheetModal({ subject, state, onSaveState, onClose, editable, isG
   subject: SheetSubject | null; state: AppState; onSaveState?: (s: AppState) => void
   onClose: () => void; editable?: boolean; isGM?: boolean; onSpawnToken?: (token: TokenSpawn) => void
 }) {
+  const { settings } = useSettings()
+  const wide = settings.sheetView === 'horizontal'
   if (!subject) return null
   return (
     <div className="modal-back" onClick={onClose}>
-      <div className="modal" onClick={e => e.stopPropagation()}>
+      <div className="modal" onClick={e => e.stopPropagation()}
+        style={wide ? { maxWidth: '95vw', width: '95vw', padding: 0 } : undefined}>
         <button className={styles.closeBtn} onClick={onClose} aria-label="Fechar">×</button>
-        <FullSheet subject={subject} state={state} onSaveState={onSaveState} onClose={onClose} editable={editable} isGM={isGM} onSpawnToken={onSpawnToken} />
+        <FullSheet subject={subject} state={state} onSaveState={onSaveState} onClose={onClose} editable={editable} isGM={isGM} onSpawnToken={onSpawnToken} wide={wide} />
       </div>
     </div>
   )

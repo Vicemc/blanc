@@ -221,7 +221,7 @@ export default function PartyPage({ state, onUpdate, canEdit, isGM }: Props) {
 
   return (
     <div className={styles.page}>
-      <PageHead title="Party" tag="Aqueles que carregam o sonho" />
+      <PageHead title="Party" tag="Aqueles que carregam o sonho" pageId="party" />
 
       <div className={styles.toolbar}>
         <span className={styles.eyebrow}>{state.tamers.length} tamers · {state.bestiary.filter(d => d.tamerId).length} digimons</span>
