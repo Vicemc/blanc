@@ -21,8 +21,12 @@ import styles from './Sheet.module.css'
 
 // ── Modo de visualização: número ou bolinhas ─────────────────────
 import React, { useState, useEffect, useMemo, useCallback, useRef, createContext, useContext } from 'react'
+import { BASE_KEYWORDS, BASE_CONDITIONS, getEffectiveClimas } from '../data/rulesData'
 type DisplayMode = 'number' | 'dots'
 const DisplayModeCtx = createContext<DisplayMode>('number')
+
+// ── Contexto de keyword tips (base + custom do GM) ────────────────
+const KeywordTipsCtx = createContext<Record<string, string>>({})
 
 // Helper: renderiza valor como bolinhas (◌/●) ou número
 function ValueDisplay({ value, max, pend = 0 }: { value: number; max: number; pend?: number }) {
@@ -558,13 +562,14 @@ function KwTooltip({ label, tip }: { label: string; tip: string }) {
 
 // Parser que transforma [Keyword] em spans com tooltip
 function EffectText({ text }: { text: string }) {
+  const tips = useContext(KeywordTipsCtx)
   const parts = text.split(/(\[[^\]]+\])/g)
   return (
     <>
       {parts.map((part, i) => {
         if (part.startsWith('[') && part.endsWith(']')) {
           const key = part.slice(1, -1)
-          const tip = KEYWORD_TIPS[key]
+          const tip = tips[key] ?? KEYWORD_TIPS[key]
           if (tip) return <KwTooltip key={i} label={part} tip={tip} />
         }
         return <React.Fragment key={i}>{part}</React.Fragment>
@@ -2738,7 +2743,20 @@ export function FullSheet({ subject, state, onSaveState, onClose, editable = fal
     else if (sign) saveSign({ ...sign, image: dataUrl })
   }
 
+  // Mescla tips estáticos com keywords/condições/climas do GM
+  const mergedTips = useMemo(() => {
+    const effectiveKeywords   = (state.customKeywords   ?? []).length > 0 ? state.customKeywords   : BASE_KEYWORDS
+    const effectiveConditions = (state.customConditions ?? []).length > 0 ? state.customConditions : BASE_CONDITIONS
+    const effectiveClimas     = getEffectiveClimas(state.customClimas ?? [])
+    const map: Record<string, string> = { ...KEYWORD_TIPS }
+    for (const kw of effectiveKeywords)   map[kw.keyword] = kw.desc
+    for (const cd of effectiveConditions) map[cd.name]    = cd.desc
+    for (const cl of effectiveClimas)     map[cl.name]    = cl.effects.map(e => `${e.tag}: ${e.desc}`).join(' · ')
+    return map
+  }, [state.customKeywords, state.customConditions, state.customClimas])
+
   return (
+    <KeywordTipsCtx.Provider value={mergedTips}>
     <DisplayModeCtx.Provider value={displayMode}>
     <div className={styles.sheet}>
       <div className={styles.sheetHead}>
@@ -2854,6 +2872,7 @@ export function FullSheet({ subject, state, onSaveState, onClose, editable = fal
       )}
     </div>
     </DisplayModeCtx.Provider>
+    </KeywordTipsCtx.Provider>
   )
 }
 
