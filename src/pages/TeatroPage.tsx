@@ -2354,7 +2354,7 @@ export default function TeatroPage({ state, onUpdate, isGM = false }: Props) {
 
   return (
     <div>
-      <PageHead title="Teatro" tag="crie o palco, chame os atores" pageId="teatro" />
+      <PageHead title="Teatro" tag="lutas do RPG" pageId="teatro" />
       <div className={styles.index}>
         {isGM && (
           <div className={`${styles.stageCard} ${styles.newCard}`} onClick={newStage}>
