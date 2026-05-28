@@ -331,7 +331,8 @@ export type ActorRef =
   | { kind: 'pair';     tamerId: string; digimonId: string; stage: number }
   | { kind: 'wild';     id: string }
   | { kind: 'bug';      id: string }
-  | { kind: 'survivor'; id: string };
+  | { kind: 'survivor'; id: string }
+  | { kind: 'sign';     id: string };
 
 export interface Stage {
   id:        string;

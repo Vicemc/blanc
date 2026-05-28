@@ -1,7 +1,7 @@
 import React, { useState, useCallback, useMemo, useEffect, useRef } from 'react'
-import type { AppState, Stage, ActorRef, TamerSkill, ConditionEntry, JogressConfig } from '../types'
+import type { AppState, Stage, ActorRef, TamerSkill, ConditionEntry, JogressConfig, TokenDef } from '../types'
 import { findTamer, findDigimon, findBug, makeStage, DIGIMON_DEFAULT_IMAGES } from '../data/store'
-import { findSurvivor } from '../data/domain'
+import { findSurvivor, findSign } from '../data/domain'
 import { PageHead } from '../components/PageHead'
 import { GrainFill } from '../components/GrainFill'
 import { SheetModal } from '../components/Sheet'
@@ -147,6 +147,7 @@ function actorKey(a: ActorRef): string {
   if (a.kind === 'pair')     return `digi:${a.digimonId}:${a.stage}`
   if (a.kind === 'wild')     return `wild:${a.id}`
   if (a.kind === 'survivor') return `survivor:${a.id}`
+  if (a.kind === 'sign')     return `sign:${a.id}`
   return `bug:${a.id}`
 }
 
@@ -200,6 +201,15 @@ function resolveActor(state: AppState, a: ActorRef, tokenMeta?: Record<string, {
       portrait: sv?.portrait ?? 'sage', image: sv?.image ?? null,
       stats: [['HP', sv?.status.HP.v ?? 0]],
       subject: { kind: 'survivor', id: a.id },
+    }
+  }
+  if (a.kind === 'sign') {
+    const sg = findSign(state, a.id)
+    return {
+      title: sg?.name ?? '?', type: sg?.code ?? 'SIGN',
+      portrait: 'coral', image: sg?.image ?? null,
+      stats: [['HP', sg?.status.HP ?? 0], ['DEF', sg?.status.Defesa ?? 0], ['ARM', sg?.status.Armadura ?? 0]],
+      subject: { kind: 'sign', id: a.id },
     }
   }
   const b = findBug(state, a.id)
@@ -788,106 +798,323 @@ function ActorChip({ actor, state, actorSt, onOpen, onRemove, onChange, onEvolve
   )
 }
 
-// ── Picker de atores ──────────────────────────────────────────────────────────
+// ── Picker de atores — redesign ──────────────────────────────────────────────
 
-function Picker({ state, onPick, onClose }: { state: AppState; onPick: (a: ActorRef, qty?: number) => void; onClose: () => void }) {
-  const [tab, setTab] = useState<'pair'|'human'|'survivor'|'wild'|'bug'>('pair')
+const PICKER_TABS = [
+  { key: 'pair',     label: 'Dupla',     hint: 'Tamer + Digimon como fichas separadas' },
+  { key: 'human',    label: 'Tamer',     hint: 'Apenas o humano' },
+  { key: 'survivor', label: 'Survivor',  hint: 'Sobreviventes' },
+  { key: 'wild',     label: 'Bestiário', hint: 'Digimon por setor' },
+  { key: 'bug',      label: 'BUG',       hint: 'Anomalias do sistema' },
+  { key: 'token',    label: 'Token',     hint: 'Tokens customizados' },
+  { key: 'sign',     label: 'Sign',      hint: 'Entidades SIGN' },
+] as const
+type PickerTab = typeof PICKER_TABS[number]['key']
+
+const PICKER_PAGE = 8
+
+function PAvatarMini({ portrait, image, name, size = 36, overlap = false }: {
+  portrait: string; image: string | null; name: string; size?: number; overlap?: boolean
+}) {
+  return (
+    <div className={`${styles.pickerMini} fill-${portrait}`}
+      style={{ position: 'relative', overflow: 'hidden', width: size, height: size,
+        borderRadius: 8, flexShrink: 0, ...(overlap ? { boxShadow: '0 0 0 2px var(--paper)' } : {}) }}>
+      {image
+        ? <img src={image} alt={name} style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'cover' }} />
+        : <div className="grain" />}
+    </div>
+  )
+}
+
+function PRow({ portrait, image, title, meta, tags, locked, onPick }: {
+  portrait: string; image: string | null; title: string; meta?: string
+  tags?: string[]; locked?: boolean; onPick: () => void
+}) {
+  return (
+    <button className={styles.pRow} onClick={locked ? undefined : onPick} disabled={locked}>
+      <PAvatarMini portrait={portrait} image={image} name={title} />
+      <div className={styles.pRowBody}>
+        <div className={styles.pRowTitle}>{title}</div>
+        {meta && <div className={styles.pickerMeta}>{meta}</div>}
+      </div>
+      {tags?.filter(Boolean).map((t, i) => <span key={i} className={styles.pTag}>{t}</span>)}
+      <span className={styles.pAddBtn}>{locked ? '🔒' : '+'}</span>
+    </button>
+  )
+}
+
+function PPagedRows({ items, renderItem, resetKey }: {
+  items: unknown[]; renderItem: (it: unknown, i: number) => React.ReactNode; resetKey: string
+}) {
+  const [page, setPage] = useState(1)
+  useEffect(() => { setPage(1) }, [resetKey])
+  const pageCount = Math.max(1, Math.ceil(items.length / PICKER_PAGE))
+  const safe  = Math.min(page, pageCount)
+  const slice = items.slice((safe - 1) * PICKER_PAGE, safe * PICKER_PAGE)
+  return (
+    <>
+      <div>{slice.map((it, i) => renderItem(it, i))}</div>
+      {pageCount > 1 && (
+        <div className={styles.pPager}>
+          <button className={styles.pPagerBtn} disabled={safe <= 1} onClick={() => setPage(p => p - 1)}>‹</button>
+          {Array.from({ length: pageCount }, (_, i) => i + 1).map(p => (
+            <button key={p} className={p === safe ? styles.pPagerPageActive : styles.pPagerPage}
+                    onClick={() => setPage(p)}>{p}</button>
+          ))}
+          <button className={styles.pPagerBtn} disabled={safe >= pageCount} onClick={() => setPage(p => p + 1)}>›</button>
+        </div>
+      )}
+    </>
+  )
+}
+
+function PFolder({ label, dot, count, children, defaultOpen }: {
+  label: string; dot?: string; count: number; children: React.ReactNode; defaultOpen?: boolean
+}) {
+  const [open, setOpen] = useState(!!defaultOpen)
+  return (
+    <div className={styles.pFolder} data-expanded={open ? 'true' : undefined}>
+      <button className={styles.pFolderHead} disabled={count === 0} onClick={() => setOpen(v => !v)}>
+        <span className={styles.pFolderChev}>▸</span>
+        {dot && <span className={styles.pFolderDot} style={{ background: dot }} />}
+        <span className={styles.pFolderName}>{label}</span>
+        <span className={styles.pFolderCount}>{count}</span>
+      </button>
+      {open && count > 0 && <div className={styles.pFolderBody}>{children}</div>}
+    </div>
+  )
+}
+
+function PEmpty({ label, query, onClear }: { label: string; query: string; onClear: () => void }) {
+  return (
+    <div className={styles.pEmpty}>
+      <div className={styles.pEmptyMark}>∅</div>
+      <div className={styles.pEmptyTitle}>
+        {query ? 'Nenhum resultado.' : `Nada em ${label.toLowerCase()}.`}
+      </div>
+      {query && <button className={styles.pEmptyClear} onClick={onClear}>Limpar busca</button>}
+    </div>
+  )
+}
+
+function Picker({ state, onPick, onClose, onSpawnTokenDef }: {
+  state: AppState
+  onPick: (a: ActorRef, qty?: number) => void
+  onClose: () => void
+  onSpawnToken?: (t: import('../components/Sheet').TokenSpawn) => void
+  onSpawnTokenDef?: (def: TokenDef, qty: number) => void
+}) {
+  const [tab, setTab] = useState<PickerTab>('pair')
   const [qty, setQty] = useState(1)
-  const survivors = state.survivors ?? []
+  const [q,   setQ]   = useState('')
+  const inputRef      = useRef<HTMLInputElement>(null)
+
+  useEffect(() => { inputRef.current?.focus() }, [tab])
+  useEffect(() => {
+    const h = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose() }
+    window.addEventListener('keydown', h)
+    return () => window.removeEventListener('keydown', h)
+  }, [onClose])
+
+  const match = (s?: string | null) => !q || (s ?? '').toLowerCase().includes(q.toLowerCase())
+  const curTab = PICKER_TABS.find(t => t.key === tab)!
+
+  const pick = (a: ActorRef) => { onPick(a, qty); onClose() }
+
+  const BUG_DOT: Record<string, string> = { red: 'var(--coral)', green: 'var(--green)', white: '#d8d3c4' }
+
+  const renderBody = () => {
+    switch (tab) {
+      case 'human': {
+        const rows = state.tamers.filter(t => match(t.name) || match(t.sign))
+        if (!rows.length) return <PEmpty label={curTab.label} query={q} onClear={() => setQ('')} />
+        return <PPagedRows resetKey={`${tab}:${q}`} items={rows} renderItem={(t: any) => (
+          <PRow key={t.id} portrait={t.portrait} image={t.image} title={t.name}
+            meta={[t.age && `${t.age} anos`, t.sign].filter(Boolean).join(' · ')}
+            onPick={() => pick({ kind: 'human', id: t.id })} />
+        )} />
+      }
+
+      case 'survivor': {
+        const rows = (state.survivors ?? []).filter(sv => match(sv.name) || match((sv as any).surname) || match(sv.sign))
+        if (!rows.length) return <PEmpty label={curTab.label} query={q} onClear={() => setQ('')} />
+        return <PPagedRows resetKey={`${tab}:${q}`} items={rows} renderItem={(sv: any) => (
+          <PRow key={sv.id} portrait={sv.portrait} image={sv.image}
+            title={`${sv.name}${sv.surname ? ` ${sv.surname}` : ''}`}
+            meta={[sv.age && `${sv.age} anos`, sv.sign].filter(Boolean).join(' · ') || 'Survivor'}
+            onPick={() => pick({ kind: 'survivor', id: sv.id })} />
+        )} />
+      }
+
+      case 'pair': {
+        const rows = state.tamers
+          .filter(t => t.digimonId)
+          .flatMap(t => {
+            const d = state.bestiary.find(x => x.id === t.digimonId)
+            if (!d) return []
+            return d.stages
+              .map((s, i) => ({ t, d, s, i }))
+              .filter(({ t: tt, s }) => match(tt.name) || match(s.stageName))
+          })
+        if (!rows.length) return <PEmpty label={curTab.label} query={q} onClear={() => setQ('')} />
+        return <PPagedRows resetKey={`${tab}:${q}`} items={rows} renderItem={(it: any) => {
+          const { t, d, s, i } = it
+          const locked = s.locked || s.stageName === '???'
+          return (
+            <button key={`${t.id}-${i}`} className={styles.pRow} disabled={locked}
+              onClick={locked ? undefined : () => pick({ kind: 'pair', tamerId: t.id, digimonId: d.id, stage: i })}>
+              <div style={{ position: 'relative', width: 56, height: 36, flexShrink: 0 }}>
+                <PAvatarMini portrait={t.portrait} image={t.image} name={t.name} size={36} />
+                <div style={{ position: 'absolute', left: 20, top: 0, zIndex: 1 }}>
+                  <PAvatarMini portrait={s.portrait} image={d.image} name={s.stageName} size={36} overlap />
+                </div>
+              </div>
+              <div className={styles.pRowBody}>
+                <div className={styles.pRowTitle}>{t.name} & {s.stageName}</div>
+                <div className={styles.pickerMeta}>{locked ? 'Bloqueado' : `${s.level} · ${s.type}`}</div>
+              </div>
+              {!locked && <span className={styles.pTag}>{s.level.toLowerCase()}</span>}
+              <span className={styles.pAddBtn}>{locked ? '🔒' : '+'}</span>
+            </button>
+          )
+        }} />
+      }
+
+      case 'wild': {
+        const wilds = state.bestiary.filter(d => !d.tamerId)
+        const sectors = state.sectors ?? []
+        const groups = [
+          ...sectors.map(sec => ({
+            key: `sec-${sec.n}`, label: `Setor ${sec.n} · ${sec.name}`,
+            dot: 'var(--teal)',
+            entries: wilds.filter(d => (d as any).sector === sec.n).filter(d => match(d.name) || match(d.stages[0]?.type)),
+          })),
+          { key: '__none', label: 'Sem setor', dot: 'var(--ink-mute)',
+            entries: wilds.filter(d => !sectors.some(sec => sec.n === (d as any).sector)).filter(d => match(d.name) || match(d.stages[0]?.type)),
+          },
+        ].filter(g => g.entries.length > 0)
+        if (!groups.length) return <PEmpty label={curTab.label} query={q} onClear={() => setQ('')} />
+        return (
+          <div className={styles.pFolders}>
+            {groups.map(g => (
+              <PFolder key={g.key} label={g.label} dot={g.dot} count={g.entries.length} defaultOpen={!!q || groups.length === 1}>
+                <PPagedRows resetKey={`${tab}:${g.key}:${q}`} items={g.entries} renderItem={(d: any) => {
+                  const s = d.stages[0]
+                  return <PRow key={d.id} portrait={s.portrait} image={d.image} title={d.name}
+                    meta={`${s.level} · ${s.type}`} tags={[s.level.toLowerCase()]}
+                    onPick={() => pick({ kind: 'wild', id: d.id })} />
+                }} />
+              </PFolder>
+            ))}
+          </div>
+        )
+      }
+
+      case 'bug': {
+        const bugFolders = state.bugFolders ?? []
+        const allBugs = state.bugs.filter(b => match(b.name))
+        if (!allBugs.length) return <PEmpty label={curTab.label} query={q} onClear={() => setQ('')} />
+        if (!bugFolders.length) {
+          return <PPagedRows resetKey={`${tab}:${q}`} items={allBugs} renderItem={(b: any) => (
+            <PRow key={b.id} portrait={`bug-${b.color}`} image={b.image} title={b.name}
+              meta={`${b.class}.${b.color}`} onPick={() => pick({ kind: 'bug', id: b.id })} />
+          )} />
+        }
+        const groups = bugFolders
+          .map(f => ({
+            key: `${f.cls}.${f.color}`, label: `${f.cls}.${f.color}`,
+            dot: BUG_DOT[f.color] ?? 'var(--ink-mute)',
+            entries: allBugs.filter(b => b.class === f.cls && b.color === f.color),
+          }))
+          .filter(g => g.entries.length > 0)
+        return (
+          <div className={styles.pFolders}>
+            {groups.map(g => (
+              <PFolder key={g.key} label={g.label} dot={g.dot} count={g.entries.length} defaultOpen={!!q || groups.length === 1}>
+                <PPagedRows resetKey={`${tab}:${g.key}:${q}`} items={g.entries} renderItem={(b: any) => (
+                  <PRow key={b.id} portrait={`bug-${b.color}`} image={b.image} title={b.name}
+                    meta={`${b.class}.${b.color}`} onPick={() => pick({ kind: 'bug', id: b.id })} />
+                )} />
+              </PFolder>
+            ))}
+          </div>
+        )
+      }
+
+      case 'token': {
+        const rows = (state.tokenDefs ?? []).filter(td => match(td.name) || match(td.origin) || match(td.level))
+        if (!rows.length) return <PEmpty label={curTab.label} query={q} onClear={() => setQ('')} />
+        return <PPagedRows resetKey={`${tab}:${q}`} items={rows} renderItem={(td: any) => (
+          <PRow key={td.id} portrait="teal" image={null} title={td.name}
+            meta={[td.level, td.origin].filter(Boolean).join(' · ')}
+            tags={[`HP ${td.hp}`, td.defesa > 0 ? `DEF ${td.defesa}` : '']}
+            onPick={() => { onSpawnTokenDef?.(td, qty); onClose() }} />
+        )} />
+      }
+
+      case 'sign': {
+        const rows = (state.signs ?? []).filter(sg => match(sg.name) || match(sg.code))
+        if (!rows.length) return <PEmpty label={curTab.label} query={q} onClear={() => setQ('')} />
+        return <PPagedRows resetKey={`${tab}:${q}`} items={rows} renderItem={(sg: any) => (
+          <PRow key={sg.id} portrait="coral" image={sg.image} title={sg.name}
+            meta={`${sg.code} · HP ${sg.status.HP} · DEF ${sg.status.Defesa}`}
+            onPick={() => pick({ kind: 'sign', id: sg.id })} />
+        )} />
+      }
+
+      default: return null
+    }
+  }
+
   return (
     <div className="modal-back" onClick={onClose}>
-      <div className={styles.picker} onClick={e => e.stopPropagation()}>
-        <div className={styles.pickerHead}>
-          <h3>Adicionar ator</h3>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-            <span style={{ fontFamily: 'var(--font-mono)', fontSize: 11, color: 'var(--ink-mute)' }}>Qtd:</span>
-            <input type="number" min={1} max={20} value={qty}
-              onChange={e => setQty(Math.max(1, parseInt(e.target.value) || 1))}
-              style={{ width: 48, border: '1px solid var(--line)', borderRadius: 6, padding: '3px 6px',
-                fontFamily: 'var(--font-mono)', fontSize: 12, background: 'var(--paper)', textAlign: 'center' }} />
-            <button className={styles.btnGhost} onClick={onClose}>fechar</button>
+      <div className={styles.picker} onClick={e => e.stopPropagation()} role="dialog">
+        <header className={styles.pickerHead}>
+          <div>
+            <h3 className={styles.pickerTitle}>Adicionar ator</h3>
+            <p className={styles.pickerHint}>{curTab.hint}</p>
           </div>
-        </div>
-        <div className={styles.pickerTabs}>
-          {(['pair','human','survivor','wild','bug'] as const).map(t => (
-            <button key={t} className={tab === t ? styles.pickerTabActive : styles.pickerTab} onClick={() => setTab(t)}>
-              {{ pair:'Dupla', human:'Tamer Solo', survivor:'Survivor', wild:'Bestiário', bug:'BUG' }[t]}
+          <button className={styles.pickerClose} onClick={onClose}>×</button>
+        </header>
+
+        <nav className={styles.pickerSegTabs}>
+          {PICKER_TABS.map(t => (
+            <button key={t.key} className={tab === t.key ? styles.pickerSegTabActive : styles.pickerSegTab}
+              onClick={() => { setTab(t.key); setQ('') }}>
+              {t.label}
             </button>
           ))}
-        </div>
-        {tab === 'pair' && (
-          <div style={{ padding: '6px 16px', fontFamily: 'var(--font-mono)', fontSize: 10,
-            letterSpacing: '0.08em', color: 'var(--ink-mute)', borderBottom: '1px solid var(--line-soft)',
-            background: 'var(--paper-deep)' }}>
-            Adiciona o Tamer e o Digimon como fichas separadas no palco.
+        </nav>
+
+        <div className={styles.pickerToolbar}>
+          <div className={styles.pickerSearch}>
+            <span className={styles.pickerSearchIcon}>⌕</span>
+            <input ref={inputRef} className={styles.pickerSearchInput}
+              placeholder={`Buscar…`} value={q} onChange={e => setQ(e.target.value)} />
+            {q && <button className={styles.pickerSearchClear} onClick={() => setQ('')}>×</button>}
           </div>
-        )}
-        <div className={styles.pickerBody}>
-          {tab === 'human' && state.tamers.map(t => (
-            <div key={t.id} className={styles.pickerEntry} onClick={() => onPick({ kind:'human', id:t.id }, qty)}>
-              <div className={`${styles.pickerMini} fill-${t.portrait}`} style={{position:'relative',overflow:'hidden'}}>
-                {t.image ? <img src={t.image} alt={t.name} style={{position:'absolute',inset:0,width:'100%',height:'100%',objectFit:'cover'}}/> : <div className="grain"/>}
-              </div>
-              <div><h6 className={styles.pickerName}>{t.name}</h6><div className={styles.pickerMeta}>{t.age} anos · {t.sign}</div></div>
+          <div className={styles.pickerQtyWrap}>
+            <span className={styles.pickerQtyLabel}>Qtd</span>
+            <div className={styles.pickerQty}>
+              <button className={styles.pickerQtyBtn} disabled={qty <= 1} onClick={() => setQty(v => Math.max(1, v - 1))}>−</button>
+              <input className={styles.pickerQtyInput} type="number" min={1} max={20} value={qty}
+                onChange={e => setQty(Math.max(1, Math.min(20, parseInt(e.target.value) || 1)))} />
+              <button className={styles.pickerQtyBtn} disabled={qty >= 20} onClick={() => setQty(v => Math.min(20, v + 1))}>+</button>
             </div>
-          ))}
-          {tab === 'survivor' && survivors.length === 0 && (
-            <div style={{ padding: '24px 16px', fontFamily: 'var(--font-mono)', fontSize: 11, color: 'var(--ink-mute)', textAlign: 'center' }}>
-              Nenhum survivor cadastrado.
-            </div>
-          )}
-          {tab === 'survivor' && survivors.map(sv => (
-            <div key={sv.id} className={styles.pickerEntry} onClick={() => onPick({ kind:'survivor', id:sv.id }, qty)}>
-              <div className={`${styles.pickerMini} fill-${sv.portrait}`} style={{position:'relative',overflow:'hidden'}}>
-                {sv.image ? <img src={sv.image} alt={sv.name} style={{position:'absolute',inset:0,width:'100%',height:'100%',objectFit:'cover'}}/> : <div className="grain"/>}
-              </div>
-              <div>
-                <h6 className={styles.pickerName}>{sv.name}{sv.surname ? ` ${sv.surname}` : ''}</h6>
-                <div className={styles.pickerMeta}>
-                  {[sv.age && `${sv.age} anos`, sv.sign].filter(Boolean).join(' · ') || 'Survivor'}
-                </div>
-              </div>
-            </div>
-          ))}
-          {tab === 'pair' && state.tamers.filter(t => t.digimonId).map(t => {
-            const d = findDigimon(state, t.digimonId!)
-            if (!d) return null
-            return d.stages.map((s, i) => {
-              if (s.locked || s.stageName === '???') return null
-              return (
-                <div key={`${t.id}-${i}`} className={styles.pickerEntry}
-                  onClick={() => onPick({ kind:'pair', tamerId:t.id, digimonId:d.id, stage:i }, qty)}>
-                  <div className={`${styles.pickerMini} fill-${t.portrait}`} style={{position:'relative',overflow:'hidden'}}>
-                    {t.image ? <img src={t.image} alt={t.name} style={{position:'absolute',inset:0,width:'100%',height:'100%',objectFit:'cover'}}/> : <div className="grain"/>}
-                  </div>
-                  <div className={`${styles.pickerMini} fill-${s.portrait}`} style={{position:'relative',marginLeft:-12,overflow:'hidden'}}>
-                    {d.image ? <img src={d.image} alt={s.stageName} style={{position:'absolute',inset:0,width:'100%',height:'100%',objectFit:'cover'}}/> : <div className="grain"/>}
-                  </div>
-                  <div><h6 className={styles.pickerName}>{t.name} & {s.stageName}</h6><div className={styles.pickerMeta}>{s.level} · {s.type}</div></div>
-                </div>
-              )
-            })
-          })}
-          {tab === 'wild' && state.bestiary.filter(d => !d.tamerId).map(d => {
-            const s = d.stages[0]
-            return (
-              <div key={d.id} className={styles.pickerEntry} onClick={() => onPick({ kind:'wild', id:d.id }, qty)}>
-                <div className={`${styles.pickerMini} fill-${s.portrait}`} style={{position:'relative',overflow:'hidden'}}>
-                  {d.image ? <img src={d.image} alt={d.name} style={{position:'absolute',inset:0,width:'100%',height:'100%',objectFit:'cover'}}/> : <div className="grain"/>}
-                </div>
-                <div><h6 className={styles.pickerName}>{d.name}</h6><div className={styles.pickerMeta}>{s.level} · {s.type}</div></div>
-              </div>
-            )
-          })}
-          {tab === 'bug' && state.bugs.map(b => (
-            <div key={b.id} className={styles.pickerEntry} onClick={() => onPick({ kind:'bug', id:b.id }, qty)}>
-              <div className={`${styles.pickerMini} fill-bug-${b.color}`} style={{position:'relative',overflow:'hidden'}}>
-                {b.image ? <img src={b.image} alt={b.name} style={{position:'absolute',inset:0,width:'100%',height:'100%',objectFit:'cover'}}/> : <div className="grain grain-invert"/>}
-              </div>
-              <div><h6 className={styles.pickerName}>{b.name}</h6><div className={styles.pickerMeta}>{b.class}.{b.color}</div></div>
-            </div>
-          ))}
+          </div>
         </div>
+
+        <div className={styles.pickerBody}>
+          {renderBody()}
+        </div>
+
+        <footer className={styles.pickerFoot}>
+          <span className={styles.pickerFootCount}>
+            {PICKER_TABS.find(t => t.key === tab)?.label}
+          </span>
+          <span className={styles.pickerFootHint}><kbd>esc</kbd> fechar</span>
+        </footer>
       </div>
     </div>
   )
@@ -1750,6 +1977,32 @@ function PalcoView({ stage, state, onUpdate, onBack, isGM = false }: {
     setOpen(null)
   }, [mutateStage, openSide])
 
+  const spawnTokenDef = useCallback((def: TokenDef, qty: number) => {
+    const tokenId = `token-${def.name.toLowerCase().replace(/\s+/g, '-')}-${Date.now().toString(36)}`
+    mutateStage(s => {
+      const newRefs: ActorRef[] = Array.from({ length: qty }, (_, i) => ({
+        kind: 'wild' as const,
+        id: i === 0 ? tokenId : `${tokenId}-${i}`,
+      }))
+      const tokenState: ActorState = {
+        hp: def.hp, hp_max: def.hp,
+        defesa: def.defesa, defesa_base: def.defesa,
+        armadura: def.armadura, conditions: [],
+      }
+      const newStates: Record<string, ActorState> = {}
+      newRefs.forEach(r => { newStates[actorKey(r)] = { ...tokenState } })
+      return {
+        ...s,
+        sides: { ...s.sides, [openSide]: [...s.sides[openSide], ...newRefs] },
+        actorStates: { ...(s as any).actorStates, ...newStates },
+        tokenMeta: {
+          ...(s as any).tokenMeta ?? {},
+          ...Object.fromEntries(newRefs.map(r => [(r as { kind: 'wild'; id: string }).id, { name: def.name, level: def.level }])),
+        },
+      } as Stage
+    })
+  }, [mutateStage, openSide])
+
   // Garante que todo ator tenha um ActorState inicializado
   const ensureActorState = useCallback((actors: ActorRef[], stateObj: typeof rt) => {
     let changed = false
@@ -1778,6 +2031,11 @@ function PalcoView({ stage, state, onUpdate, onBack, isGM = false }: {
         } else if (a.kind === 'survivor') {
           const sv = findSurvivor(state, a.id)
           hp = sv?.status.HP.max ?? sv?.status.HP.v ?? 0
+        } else if (a.kind === 'sign') {
+          const sg = findSign(state, a.id)
+          hp  = sg?.status.HP       ?? 0
+          def = sg?.status.Defesa   ?? 0
+          arm = sg?.status.Armadura ?? 0
         } else if (a.kind === 'bug') {
           const b = findBug(state, a.id)
           hp  = b?.status.HP      ?? 0
@@ -2069,7 +2327,7 @@ function PalcoView({ stage, state, onUpdate, onBack, isGM = false }: {
           onChange={e => mutateStage(s=>({...s,notes:e.target.value}))} />
       </div>
 
-      {pickerSide && <Picker state={state} onPick={(a, qty) => addActor(pickerSide, a, qty)} onClose={() => setPickerSide(null)} />}
+      {pickerSide && <Picker state={state} onPick={(a, qty) => addActor(pickerSide, a, qty)} onClose={() => setPickerSide(null)} onSpawnToken={spawnToken} onSpawnTokenDef={spawnTokenDef} />}
       {open && <SheetModal subject={open} state={state} onSaveState={onUpdate} onClose={() => setOpen(null)} isGM={isGM} onSpawnToken={spawnToken} />}
     </div>
   )

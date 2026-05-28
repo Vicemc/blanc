@@ -53,19 +53,216 @@
 .notesLabel { font-family: var(--font-mono); font-size: 11px; letter-spacing: 0.12em; text-transform: uppercase; color: var(--ink-mute); display: block; margin-bottom: 6px; }
 .notesArea { width: 100%; min-height: 90px; border: 1px solid var(--line); border-radius: 10px; padding: 12px 14px; font-family: var(--font-serif); font-style: italic; font-size: 15px; color: var(--ink-soft); background: var(--paper-deep); resize: vertical; }
 
-/* picker */
-.picker { background: var(--paper); border-radius: var(--radius); border: 1px solid var(--ink); box-shadow: 0 30px 60px -20px rgba(0,0,0,0.4); width: min(660px,96vw); display: flex; flex-direction: column; max-height: min(82vh, 720px); }
-.pickerHead { display: flex; justify-content: space-between; align-items: center; padding: 20px 24px 0; flex-shrink: 0; }
-.pickerHead h3 { font-family: var(--font-display); font-size: 20px; text-transform: uppercase; margin: 0; }
-.pickerTabs { display: flex; border-bottom: 1px solid var(--line); margin-top: 16px; flex-shrink: 0; overflow-x: auto; }
-.pickerTab { flex: 1; border: 0; background: transparent; padding: 10px 8px; font-family: var(--font-mono); font-size: 10px; letter-spacing: 0.1em; text-transform: uppercase; color: var(--ink-mute); cursor: pointer; white-space: nowrap; }
-.pickerTabActive { color: var(--ink); background: var(--paper-deep); border-bottom: 2px solid var(--ink); }
-.pickerBody { flex: 1; overflow-y: auto; padding: 12px 16px; }
-.pickerEntry { display: flex; gap: 12px; align-items: center; padding: 10px; border-radius: 8px; cursor: pointer; transition: background 0.12s; }
-.pickerEntry:hover { background: var(--paper-deep); }
+/* ── Picker redesign ─────────────────────────────────────────────────────── */
+.picker {
+  background: var(--paper);
+  border-radius: 16px;
+  border: 1px solid var(--ink);
+  box-shadow: 0 30px 80px -20px rgba(0,0,0,0.5);
+  width: min(580px, 96vw);
+  display: flex;
+  flex-direction: column;
+  max-height: min(86vh, 760px);
+  overflow: hidden;
+  animation: pickerRise 200ms cubic-bezier(0.2, 0.9, 0.3, 1);
+}
+@keyframes pickerRise {
+  from { opacity: 0; transform: translateY(10px) scale(0.985); }
+  to   { opacity: 1; transform: none; }
+}
+
+/* header */
+.pickerHead {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  padding: 20px 22px 12px;
+  flex-shrink: 0;
+}
+.pickerTitle { font-family: var(--font-display); font-size: 20px; text-transform: uppercase; margin: 0; letter-spacing: -0.01em; }
+.pickerHint  { font-family: var(--font-mono); font-size: 11px; color: var(--ink-mute); margin: 3px 0 0; letter-spacing: 0.01em; }
+.pickerClose {
+  width: 30px; height: 30px; border-radius: 999px;
+  border: 1px solid var(--line); background: transparent;
+  color: var(--ink-soft); font-size: 18px; line-height: 1;
+  display: inline-flex; align-items: center; justify-content: center;
+  cursor: pointer; flex-shrink: 0; transition: background 0.12s, color 0.12s;
+}
+.pickerClose:hover { background: var(--ink); color: var(--paper); }
+
+/* segmented tabs pill */
+.pickerSegTabs {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  gap: 2px;
+  margin: 0 22px 0;
+  padding: 3px;
+  background: var(--paper-deep);
+  border: 1px solid var(--line-soft);
+  border-radius: 999px;
+  flex-shrink: 0;
+}
+.pickerSegTab {
+  border: 0; background: transparent;
+  padding: 6px 4px; border-radius: 999px;
+  font-family: var(--font-mono); font-size: 10px; font-weight: 500;
+  color: var(--ink-mute); cursor: pointer;
+  letter-spacing: 0.01em; white-space: nowrap;
+  transition: color 0.12s, background 0.12s;
+}
+.pickerSegTab:hover { color: var(--ink-soft); }
+.pickerSegTabActive {
+  background: var(--paper); color: var(--ink);
+  box-shadow: 0 1px 0 rgba(0,0,0,0.06), 0 0 0 1px var(--line-soft);
+}
+
+/* toolbar: search + qty */
+.pickerToolbar {
+  display: flex; align-items: center; gap: 10px;
+  padding: 12px 22px 10px; flex-shrink: 0;
+}
+.pickerSearch {
+  flex: 1; position: relative; display: flex; align-items: center;
+}
+.pickerSearchIcon {
+  position: absolute; left: 11px; color: var(--ink-mute);
+  font-size: 15px; pointer-events: none;
+}
+.pickerSearchInput {
+  flex: 1; width: 100%;
+  padding: 8px 30px 8px 30px;
+  background: var(--paper-deep); border: 1px solid var(--line-soft);
+  border-radius: 10px; font-size: 13px; font-family: inherit;
+  color: var(--ink); outline: none;
+  transition: border-color 0.12s, background 0.12s;
+}
+.pickerSearchInput:focus { border-color: var(--ink-soft); background: var(--paper); }
+.pickerSearchInput::placeholder { color: var(--ink-mute); }
+.pickerSearchClear {
+  position: absolute; right: 8px;
+  width: 20px; height: 20px; border: 0;
+  background: var(--line); color: var(--paper);
+  border-radius: 999px; font-size: 13px; line-height: 1; cursor: pointer;
+  display: inline-flex; align-items: center; justify-content: center;
+}
+.pickerSearchClear:hover { background: var(--ink-soft); }
+
+.pickerQtyWrap { display: flex; align-items: center; gap: 6px; }
+.pickerQtyLabel { font-family: var(--font-mono); font-size: 10px; letter-spacing: 0.1em; text-transform: uppercase; color: var(--ink-mute); white-space: nowrap; }
+.pickerQty { display: inline-flex; align-items: center; background: var(--paper-deep); border: 1px solid var(--line-soft); border-radius: 10px; overflow: hidden; }
+.pickerQtyBtn { width: 28px; height: 32px; border: 0; background: transparent; color: var(--ink-soft); font-size: 14px; cursor: pointer; transition: background 0.12s; }
+.pickerQtyBtn:hover:not(:disabled) { background: var(--paper); color: var(--ink); }
+.pickerQtyBtn:disabled { opacity: 0.35; cursor: not-allowed; }
+.pickerQtyInput {
+  width: 32px; height: 32px; border: 0; background: transparent;
+  text-align: center; font-family: var(--font-mono); font-size: 12px;
+  font-weight: 600; color: var(--ink); outline: none;
+  -moz-appearance: textfield;
+}
+.pickerQtyInput::-webkit-outer-spin-button,
+.pickerQtyInput::-webkit-inner-spin-button { -webkit-appearance: none; }
+
+/* body */
+.pickerBody {
+  flex: 1; overflow-y: auto;
+  padding: 4px 14px 10px;
+  scrollbar-width: thin; scrollbar-color: var(--line) transparent;
+}
+.pickerBody::-webkit-scrollbar { width: 6px; }
+.pickerBody::-webkit-scrollbar-thumb { background: var(--line); border-radius: 3px; }
+
+/* row (shared with old .pickerEntry) */
 .pickerMini { width: 36px; height: 36px; border-radius: 8px; overflow: hidden; flex-shrink: 0; }
-.pickerName { margin: 0; font-family: var(--font-display); font-size: 14px; text-transform: uppercase; }
-.pickerMeta { font-family: var(--font-mono); font-size: 10px; letter-spacing: 0.08em; text-transform: uppercase; color: var(--ink-mute); margin-top: 2px; }
+.pickerMeta { font-family: var(--font-mono); font-size: 10px; letter-spacing: 0.06em; color: var(--ink-mute); margin-top: 2px; }
+
+.pRow {
+  display: flex; align-items: center; gap: 11px;
+  width: 100%; padding: 9px 10px; border: 0;
+  background: transparent; border-radius: 10px;
+  text-align: left; cursor: pointer;
+  position: relative; transition: background 0.1s;
+}
+.pRow::after {
+  content: ""; position: absolute;
+  left: 57px; right: 8px; bottom: -1px;
+  height: 1px; background: var(--line-soft); opacity: 0.6;
+}
+.pRow:last-child::after { display: none; }
+.pRow:hover { background: var(--paper-deep); }
+.pRow:hover::after { opacity: 0; }
+.pRow:hover .pAddBtn { background: var(--ink); color: var(--paper); border-color: var(--ink); }
+.pRow:disabled { opacity: 0.4; cursor: not-allowed; }
+.pRow:disabled:hover { background: transparent; }
+
+.pRowBody { flex: 1; min-width: 0; }
+.pRowTitle { font-family: var(--font-display); font-size: 14px; text-transform: uppercase; color: var(--ink); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+.pTag {
+  font-family: var(--font-mono); font-size: 9.5px; letter-spacing: 0.08em;
+  text-transform: uppercase; padding: 3px 7px; border-radius: 4px;
+  background: var(--paper-deep); border: 1px solid var(--line-soft);
+  color: var(--ink-mute); white-space: nowrap; flex-shrink: 0;
+}
+.pAddBtn {
+  width: 26px; height: 26px; border-radius: 999px;
+  border: 1px solid var(--line); background: transparent;
+  color: var(--ink-soft); display: inline-flex;
+  align-items: center; justify-content: center;
+  font-size: 14px; flex-shrink: 0;
+  transition: background 0.12s, color 0.12s, border-color 0.12s;
+}
+
+/* folder groups (wild / bug) */
+.pFolders { display: flex; flex-direction: column; gap: 2px; padding: 4px 0 0; }
+.pFolder   { border-radius: 10px; overflow: hidden; }
+.pFolderHead {
+  display: flex; align-items: center; gap: 8px;
+  width: 100%; padding: 9px 12px; border: 0;
+  background: transparent; text-align: left;
+  cursor: pointer; border-radius: 8px; transition: background 0.12s;
+}
+.pFolderHead:hover:not(:disabled) { background: var(--paper-deep); }
+.pFolderHead:disabled { cursor: default; opacity: 0.45; }
+.pFolderChev {
+  display: inline-flex; width: 12px;
+  font-size: 9px; color: var(--ink-mute);
+  transition: transform 0.16s; flex-shrink: 0;
+}
+.pFolder[data-expanded="true"] .pFolderChev { transform: rotate(90deg); color: var(--ink-soft); }
+.pFolderDot { width: 9px; height: 9px; border-radius: 999px; flex-shrink: 0; }
+.pFolderName { font-family: var(--font-mono); font-size: 10px; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; color: var(--ink); flex: 1; }
+.pFolderCount { font-family: var(--font-mono); font-size: 10px; font-weight: 600; color: var(--ink-mute); background: var(--paper-deep); border: 1px solid var(--line-soft); padding: 2px 7px; border-radius: 999px; min-width: 20px; text-align: center; flex-shrink: 0; }
+.pFolder[data-expanded="true"] .pFolderCount { color: var(--ink); border-color: var(--line); }
+.pFolderBody { padding: 2px 0 6px 14px; margin-left: 14px; border-left: 1px solid var(--line-soft); }
+
+/* pagination */
+.pPager { display: flex; align-items: center; justify-content: center; gap: 3px; padding: 8px 4px 4px; }
+.pPagerBtn, .pPagerPage, .pPagerPageActive {
+  min-width: 26px; height: 26px; padding: 0 6px; border-radius: 999px;
+  border: 1px solid transparent; background: transparent;
+  color: var(--ink-mute); font-family: var(--font-mono); font-size: 11px;
+  cursor: pointer; display: inline-flex; align-items: center; justify-content: center;
+  transition: background 0.1s, color 0.1s;
+}
+.pPagerBtn:hover:not(:disabled), .pPagerPage:hover { background: var(--paper-deep); color: var(--ink); }
+.pPagerBtn:disabled { opacity: 0.3; cursor: not-allowed; }
+.pPagerPageActive { background: var(--ink); color: var(--paper); border-color: var(--ink); }
+
+/* empty state */
+.pEmpty { display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 40px 24px; text-align: center; min-height: 220px; }
+.pEmptyMark { font-size: 32px; color: var(--ink-mute); opacity: 0.35; margin-bottom: 10px; font-family: var(--font-mono); }
+.pEmptyTitle { font-size: 14px; color: var(--ink); font-weight: 500; margin-bottom: 8px; }
+.pEmptyClear { border: 0; background: transparent; color: var(--coral); font: inherit; font-size: 12px; cursor: pointer; text-decoration: underline; text-underline-offset: 2px; }
+
+/* footer */
+.pickerFoot {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 10px 18px; border-top: 1px solid var(--line-soft);
+  background: var(--paper-deep); flex-shrink: 0;
+}
+.pickerFootCount { font-family: var(--font-mono); font-size: 10px; letter-spacing: 0.06em; text-transform: uppercase; color: var(--ink-mute); }
+.pickerFootHint  { font-family: var(--font-mono); font-size: 10px; color: var(--ink-mute); }
+.pickerFootHint kbd { font-family: var(--font-mono); font-size: 10px; padding: 1px 5px; border: 1px solid var(--line); border-radius: 4px; background: var(--paper); color: var(--ink-soft); }
 
 .btnGhost { padding: 8px 16px; border-radius: 999px; border: 1px solid var(--line); background: var(--paper); color: var(--ink-soft); font-family: var(--font-body); font-weight: 600; font-size: 13px; cursor: pointer; transition: all 0.15s; }
 .btnGhost:hover { background: var(--ink); color: var(--paper); }
