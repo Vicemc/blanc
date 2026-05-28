@@ -357,7 +357,7 @@ function DigiviceTab() {
       <section className={styles.rule}>
         <div className={styles.ruleNum}>⌚</div>
         <h2 className={styles.ruleTitle}>Regras do Digivice</h2>
-        <div className={styles.ruleSub}>chaves, fechaduras e o pulso do mundo digital</div>
+        <div className={styles.ruleSub}>chaves & fechaduras</div>
 
         <h3 className={styles.ruleH3}>Ambos os Tipos</h3>
         <ul>
