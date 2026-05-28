@@ -1,4 +1,4 @@
-.sheet { background: var(--paper); border: 1px solid var(--line); border-radius: var(--radius); overflow: hidden; }
+.sheet { background: var(--paper); border: 1px solid var(--line); border-radius: var(--radius); overflow: hidden; display: flex; flex-direction: column; height: 100%; }
 
 .sheetHead {
   padding: 28px 52px 24px;
@@ -26,7 +26,7 @@
 .tab:hover { color: var(--ink); }
 .tabActive { color: var(--ink); background: var(--paper-deep); border-bottom-color: var(--ink); }
 
-.sheetBody { padding: 32px 56px 40px; }
+.sheetBody { padding: 32px 56px 40px; overflow-y: auto; flex: 1; }
 
 .sectionTitle {
   font-family: var(--font-mono); font-size: 12px;

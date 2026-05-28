@@ -327,10 +327,11 @@ export interface Bug {
 // ---------- Stage (Teatro) ----------
 
 export type ActorRef =
-  | { kind: 'human'; id: string }
-  | { kind: 'pair';  tamerId: string; digimonId: string; stage: number }
-  | { kind: 'wild';  id: string }
-  | { kind: 'bug';   id: string };
+  | { kind: 'human';    id: string }
+  | { kind: 'pair';     tamerId: string; digimonId: string; stage: number }
+  | { kind: 'wild';     id: string }
+  | { kind: 'bug';      id: string }
+  | { kind: 'survivor'; id: string };
 
 export interface Stage {
   id:        string;

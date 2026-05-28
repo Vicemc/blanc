@@ -1,6 +1,7 @@
 import React, { useState, useCallback, useMemo, useEffect, useRef } from 'react'
 import type { AppState, Stage, ActorRef, TamerSkill } from '../types'
 import { findTamer, findDigimon, findBug, makeStage, DIGIMON_DEFAULT_IMAGES } from '../data/store'
+import { findSurvivor } from '../data/domain'
 import { PageHead } from '../components/PageHead'
 import { GrainFill } from '../components/GrainFill'
 import { SheetModal } from '../components/Sheet'
@@ -142,9 +143,10 @@ function getRuntime(stage: Stage): StageRuntime & { tokenMeta: Record<string, { 
 // ── Actor key único ──────────────────────────────────────────────────────────
 
 function actorKey(a: ActorRef): string {
-  if (a.kind === 'human') return `tamer:${a.id}`
-  if (a.kind === 'pair')  return `digi:${a.digimonId}:${a.stage}`
-  if (a.kind === 'wild')  return `wild:${a.id}`
+  if (a.kind === 'human')    return `tamer:${a.id}`
+  if (a.kind === 'pair')     return `digi:${a.digimonId}:${a.stage}`
+  if (a.kind === 'wild')     return `wild:${a.id}`
+  if (a.kind === 'survivor') return `survivor:${a.id}`
   return `bug:${a.id}`
 }
 
@@ -189,6 +191,15 @@ function resolveActor(state: AppState, a: ActorRef, tokenMeta?: Record<string, {
       title: d?.name ?? '?', type: s?.type ?? '?', portrait: s?.portrait ?? 'sage', image: wildImg,
       stats: [['HP', s?.status.HP ?? 0], ['DEF', s?.status.Defesa ?? 0]],
       subject: { kind: 'wild', id: a.id },
+    }
+  }
+  if (a.kind === 'survivor') {
+    const sv = findSurvivor(state, a.id)
+    return {
+      title: sv?.name ?? '?', type: 'Survivor',
+      portrait: sv?.portrait ?? 'sage', image: sv?.image ?? null,
+      stats: [['HP', sv?.status.HP.v ?? 0]],
+      subject: { kind: 'survivor', id: a.id },
     }
   }
   const b = findBug(state, a.id)
@@ -623,10 +634,10 @@ function ActorChip({ actor, state, actorSt, onOpen, onRemove, onChange, onEvolve
       </div>
       <div className={styles.actorStats}>
         <span>HP: {displayHp}</span>
-        {actor.kind !== 'human' && <span>DEF: {displayDef}</span>}
-        {displayArm > 0 && actor.kind !== 'human' && <span>ARM: {displayArm}</span>}
-        {/* Eisuke: mostrar DEF apenas se > 0 (ativado via My Body as a Shield) */}
-        {actor.kind === 'human' && Number(displayDef) > 0 && <span style={{ color: 'var(--blue)' }}>DEF: {displayDef}</span>}
+        {actor.kind !== 'human' && actor.kind !== 'survivor' && <span>DEF: {displayDef}</span>}
+        {displayArm > 0 && actor.kind !== 'human' && actor.kind !== 'survivor' && <span>ARM: {displayArm}</span>}
+        {/* Eisuke/Survivor: mostrar DEF apenas se > 0 */}
+        {(actor.kind === 'human' || actor.kind === 'survivor') && Number(displayDef) > 0 && <span style={{ color: 'var(--blue)' }}>DEF: {displayDef}</span>}
         {condCount > 0 && <span style={{ color: 'var(--coral)' }}>{condCount} cond.</span>}
       </div>
 
@@ -763,7 +774,7 @@ function ActorChip({ actor, state, actorSt, onOpen, onRemove, onChange, onEvolve
       </button>
       {showState && actorSt && (
         <ActorStatePanel aKey={actorKey(actor)} aState={actorSt} onChange={onChange}
-          isTamer={actor.kind === 'human'} />
+          isTamer={actor.kind === 'human' || actor.kind === 'survivor'} />
       )}
     </div>
   )
@@ -772,8 +783,9 @@ function ActorChip({ actor, state, actorSt, onOpen, onRemove, onChange, onEvolve
 // ── Picker de atores ──────────────────────────────────────────────────────────
 
 function Picker({ state, onPick, onClose }: { state: AppState; onPick: (a: ActorRef, qty?: number) => void; onClose: () => void }) {
-  const [tab, setTab] = useState<'pair'|'human'|'wild'|'bug'>('pair')
+  const [tab, setTab] = useState<'pair'|'human'|'survivor'|'wild'|'bug'>('pair')
   const [qty, setQty] = useState(1)
+  const survivors = state.survivors ?? []
   return (
     <div className="modal-back" onClick={onClose}>
       <div className={styles.picker} onClick={e => e.stopPropagation()}>
@@ -789,9 +801,9 @@ function Picker({ state, onPick, onClose }: { state: AppState; onPick: (a: Actor
           </div>
         </div>
         <div className={styles.pickerTabs}>
-          {(['pair','human','wild','bug'] as const).map(t => (
+          {(['pair','human','survivor','wild','bug'] as const).map(t => (
             <button key={t} className={tab === t ? styles.pickerTabActive : styles.pickerTab} onClick={() => setTab(t)}>
-              {{ pair:'Dupla', human:'Tamer Solo', wild:'Bestiário', bug:'BUG' }[t]}
+              {{ pair:'Dupla', human:'Tamer Solo', survivor:'Survivor', wild:'Bestiário', bug:'BUG' }[t]}
             </button>
           ))}
         </div>
@@ -809,6 +821,24 @@ function Picker({ state, onPick, onClose }: { state: AppState; onPick: (a: Actor
                 {t.image ? <img src={t.image} alt={t.name} style={{position:'absolute',inset:0,width:'100%',height:'100%',objectFit:'cover'}}/> : <div className="grain"/>}
               </div>
               <div><h6 className={styles.pickerName}>{t.name}</h6><div className={styles.pickerMeta}>{t.age} anos · {t.sign}</div></div>
+            </div>
+          ))}
+          {tab === 'survivor' && survivors.length === 0 && (
+            <div style={{ padding: '24px 16px', fontFamily: 'var(--font-mono)', fontSize: 11, color: 'var(--ink-mute)', textAlign: 'center' }}>
+              Nenhum survivor cadastrado.
+            </div>
+          )}
+          {tab === 'survivor' && survivors.map(sv => (
+            <div key={sv.id} className={styles.pickerEntry} onClick={() => onPick({ kind:'survivor', id:sv.id }, qty)}>
+              <div className={`${styles.pickerMini} fill-${sv.portrait}`} style={{position:'relative',overflow:'hidden'}}>
+                {sv.image ? <img src={sv.image} alt={sv.name} style={{position:'absolute',inset:0,width:'100%',height:'100%',objectFit:'cover'}}/> : <div className="grain"/>}
+              </div>
+              <div>
+                <h6 className={styles.pickerName}>{sv.name}{sv.surname ? ` ${sv.surname}` : ''}</h6>
+                <div className={styles.pickerMeta}>
+                  {[sv.age && `${sv.age} anos`, sv.sign].filter(Boolean).join(' · ') || 'Survivor'}
+                </div>
+              </div>
             </div>
           ))}
           {tab === 'pair' && state.tamers.filter(t => t.digimonId).map(t => {
@@ -1705,6 +1735,9 @@ function PalcoView({ stage, state, onUpdate, onBack, isGM = false }: {
           hp  = s?.status.HP      ?? 0
           def = s?.status.Defesa  ?? 0
           arm = s?.status.Armadura ?? 0
+        } else if (a.kind === 'survivor') {
+          const sv = findSurvivor(state, a.id)
+          hp = sv?.status.HP.max ?? sv?.status.HP.v ?? 0
         } else if (a.kind === 'bug') {
           const b = findBug(state, a.id)
           hp  = b?.status.HP      ?? 0

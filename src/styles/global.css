@@ -133,12 +133,12 @@ button { cursor: pointer; font-family: inherit; }
   background: var(--paper);
   border-radius: var(--radius);
   box-shadow: var(--shadow);
-  max-height: 90vh;
-  overflow-y: auto;
-  width: 100%;
-  max-width: 920px;
+  width: min(94vw, 1020px);
+  max-height: min(92vh, 960px);
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
   position: relative;
-  padding: 32px;
 }
 
 /* ── Animações ──────────────────────────────────────────────── */
