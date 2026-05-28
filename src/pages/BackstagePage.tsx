@@ -6,7 +6,7 @@ import { listProfiles, setUserRole } from '../lib/auth'
 import type { UserProfile } from '../lib/auth'
 import { useAuth } from '../components/AuthProvider'
 import { useSettings } from '../lib/settings'
-import type { AppState, SkillTreePhase, TamerSkill, ClimaEntry, KeywordEntry, ConditionEntry } from '../types'
+import type { AppState, SkillTreePhase, TamerSkill, ClimaEntry, KeywordEntry, ConditionEntry, JogressConfig, JogressGroup, JogressSkill } from '../types'
 import { saveStateToDB } from '../lib/db'
 import { supabase } from '../lib/supabase'
 import { SheetModal } from '../components/Sheet'
@@ -380,7 +380,7 @@ const fld: React.CSSProperties = {
 }
 const fldSm: React.CSSProperties = { ...fld, width: 'auto' }
 
-type RulesTab = 'climas' | 'keywords' | 'condicoes'
+type RulesTab = 'climas' | 'keywords' | 'condicoes' | 'jogress'
 
 const KW_TYPES = ['neutral','reaction','wound','stack','positive','neg'] as const
 type KwType = typeof KW_TYPES[number]
@@ -826,6 +826,152 @@ function KwCondForm<T extends { category?: string; type: KwType; desc: string; r
   )
 }
 
+// ── JogressCrud ───────────────────────────────────────────────────────────────
+function JogressCrud({ state, onUpdate }: Props) {
+  const configs: JogressConfig[] = state.jogressConfigs ?? []
+  const [editId,  setEditId]  = useState<string | null>(null)
+  const [adding,  setAdding]  = useState(false)
+
+  const emptyConfig = (): Omit<JogressConfig, 'id'> => ({
+    name: '', memoryGroups: [], ownPassives: [],
+  })
+  const [draft, setDraft] = useState<Omit<JogressConfig, 'id'>>(emptyConfig())
+
+  const save = (cfg: JogressConfig) => {
+    const next = editId
+      ? configs.map(c => c.id === editId ? cfg : c)
+      : [...configs, cfg]
+    onUpdate({ ...state, jogressConfigs: next })
+    setEditId(null); setAdding(false); setDraft(emptyConfig())
+  }
+
+  const del = (id: string) => onUpdate({ ...state, jogressConfigs: configs.filter(c => c.id !== id) })
+
+  const startEdit = (cfg: JogressConfig) => {
+    setEditId(cfg.id); setDraft({ name: cfg.name, memoryGroups: cfg.memoryGroups, ownPassives: cfg.ownPassives }); setAdding(true)
+  }
+
+  // ── Skill inline editor ─────────────────────────────────────────────────────
+  function SkillListEditor({ skills, onChange }: { skills: JogressSkill[]; onChange: (s: JogressSkill[]) => void }) {
+    const [newTitle,  setNewTitle]  = useState('')
+    const [newEffect, setNewEffect] = useState('')
+    const add = () => {
+      if (!newTitle.trim()) return
+      onChange([...skills, { id: `js-${Date.now().toString(36)}`, title: newTitle.trim(), effect: newEffect.trim() }])
+      setNewTitle(''); setNewEffect('')
+    }
+    return (
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+        {skills.map((s, i) => (
+          <div key={s.id} style={{ display: 'flex', gap: 6, alignItems: 'flex-start', padding: '6px 10px', borderRadius: 6, border: '1px solid var(--line-soft)', background: 'var(--paper)' }}>
+            <div style={{ flex: 1 }}>
+              <div style={{ fontFamily: 'var(--font-mono)', fontSize: 11, fontWeight: 700 }}>{s.title}</div>
+              <div style={{ fontFamily: 'var(--font-body)', fontSize: 12, color: 'var(--ink-mute)', marginTop: 2 }}>{s.effect}</div>
+            </div>
+            <button onClick={() => onChange(skills.filter((_, j) => j !== i))}
+              style={{ background: 'transparent', border: 'none', cursor: 'pointer', color: 'var(--ink-mute)', fontSize: 16, lineHeight: 1, padding: '0 4px' }}>×</button>
+          </div>
+        ))}
+        <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginTop: 4 }}>
+          <input value={newTitle} onChange={e => setNewTitle(e.target.value)} placeholder="Título da passiva *" style={fldSm} />
+          <textarea value={newEffect} onChange={e => setNewEffect(e.target.value)} placeholder="Efeito" rows={2}
+            style={{ ...fld, resize: 'vertical', minHeight: 48 }} />
+          <button onClick={add} style={{ padding: '6px 14px', borderRadius: 999, border: '1px solid var(--teal)', background: 'var(--teal)', color: 'var(--paper)', cursor: 'pointer', fontFamily: 'var(--font-body)', fontWeight: 700, fontSize: 12, alignSelf: 'flex-end' }}>+ Adicionar</button>
+        </div>
+      </div>
+    )
+  }
+
+  // ── Group (memory group) inline editor ─────────────────────────────────────
+  function GroupListEditor({ groups, onChange }: { groups: JogressGroup[]; onChange: (g: JogressGroup[]) => void }) {
+    const [newDomain, setNewDomain] = useState('')
+    const addGroup = () => {
+      if (!newDomain.trim()) return
+      onChange([...groups, { id: `jg-${Date.now().toString(36)}`, domain: newDomain.trim(), skills: [] }])
+      setNewDomain('')
+    }
+    return (
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+        {groups.map((g, gi) => (
+          <div key={g.id} style={{ padding: '10px 12px', borderRadius: 8, border: '1px solid var(--line)', background: 'var(--paper-deep)' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
+              <span style={{ fontFamily: 'var(--font-mono)', fontSize: 11, fontWeight: 700, flex: 1 }}>{g.domain}</span>
+              <button onClick={() => onChange(groups.filter((_, j) => j !== gi))}
+                style={{ background: 'transparent', border: 'none', cursor: 'pointer', color: 'var(--ink-mute)', fontSize: 14 }}>×</button>
+            </div>
+            <SkillListEditor skills={g.skills}
+              onChange={skills => onChange(groups.map((x, j) => j === gi ? { ...x, skills } : x))} />
+          </div>
+        ))}
+        <div style={{ display: 'flex', gap: 6 }}>
+          <input value={newDomain} onChange={e => setNewDomain(e.target.value)} placeholder="Nome do Domain (ex: Domain of Sky)" style={fld} />
+          <button onClick={addGroup} style={{ padding: '6px 14px', borderRadius: 999, border: '1px solid var(--line)', background: 'transparent', cursor: 'pointer', fontFamily: 'var(--font-body)', fontSize: 12, whiteSpace: 'nowrap' }}>+ Grupo</button>
+        </div>
+      </div>
+    )
+  }
+
+  return (
+    <div>
+      <div style={{ fontFamily: 'var(--font-mono)', fontSize: 11, color: 'var(--ink-mute)', marginBottom: 16, lineHeight: 1.5 }}>
+        Cada Jogress define um domain fusionado (ex: "Domain of Time"), os grupos de passivas de memória selecionáveis e as passivas próprias sempre ativas quando o Jogress estiver ativo no Palco.
+      </div>
+
+      {/* Lista existente */}
+      {configs.map(cfg => (
+        <div key={cfg.id} style={{ padding: '12px 16px', borderRadius: 8, border: '1px solid var(--line)', marginBottom: 10, display: 'flex', alignItems: 'flex-start', gap: 12, background: 'var(--paper-deep)' }}>
+          <div style={{ flex: 1 }}>
+            <div style={{ fontFamily: 'var(--font-display)', fontSize: 15, textTransform: 'uppercase', marginBottom: 4 }}>{cfg.name}</div>
+            <div style={{ fontFamily: 'var(--font-mono)', fontSize: 10, color: 'var(--ink-mute)', letterSpacing: '0.08em' }}>
+              {cfg.memoryGroups.length} grupo(s) de memória · {cfg.ownPassives.length} passiva(s) própria(s)
+            </div>
+          </div>
+          <button onClick={() => startEdit(cfg)} style={{ ...fldSm, width: 'auto', padding: '4px 12px', fontSize: 12, cursor: 'pointer' }}>Editar</button>
+          <button onClick={() => del(cfg.id)} style={{ ...fldSm, width: 'auto', padding: '4px 12px', fontSize: 12, cursor: 'pointer', color: 'var(--coral)', borderColor: 'var(--coral)' }}>×</button>
+        </div>
+      ))}
+
+      {/* Formulário de adição/edição */}
+      {adding ? (
+        <div style={{ padding: '16px', borderRadius: 10, border: '1px solid var(--line)', background: 'var(--paper)', marginTop: 12 }}>
+          <div style={{ fontFamily: 'var(--font-mono)', fontSize: 11, letterSpacing: '0.1em', textTransform: 'uppercase', marginBottom: 14 }}>
+            {editId ? 'Editar Jogress' : 'Novo Jogress'}
+          </div>
+          <div style={{ marginBottom: 12 }}>
+            <label style={{ fontFamily: 'var(--font-mono)', fontSize: 10, color: 'var(--ink-mute)', display: 'block', marginBottom: 4 }}>Nome do Domain Fusionado</label>
+            <input value={draft.name} onChange={e => setDraft(d => ({ ...d, name: e.target.value }))} placeholder="ex: Domain of Time" style={fld} />
+          </div>
+          <div style={{ marginBottom: 12 }}>
+            <label style={{ fontFamily: 'var(--font-mono)', fontSize: 10, color: 'var(--ink-mute)', display: 'block', marginBottom: 8 }}>Grupos de Passivas de Memória</label>
+            <GroupListEditor groups={draft.memoryGroups} onChange={g => setDraft(d => ({ ...d, memoryGroups: g }))} />
+          </div>
+          <div style={{ marginBottom: 16 }}>
+            <label style={{ fontFamily: 'var(--font-mono)', fontSize: 10, color: 'var(--ink-mute)', display: 'block', marginBottom: 8 }}>Passivas Próprias do Domain Fusionado</label>
+            <SkillListEditor skills={draft.ownPassives} onChange={s => setDraft(d => ({ ...d, ownPassives: s }))} />
+          </div>
+          <div style={{ display: 'flex', gap: 8 }}>
+            <button
+              disabled={!draft.name.trim()}
+              onClick={() => save({ id: editId ?? `jcfg-${Date.now().toString(36)}`, ...draft })}
+              style={{ padding: '7px 18px', borderRadius: 999, cursor: draft.name.trim() ? 'pointer' : 'not-allowed', border: '1px solid var(--teal)', background: 'var(--teal)', color: 'var(--paper)', fontFamily: 'var(--font-body)', fontWeight: 700, fontSize: 13, opacity: draft.name.trim() ? 1 : 0.5 }}>
+              Salvar
+            </button>
+            <button onClick={() => { setAdding(false); setEditId(null); setDraft(emptyConfig()) }}
+              style={{ padding: '7px 18px', borderRadius: 999, cursor: 'pointer', border: '1px solid var(--line)', background: 'transparent', fontFamily: 'var(--font-body)', fontSize: 13, color: 'var(--ink-mute)' }}>
+              Cancelar
+            </button>
+          </div>
+        </div>
+      ) : (
+        <button onClick={() => setAdding(true)}
+          style={{ marginTop: 8, padding: '8px 20px', borderRadius: 999, border: '1px solid var(--line)', background: 'transparent', cursor: 'pointer', fontFamily: 'var(--font-mono)', fontSize: 11, letterSpacing: '0.08em', textTransform: 'uppercase', color: 'var(--ink-mute)' }}>
+          + Novo Jogress
+        </button>
+      )}
+    </div>
+  )
+}
+
 // ── RulesSection ───────────────────────────────────────────────────────────────
 function RulesSection({ state, onUpdate }: Props) {
   const [tab, setTab] = useState<RulesTab>('climas')
@@ -834,6 +980,7 @@ function RulesSection({ state, onUpdate }: Props) {
     { id: 'climas',    label: 'Climas'   },
     { id: 'keywords',  label: 'Keywords' },
     { id: 'condicoes', label: 'Condições'},
+    { id: 'jogress',   label: 'Jogress'  },
   ]
 
   return (
@@ -854,6 +1001,7 @@ function RulesSection({ state, onUpdate }: Props) {
       {tab === 'climas'    && <ClimaCrud    state={state} onUpdate={onUpdate} />}
       {tab === 'keywords'  && <KeywordCrud  state={state} onUpdate={onUpdate} />}
       {tab === 'condicoes' && <ConditionCrud state={state} onUpdate={onUpdate} />}
+      {tab === 'jogress'   && <JogressCrud  state={state} onUpdate={onUpdate} />}
     </div>
   )
 }

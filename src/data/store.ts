@@ -161,6 +161,7 @@ function mergeWithDefaults(saved: AppState, defaults: AppState): AppState {
     customClimas:     saved.customClimas     ?? [],
     customKeywords:   saved.customKeywords   ?? [],
     customConditions: saved.customConditions ?? [],
+    jogressConfigs:   saved.jogressConfigs   ?? [],
     tokenDefs:      saved.tokenDefs      ?? [],
     visibility:     saved.visibility     ?? {},
 
@@ -2705,6 +2706,7 @@ export function buildDefaultState(): AppState {
     customClimas:     [],
     customKeywords:   [],
     customConditions: [],
+    jogressConfigs:   [],
     tokenDefs: DEFAULT_TOKEN_DEFS,
     visibility: {},
   };

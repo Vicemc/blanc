@@ -1,5 +1,5 @@
 import React, { useState, useCallback, useMemo, useEffect, useRef } from 'react'
-import type { AppState, Stage, ActorRef, TamerSkill } from '../types'
+import type { AppState, Stage, ActorRef, TamerSkill, ConditionEntry, JogressConfig } from '../types'
 import { findTamer, findDigimon, findBug, makeStage, DIGIMON_DEFAULT_IMAGES } from '../data/store'
 import { findSurvivor } from '../data/domain'
 import { PageHead } from '../components/PageHead'
@@ -930,10 +930,26 @@ const DOMAIN_OF_TIME_ALL_PASSIVES: TamerSkill[] = [
     effect: 'Durante o seu turno, Hibito pode invocar 1 [Silhouette Token] adjacente a ele como Ação Livre. Se o clima for [Intense Sunlight], pode criar 1 Token extra. Máximo de 3 Silhouette Tokens em campo.' },
 ]
 
-function DomainPanel({ domainTamers }: { domainTamers: ReturnType<typeof getDomainTamers> }) {
+function DomainPanel({ domainTamers, jogressConfigs = [] }: {
+  domainTamers: ReturnType<typeof getDomainTamers>
+  jogressConfigs?: JogressConfig[]
+}) {
   const [activeDomainId, setActiveDomainId] = useState<string | null>(null)
   const [jogress, setJogress] = useState(false)
   const [jogressPassives, setJogressPassives] = useState<string[]>([])
+
+  // Merge hardcoded Jogress data with GM-configured entries
+  const allMemoryGroups = [
+    ...JOGRESS_MEMORY_PASSIVES.map(g => ({
+      id: g.domain, domain: g.domain,
+      skills: g.skills.map((s, i) => ({ id: `${g.domain}-${i}`, title: s.title, effect: s.effect })),
+    })),
+    ...jogressConfigs.flatMap(cfg => cfg.memoryGroups),
+  ]
+  const allOwnPassives = [
+    ...DOMAIN_OF_TIME_ALL_PASSIVES.map((s, i) => ({ id: `dot-${i}`, title: s.title, effect: s.effect })),
+    ...jogressConfigs.flatMap(cfg => cfg.ownPassives),
+  ]
 
   const jogressMembers = domainTamers.filter(d => d.skills.some(s => s.title.startsWith('Jogress')))
   const hasJogress = jogressMembers.length >= 2
@@ -1002,14 +1018,14 @@ function DomainPanel({ domainTamers }: { domainTamers: ReturnType<typeof getDoma
               <div style={{ fontSize: 11, color: 'var(--ink-mute)', fontFamily: 'var(--font-mono)', marginBottom: 12 }}>
                 Pode escolher qualquer combinação — 2 do mesmo domain também é válido.
               </div>
-              {JOGRESS_MEMORY_PASSIVES.map(group => (
-                <div key={group.domain} style={{ marginBottom: 14 }}>
+              {allMemoryGroups.map(group => (
+                <div key={group.id} style={{ marginBottom: 14 }}>
                   <div style={{ fontFamily:'var(--font-mono)', fontSize:10, letterSpacing:'0.12em', textTransform:'uppercase', color:'var(--ink-mute)', marginBottom:6 }}>{group.domain}</div>
-                  {group.skills.map((s, i) => {
+                  {group.skills.map(s => {
                     const chosen = jogressPassives.includes(s.title)
                     const canSelect = chosen || jogressPassives.length < 2
                     return (
-                      <div key={i} className={`${styles.domainSkill} ${chosen ? styles.domainSkillChosen : ''}`}
+                      <div key={s.id} className={`${styles.domainSkill} ${chosen ? styles.domainSkillChosen : ''}`}
                         onClick={() => { if (!canSelect) return; setJogressPassives(p => p.includes(s.title) ? p.filter(x => x !== s.title) : [...p, s.title]) }}
                         style={{ cursor: canSelect ? 'pointer' : 'not-allowed', opacity: !canSelect ? 0.4 : 1 }}>
                         <div className={styles.domainSkillTitle}>{chosen ? '✓ ' : '○ '}{s.title}</div>
@@ -1031,7 +1047,7 @@ function DomainPanel({ domainTamers }: { domainTamers: ReturnType<typeof getDoma
               </div>
               <div style={{ fontFamily:'var(--font-mono)', fontSize:10, letterSpacing:'0.1em', textTransform:'uppercase', color:'var(--ink-mute)', marginBottom:8 }}>Passivas de memória herdadas</div>
               {jogressPassives.map(title => {
-                const s = JOGRESS_MEMORY_PASSIVES.flatMap(g => g.skills).find(x => x.title === title)!
+                const s = allMemoryGroups.flatMap(g => g.skills).find(x => x.title === title)!
                 return (
                   <div key={title} className={`${styles.domainSkill} ${styles.domainSkillChosen}`}>
                     <div className={styles.domainSkillTitle}>✓ {s.title}</div>
@@ -1039,9 +1055,9 @@ function DomainPanel({ domainTamers }: { domainTamers: ReturnType<typeof getDoma
                   </div>
                 )
               })}
-              <div style={{ fontFamily:'var(--font-mono)', fontSize:10, letterSpacing:'0.1em', textTransform:'uppercase', color:'var(--ink-mute)', margin:'14px 0 8px' }}>Passivas próprias do Domain of Time</div>
-              {DOMAIN_OF_TIME_ALL_PASSIVES.map((s, i) => (
-                <div key={i} className={styles.domainSkill}>
+              <div style={{ fontFamily:'var(--font-mono)', fontSize:10, letterSpacing:'0.1em', textTransform:'uppercase', color:'var(--ink-mute)', margin:'14px 0 8px' }}>Passivas do Domain fusionado</div>
+              {allOwnPassives.map(s => (
+                <div key={s.id} className={styles.domainSkill}>
                   <div className={styles.domainSkillTitle}>{s.title}</div>
                   <div className={styles.domainSkillEffect}>{s.effect}</div>
                 </div>
@@ -1087,18 +1103,30 @@ const CONDITION_SHORTCUTS: ConditionShortcut[] = [
 
 // ── ConditionShortcutsPanel ───────────────────────────────────────────────────
 
-function ConditionShortcutsPanel({ actors, actorStates, onChange }: {
-  actors:      { key: string; title: string }[]
-  actorStates: Record<string, ActorState>
-  onChange:    (key: string, s: ActorState) => void
+function ConditionShortcutsPanel({ actors, actorStates, onChange, customConditions = [] }: {
+  actors:           { key: string; title: string }[]
+  actorStates:      Record<string, ActorState>
+  onChange:         (key: string, s: ActorState) => void
+  customConditions?: ConditionEntry[]
 }) {
+  const allShortcuts: ConditionShortcut[] = [
+    ...CONDITION_SHORTCUTS,
+    ...customConditions.map(c => ({
+      label:   c.name,
+      max:     c.max ?? 10,
+      color:   c.color ?? 'coral',
+      type:    (c.type === 'wound' ? 'ferimento' : c.type === 'stack' ? 'acumulacao' : 'reacao') as ConditionShortcut['type'],
+      default: 1,
+    })),
+  ]
+
   const [open,       setOpen]       = useState(false)
   const [selected,   setSelected]   = useState<string | null>(null)
   const [targetKey,  setTargetKey]  = useState<string>('')
   const [amount,     setAmount]     = useState(1)
   const [filterType, setFilterType] = useState<'all' | 'ferimento' | 'acumulacao' | 'reacao'>('all')
 
-  const cond = CONDITION_SHORTCUTS.find(c => c.label === selected)
+  const cond = allShortcuts.find(c => c.label === selected)
 
   const applyCondition = (key: string) => {
     if (!cond) return
@@ -1120,7 +1148,7 @@ function ConditionShortcutsPanel({ actors, actorStates, onChange }: {
   }
 
   const TYPE_LABELS = { ferimento: 'Ferimento', acumulacao: 'Acumulação', reacao: 'Reação' }
-  const filtered = filterType === 'all' ? CONDITION_SHORTCUTS : CONDITION_SHORTCUTS.filter(c => c.type === filterType)
+  const filtered = filterType === 'all' ? allShortcuts : allShortcuts.filter(c => c.type === filterType)
 
   return (
     <div style={{ margin: '12px 0', border: '1px solid var(--line)', borderRadius: 'var(--radius)',
@@ -1136,7 +1164,7 @@ function ConditionShortcutsPanel({ actors, actorStates, onChange }: {
           letterSpacing: '-0.01em', flex: 1 }}>Atalhos de Condição</span>
         <span style={{ fontFamily: 'var(--font-mono)', fontSize: 9, letterSpacing: '0.1em',
           textTransform: 'uppercase', color: 'var(--ink-mute)' }}>
-          {CONDITION_SHORTCUTS.length} condições
+          {allShortcuts.length} condições
         </span>
         <span style={{ fontFamily: 'var(--font-mono)', fontSize: 14, color: 'var(--ink-mute)',
           transition: 'transform 0.2s', display: 'inline-block',
@@ -1971,7 +1999,7 @@ function PalcoView({ stage, state, onUpdate, onBack, isGM = false }: {
         </div>
       </div>
 
-      <DomainPanel domainTamers={domainTamers} />
+      <DomainPanel domainTamers={domainTamers} jogressConfigs={state.jogressConfigs ?? []} />
 
       <ClimaPanel
         climaId={rt.clima}
@@ -1983,6 +2011,7 @@ function PalcoView({ stage, state, onUpdate, onBack, isGM = false }: {
         actors={actorList}
         actorStates={rt.actorStates}
         onChange={(key, newSt) => updateActorState(key, newSt)}
+        customConditions={state.customConditions ?? []}
       />
 
       <div className={styles.board}>

@@ -386,6 +386,7 @@ export interface AppState {
   customClimas:     ClimaEntry[];      // climas gerenciados pelo GM (vazio = usar padrões)
   customKeywords:   KeywordEntry[];    // keywords gerenciadas pelo GM (vazio = usar padrões)
   customConditions: ConditionEntry[];  // condições gerenciadas pelo GM (vazio = usar padrões)
+  jogressConfigs:   JogressConfig[];   // configurações de Jogress adicionadas pelo GM
   tokenDefs:      TokenDef[];      // tokens definidos (aba Tokens da Goggle Girl)
   // Controle de visibilidade (GM only)
   visibility:  VisibilityMap;      // chave: 'tipo:id', valor: true = visível para players
@@ -444,6 +445,29 @@ export interface ConditionEntry {
   desc:     string
   type:     'wound' | 'stack' | 'positive' | 'neg' | 'reaction' | 'neutral'
   resist?:  string
+  max?:     number   // cargas máximas no atalho do Palco (padrão 10)
+  color?:   string   // cor no atalho do Palco (padrão 'coral')
+}
+
+// ---------- Jogress (extensível pelo GM) ----------
+
+export interface JogressSkill {
+  id:     string
+  title:  string
+  effect: string
+}
+
+export interface JogressGroup {
+  id:     string
+  domain: string           // ex: "Domain of Sky"
+  skills: JogressSkill[]
+}
+
+export interface JogressConfig {
+  id:           string
+  name:         string    // nome do Domain fusionado, ex: "Domain of Time"
+  memoryGroups: JogressGroup[]   // grupos de passivas de memória selecionáveis
+  ownPassives:  JogressSkill[]   // passivas sempre ativas quando o Jogress está ativo
 }
 
 // ---------- Token definition (Goggle Girl aba Tokens) ----------

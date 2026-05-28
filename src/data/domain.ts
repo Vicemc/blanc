@@ -109,6 +109,7 @@ function buildDefaultState(): AppState {
     customClimas:     [],
     customKeywords:   [],
     customConditions: [],
+    jogressConfigs:   [],
     tokenDefs:  [],
     visibility: { intro: true, bestiary: true },
   }
