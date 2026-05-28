@@ -756,13 +756,21 @@ function ActorChip({ actor, state, actorSt, onOpen, onRemove, onChange, onEvolve
       {actor.kind === 'human' && actorSt && (() => {
         const t = findTamer(state, actor.id)
         if (!t) return null
-        // Filtra skills com toggleBonus que não são tratadas especialmente acima
         const SPECIAL_KEYWORDS = ['My Body as a Shield', 'Before My Body Submits']
         const genericSkills = t.tamerSkills.filter(sk =>
           sk.toggleBonus && !SPECIAL_KEYWORDS.includes(sk.keyword)
         )
         if (genericSkills.length === 0) return null
         return <GenericSkillToggles skills={genericSkills} actorSt={actorSt} onChange={onChange} />
+      })()}
+
+      {/* ── Survivor skills com toggleBonus ── */}
+      {actor.kind === 'survivor' && actorSt && (() => {
+        const sv = findSurvivor(state, actor.id)
+        if (!sv) return null
+        const toggleSkills = (sv.survivorSkills ?? []).filter(sk => sk.toggleBonus)
+        if (toggleSkills.length === 0) return null
+        return <GenericSkillToggles skills={toggleSkills} actorSt={actorSt} onChange={onChange} />
       })()}
 
       <button onClick={() => setShowState(p => !p)}
