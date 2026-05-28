@@ -1,9 +1,11 @@
 // src/App.tsx
-import { Suspense, lazy, useState, useCallback, useEffect, useRef } from 'react'
+import { Suspense, lazy, useState, useCallback, useEffect, useRef, type FC } from 'react'
 import { Routes, Route, NavLink } from 'react-router-dom'
 import { loadState, exportStateToFile, importStateFromFile } from './data/store'
 import { loadStateFromDB, saveStateToDB, subscribeToState, migrateLocalToSupabase } from './lib/db'
 import { signOut, canEditTamer } from './lib/auth'
+import type { UserProfile } from './lib/auth'
+import type { Tamer } from './types'
 import { AuthProvider, useAuth } from './components/AuthProvider'
 import { SettingsProvider } from './lib/settings'
 import { isSupabaseReady } from './lib/supabase'
@@ -38,6 +40,59 @@ const DigivicePage  = lazyLoad(() => import('./pages/DigivicePage'))
 const DigiZapPage   = lazyLoad(() => import('./pages/DigiZapPage'))
 const ViewerPage    = lazyLoad(() => import('./pages/ViewerPage'))
 const SettingsPage  = lazyLoad(() => import('./pages/SettingsPage'))
+
+// ── Avatar pixel art do personagem do jogador ────────────────────────────────
+
+const TamerAvatar: FC<{ profile: UserProfile; tamer: Tamer | null; isGM: boolean; isGuest: boolean }> = ({ profile, tamer, isGM, isGuest }) => {
+  const [failed, setFailed] = useState(false)
+
+  if (isGM) {
+    return (
+      <span style={{ fontFamily: 'var(--font-mono)', fontSize: 9,
+        letterSpacing: '0.14em', textTransform: 'uppercase',
+        padding: '3px 10px', borderRadius: 999,
+        background: 'var(--ink)', color: 'var(--paper)',
+        border: '1px solid var(--ink)' }}>
+        GM
+      </span>
+    )
+  }
+
+  // Deriva nome do arquivo: 't-naoki' → 'Naoki'
+  const avatarFile = tamer
+    ? tamer.id.replace(/^t-/, '').replace(/^(.)/, c => c.toUpperCase())
+    : null
+
+  if (avatarFile && !failed) {
+    const label = tamer
+      ? tamer.name.charAt(0) + tamer.name.slice(1).toLowerCase()
+      : profile.display_name
+    return (
+      <div title={label}
+        style={{ width: 34, height: 34, borderRadius: 6, overflow: 'hidden',
+          border: '1px solid var(--line)', flexShrink: 0, cursor: 'default',
+          boxShadow: '0 1px 4px rgba(0,0,0,0.18)' }}>
+        <img
+          src={`/avatar/${avatarFile}.png`}
+          alt={label}
+          onError={() => setFailed(true)}
+          style={{ width: '100%', height: '100%', objectFit: 'cover',
+            imageRendering: 'pixelated', display: 'block' }}
+        />
+      </div>
+    )
+  }
+
+  return (
+    <span style={{ fontFamily: 'var(--font-mono)', fontSize: 9,
+      letterSpacing: '0.14em', textTransform: 'uppercase',
+      padding: '3px 10px', borderRadius: 999,
+      background: 'var(--paper-deep)', color: 'var(--ink-mute)',
+      border: '1px solid var(--line)' }}>
+      {isGuest ? `${profile.display_name} · convidado` : profile.display_name}
+    </span>
+  )
+}
 
 function AppInner() {
   const { session, profile, loading, isGM, localMode, refresh } = useAuth()
@@ -198,14 +253,12 @@ function AppInner() {
         <div className={styles.navSpacer} />
 
         {!localMode && profile && (
-          <span style={{ fontFamily: 'var(--font-mono)', fontSize: 9,
-            letterSpacing: '0.14em', textTransform: 'uppercase',
-            padding: '3px 10px', borderRadius: 999,
-            background: isGM ? 'var(--ink)' : 'var(--paper-deep)',
-            color: isGM ? 'var(--paper)' : 'var(--ink-mute)',
-            border: '1px solid var(--line)' }}>
-            {isGM ? 'GM' : isGuest ? `${profile.display_name} ·  convidado` : profile.display_name}
-          </span>
+          <TamerAvatar
+            profile={profile}
+            tamer={state.tamers.find(t => t.id === profile.tamer_id) ?? null}
+            isGM={isGM}
+            isGuest={isGuest}
+          />
         )}
 
         {/* Botão salvar — visível quando há mudanças não salvas (exceto guests) */}
