@@ -955,15 +955,15 @@ function Picker({ state, onPick, onClose, onSpawnTokenDef }: {
             if (!d) return []
             return d.stages
               .map((s, i) => ({ t, d, s, i }))
+              .filter(({ s }) => !s.locked && s.stageName !== '???')
               .filter(({ t: tt, s }) => match(tt.name) || match(s.stageName))
           })
         if (!rows.length) return <PEmpty label={curTab.label} query={q} onClear={() => setQ('')} />
         return <PPagedRows resetKey={`${tab}:${q}`} items={rows} renderItem={(it: any) => {
           const { t, d, s, i } = it
-          const locked = s.locked || s.stageName === '???'
           return (
-            <button key={`${t.id}-${i}`} className={styles.pRow} disabled={locked}
-              onClick={locked ? undefined : () => pick({ kind: 'pair', tamerId: t.id, digimonId: d.id, stage: i })}>
+            <button key={`${t.id}-${i}`} className={styles.pRow}
+              onClick={() => pick({ kind: 'pair', tamerId: t.id, digimonId: d.id, stage: i })}>
               <div style={{ position: 'relative', width: 56, height: 36, flexShrink: 0 }}>
                 <PAvatarMini portrait={t.portrait} image={t.image} name={t.name} size={36} />
                 <div style={{ position: 'absolute', left: 20, top: 0, zIndex: 1 }}>
@@ -972,10 +972,10 @@ function Picker({ state, onPick, onClose, onSpawnTokenDef }: {
               </div>
               <div className={styles.pRowBody}>
                 <div className={styles.pRowTitle}>{t.name} & {s.stageName}</div>
-                <div className={styles.pickerMeta}>{locked ? 'Bloqueado' : `${s.level} · ${s.type}`}</div>
+                <div className={styles.pickerMeta}>{`${s.level} · ${s.type}`}</div>
               </div>
-              {!locked && <span className={styles.pTag}>{s.level.toLowerCase()}</span>}
-              <span className={styles.pAddBtn}>{locked ? '🔒' : '+'}</span>
+              <span className={styles.pTag}>{s.level.toLowerCase()}</span>
+              <span className={styles.pAddBtn}>+</span>
             </button>
           )
         }} />
@@ -988,10 +988,10 @@ function Picker({ state, onPick, onClose, onSpawnTokenDef }: {
           ...sectors.map(sec => ({
             key: `sec-${sec.n}`, label: `Setor ${sec.n} · ${sec.name}`,
             dot: 'var(--teal)',
-            entries: wilds.filter(d => (d as any).sector === sec.n).filter(d => match(d.name) || match(d.stages[0]?.type)),
+            entries: wilds.filter(d => d.sectors.includes(sec.n)).filter(d => match(d.name) || match(d.stages[0]?.type)),
           })),
           { key: '__none', label: 'Sem setor', dot: 'var(--ink-mute)',
-            entries: wilds.filter(d => !sectors.some(sec => sec.n === (d as any).sector)).filter(d => match(d.name) || match(d.stages[0]?.type)),
+            entries: wilds.filter(d => d.sectors.length === 0 || !sectors.some(sec => d.sectors.includes(sec.n))).filter(d => match(d.name) || match(d.stages[0]?.type)),
           },
         ].filter(g => g.entries.length > 0)
         if (!groups.length) return <PEmpty label={curTab.label} query={q} onClear={() => setQ('')} />
