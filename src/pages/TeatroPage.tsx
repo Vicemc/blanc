@@ -1109,15 +1109,19 @@ function ConditionShortcutsPanel({ actors, actorStates, onChange, customConditio
   onChange:         (key: string, s: ActorState) => void
   customConditions?: ConditionEntry[]
 }) {
+  const baseLabels = new Set(CONDITION_SHORTCUTS.map(c => c.label))
   const allShortcuts: ConditionShortcut[] = [
     ...CONDITION_SHORTCUTS,
-    ...customConditions.map(c => ({
-      label:   c.name,
-      max:     c.max ?? 10,
-      color:   c.color ?? 'coral',
-      type:    (c.type === 'wound' ? 'ferimento' : c.type === 'stack' ? 'acumulacao' : 'reacao') as ConditionShortcut['type'],
-      default: 1,
-    })),
+    // Só adiciona condições genuinamente novas (não duplica as base)
+    ...customConditions
+      .filter(c => !baseLabels.has(c.name))
+      .map(c => ({
+        label:   c.name,
+        max:     c.max ?? 10,
+        color:   c.color ?? 'coral',
+        type:    (c.type === 'wound' ? 'ferimento' : c.type === 'stack' ? 'acumulacao' : c.type === 'reaction' ? 'reacao' : 'acumulacao') as ConditionShortcut['type'],
+        default: 1,
+      })),
   ]
 
   const [open,       setOpen]       = useState(false)
