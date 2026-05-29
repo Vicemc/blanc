@@ -11,7 +11,8 @@ import {
   xpCostAttribute, xpCostSkill,
   makeEmptyStage, makeDefaultAttributes, makeSlimLine,
   buySkillTreeSkill,
-  DIGIMON_DEFAULT_IMAGES
+  DIGIMON_DEFAULT_IMAGES,
+  getVisLevel,
 } from '../data/store'
 import { findSurvivor, makeSurvivor } from '../data/domain'
 import { GrainFill } from "./GrainFill"
@@ -3255,9 +3256,9 @@ function SurvivorView({ sv, editable, isGM, onSave, state, wide = false }: {
 }
 
 // ── FullSheet ──────────────────────────────────────────────────────
-interface FullSheetProps { subject: SheetSubject; state: AppState; onSaveState?: (s: AppState) => void; onClose?: () => void; editable?: boolean; isGM?: boolean; onSpawnToken?: (token: TokenSpawn) => void; wide?: boolean }
+interface FullSheetProps { subject: SheetSubject; state: AppState; onSaveState?: (s: AppState) => void; onClose?: () => void; editable?: boolean; isGM?: boolean; nameOnly?: boolean; onSpawnToken?: (token: TokenSpawn) => void; wide?: boolean }
 
-export function FullSheet({ subject, state, onSaveState, onClose, editable = false, isGM = false, onSpawnToken, wide = false }: FullSheetProps) {
+export function FullSheet({ subject, state, onSaveState, onClose, editable = false, isGM = false, nameOnly = false, onSpawnToken, wide = false }: FullSheetProps) {
   const { kind } = subject
   let tamer:    Tamer | undefined
   let line:     DigimonLine | undefined
@@ -3385,6 +3386,20 @@ export function FullSheet({ subject, state, onSaveState, onClose, editable = fal
     for (const cl of effectiveClimas)     map[cl.name]    = cl.effects.map(e => `${e.tag}: ${e.desc}`).join(' · ')
     return map
   }, [state.customKeywords, state.customConditions, state.customClimas])
+
+  if (nameOnly) {
+    return (
+      <div className={styles.sheet}>
+        <div className={styles.sheetHead}>
+          <div className={styles.portrait} style={{ position:'relative' }}><GrainFill color={headPortrait} image={headImage} /></div>
+          <div style={{ flex:1, minWidth:0 }}>
+            <h2 className={styles.headName}>{headName}</h2>
+            <div className={styles.headMeta} style={{ fontStyle:'italic', color:'var(--ink-mute)' }}>~ informações restritas ~</div>
+          </div>
+        </div>
+      </div>
+    )
+  }
 
   return (
     <KeywordTipsCtx.Provider value={mergedTips}>
@@ -3557,12 +3572,26 @@ export function SheetModal({ subject, state, onSaveState, onClose, editable, isG
   const { settings } = useSettings()
   const wide = settings.sheetView === 'horizontal'
   if (!subject) return null
+
+  let nameOnly = false
+  if (!isGM) {
+    if (subject.kind === 'wild' || subject.kind === 'digimon') {
+      nameOnly = getVisLevel(state, 'bestiary', (subject as any).id) === 'name'
+    } else if (subject.kind === 'pair') {
+      nameOnly = getVisLevel(state, 'bestiary', (subject as any).digimonId) === 'name'
+    } else if (subject.kind === 'bug') {
+      nameOnly = getVisLevel(state, 'bug', (subject as any).id) === 'name'
+    } else if (subject.kind === 'sign') {
+      nameOnly = getVisLevel(state, 'sign', (subject as any).id) === 'name'
+    }
+  }
+
   return (
     <div className="modal-back" onClick={onClose}>
       <div className="modal" onClick={e => e.stopPropagation()}
         style={wide ? { maxWidth: '95vw', width: '95vw', padding: 0 } : undefined}>
         <button className={styles.closeBtn} onClick={onClose} aria-label="Fechar">×</button>
-        <FullSheet subject={subject} state={state} onSaveState={onSaveState} onClose={onClose} editable={editable} isGM={isGM} onSpawnToken={onSpawnToken} wide={wide} />
+        <FullSheet subject={subject} state={state} onSaveState={onSaveState} onClose={onClose} editable={editable} isGM={isGM} nameOnly={nameOnly} onSpawnToken={onSpawnToken} wide={wide} />
       </div>
     </div>
   )
