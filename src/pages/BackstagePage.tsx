@@ -906,10 +906,17 @@ function JogressCrud({ state, onUpdate }: Props) {
     // Auto-add Jogress TamerSkill to both locks when creating a new config
     let tamers = state.tamers
     if (!editId) {
+      const getDomainShort = (tamerId: string | undefined): string => {
+        const t = tamerId ? state.tamers.find(x => x.id === tamerId) : null
+        const skill = t?.tamerSkills.find(s => s.title.startsWith('Domain of') || s.keyword === 'Domain')
+        return skill ? skill.title.replace(/^Domain\s+of\s+/i, '').trim() : '?'
+      }
+      const lock1Short = getDomainShort(cfg.lock1Id)
+      const lock2Short = getDomainShort(cfg.lock2Id)
       const jogressSkill: TamerSkill = {
         type: 'passive',
         keyword: 'Jogress',
-        title: `Jogress: ${cfg.name}`,
+        title: `Jogress: ${lock1Short} & ${lock2Short}`,
         effect: `Domain Jogress — ${cfg.name}. Ativa o Domain fusionado com o outro Domador Fechadura.`,
       }
       tamers = tamers.map(t => {
