@@ -62,6 +62,7 @@ function DigiCard({ d, onClick, onDelete, onExport, onImport, eyeNode }: {
   eyeNode?: React.ReactNode
 }) {
   const s = d.stages[d.currentStage ?? 0] ?? d.stages[0]
+  const displayImage = s?.image ?? d.image ?? null
   return (
     <div className={styles.card} onClick={onClick}>
       {onDelete && <button className={styles.cardDel} onClick={onDelete} title="Remover">×</button>}
@@ -72,7 +73,7 @@ function DigiCard({ d, onClick, onDelete, onExport, onImport, eyeNode }: {
       <div className={`${styles.cardPortrait} fill-${s.portrait}`} style={{ position: 'relative' }}>
         {eyeNode}
         <div className="grain" />
-        {d.image && <img src={d.image} alt={d.name} style={{ position:'absolute', inset:0, width:'100%', height:'100%', objectFit:'cover' }} />}
+        {displayImage && <img src={displayImage} alt={d.name} style={{ position:'absolute', inset:0, width:'100%', height:'100%', objectFit:'cover' }} />}
       </div>
       <div className={styles.cardInfo}>
         <h4 className={styles.cardName}>{d.name.replace(' Line', '')}</h4>
