@@ -1185,21 +1185,27 @@ function DomainPanel({ domainTamers, jogressConfigs = [] }: {
   const [jogress, setJogress] = useState(false)
   const [jogressPassives, setJogressPassives] = useState<string[]>([])
 
-  // Merge hardcoded Jogress data with GM-configured entries
-  const allMemoryGroups = [
-    ...JOGRESS_MEMORY_PASSIVES.map(g => ({
-      id: g.domain, domain: g.domain,
-      skills: g.skills.map((s, i) => ({ id: `${g.domain}-${i}`, title: s.title, effect: s.effect })),
-    })),
-    ...jogressConfigs.flatMap(cfg => cfg.memoryGroups),
-  ]
-  const allOwnPassives = [
-    ...DOMAIN_OF_TIME_ALL_PASSIVES.map((s, i) => ({ id: `dot-${i}`, title: s.title, effect: s.effect })),
-    ...jogressConfigs.flatMap(cfg => cfg.ownPassives),
-  ]
+  // Find which JogressConfig is active (both locks present on stage)
+  const domainTamerIds = new Set(domainTamers.map(d => d.tamerId))
+  const activeJogressConfig = jogressConfigs.find(cfg =>
+    cfg.lock1Id && cfg.lock2Id &&
+    domainTamerIds.has(cfg.lock1Id) &&
+    domainTamerIds.has(cfg.lock2Id)
+  ) ?? null
+
+  // Build memory groups and own passives from the active config or hardcoded data
+  const allMemoryGroups = activeJogressConfig
+    ? activeJogressConfig.memoryGroups
+    : JOGRESS_MEMORY_PASSIVES.map(g => ({
+        id: g.domain, domain: g.domain,
+        skills: g.skills.map((s, i) => ({ id: `${g.domain}-${i}`, title: s.title, effect: s.effect })),
+      }))
+  const allOwnPassives = activeJogressConfig
+    ? activeJogressConfig.ownPassives.map((s, i) => ({ ...s, id: s.id || `op-${i}` }))
+    : DOMAIN_OF_TIME_ALL_PASSIVES.map((s, i) => ({ id: `dot-${i}`, title: s.title, effect: s.effect }))
 
   const jogressMembers = domainTamers.filter(d => d.skills.some(s => s.title.startsWith('Jogress')))
-  const hasJogress = jogressMembers.length >= 2
+  const hasJogress = jogressMembers.length >= 2 || activeJogressConfig !== null
 
   React.useEffect(() => {
     if (!hasJogress) { setJogress(false); setJogressPassives([]) }
@@ -1222,23 +1228,29 @@ function DomainPanel({ domainTamers, jogressConfigs = [] }: {
             {d.name}<span className={styles.domainTabSub}>{d.domainName}</span>
           </button>
         ))}
-        {jogressMembers.length === 1 && (
+        {jogressMembers.length === 1 && !hasJogress && (
           <div style={{ padding:'8px 14px', fontFamily:'var(--font-mono)', fontSize:10,
             letterSpacing:'0.1em', textTransform:'uppercase', color:'var(--ink-mute)',
             borderLeft:'2px solid var(--line)', marginLeft:4 }}>
-            Jogress — aguardando {jogressMembers[0].name === 'HARE' ? 'Hibito' : 'Hare'}
+            Jogress — aguardando {jogressMembers[0].name.toUpperCase() === 'HARE' ? 'Hibito' : 'Hare'}
           </div>
         )}
         {hasJogress && (() => {
-          const jm = domainTamers.filter(d => d.skills.some(s => s.title.startsWith('Jogress')))
+          const jm = activeJogressConfig
+            ? [
+                domainTamers.find(d => d.tamerId === activeJogressConfig.lock1Id),
+                domainTamers.find(d => d.tamerId === activeJogressConfig.lock2Id),
+              ].filter(Boolean)
+            : domainTamers.filter(d => d.skills.some(s => s.title.startsWith('Jogress')))
           const colorMap: Record<string,string> = { coral:'#e25845', orange:'#e87a2c', teal:'#4a9b9b', purple:'#8a6ea0', black:'#1a1814', green:'#6e9d70', blue:'#6e8bb5', pink:'#ec8aa1', rose:'#d99fae', gold:'#e7d4a3', indigo:'#3b3a5e', sage:'#9bb89c', wheat:'#d9b974', red:'#c43321' }
           const c1 = colorMap[jm[0]?.portrait ?? 'sage'] ?? '#9bb89c'
           const c2 = colorMap[jm[1]?.portrait ?? 'indigo'] ?? '#3b3a5e'
+          const jogressName = activeJogressConfig?.name ?? 'Domain of Time'
           return (
             <button className={`${styles.domainTab} ${jogress ? styles.domainTabActive : ''}`}
               style={{ background: `linear-gradient(to bottom, ${c1} 50%, ${c2} 50%)`, color: '#f6f2e9' }}
               onClick={() => setJogress(j => !j)}>
-              Jogress<span className={styles.domainTabSub}>Domain of Time</span>
+              Jogress<span className={styles.domainTabSub}>{jogressName}</span>
             </button>
           )
         })()}
@@ -1286,7 +1298,7 @@ function DomainPanel({ domainTamers, jogressConfigs = [] }: {
           ) : (
             <>
               <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:14 }}>
-                <div className={styles.domainLabel} style={{ margin:0 }}>Domain of Time — Passivas ativas</div>
+                <div className={styles.domainLabel} style={{ margin:0 }}>{activeJogressConfig?.name ?? 'Domain of Time'} — Passivas ativas</div>
                 <button onClick={() => setJogressPassives([])}
                   style={{ fontFamily:'var(--font-mono)', fontSize:10, letterSpacing:'0.08em', textTransform:'uppercase', background:'transparent', border:'1px solid var(--line)', borderRadius:999, padding:'3px 10px', cursor:'pointer', color:'var(--ink-mute)' }}>
                   ↺ Refazer seleção
@@ -1302,13 +1314,37 @@ function DomainPanel({ domainTamers, jogressConfigs = [] }: {
                   </div>
                 )
               })}
-              <div style={{ fontFamily:'var(--font-mono)', fontSize:10, letterSpacing:'0.1em', textTransform:'uppercase', color:'var(--ink-mute)', margin:'14px 0 8px' }}>Passivas do Domain fusionado</div>
-              {allOwnPassives.map(s => (
-                <div key={s.id} className={styles.domainSkill}>
-                  <div className={styles.domainSkillTitle}>{s.title}</div>
-                  <div className={styles.domainSkillEffect}>{s.effect}</div>
-                </div>
-              ))}
+              {allOwnPassives.length > 0 && (
+                <>
+                  <div style={{ fontFamily:'var(--font-mono)', fontSize:10, letterSpacing:'0.1em', textTransform:'uppercase', color:'var(--ink-mute)', margin:'14px 0 8px' }}>Passivas do Domain fusionado</div>
+                  {allOwnPassives.map(s => (
+                    <div key={s.id} className={styles.domainSkill}>
+                      <div className={styles.domainSkillTitle}>{s.title}</div>
+                      <div className={styles.domainSkillEffect}>{s.effect}</div>
+                    </div>
+                  ))}
+                </>
+              )}
+              {activeJogressConfig && (() => {
+                const lock1 = domainTamers.find(d => d.tamerId === activeJogressConfig.lock1Id)
+                const lock2 = domainTamers.find(d => d.tamerId === activeJogressConfig.lock2Id)
+                const lockSkills: { name: string; skills: typeof activeJogressConfig.lock1Skills }[] = [
+                  { name: lock1?.name ?? 'Fechadura 1', skills: activeJogressConfig.lock1Skills ?? [] },
+                  { name: lock2?.name ?? 'Fechadura 2', skills: activeJogressConfig.lock2Skills ?? [] },
+                ].filter(l => l.skills.length > 0)
+                if (lockSkills.length === 0) return null
+                return lockSkills.map(({ name, skills }) => (
+                  <div key={name} style={{ marginTop:14 }}>
+                    <div style={{ fontFamily:'var(--font-mono)', fontSize:10, letterSpacing:'0.1em', textTransform:'uppercase', color:'var(--ink-mute)', marginBottom:8 }}>Skills exclusivas — {name}</div>
+                    {skills!.map(s => (
+                      <div key={s.id} className={styles.domainSkill}>
+                        <div className={styles.domainSkillTitle}>{s.title}</div>
+                        <div className={styles.domainSkillEffect}>{s.effect}</div>
+                      </div>
+                    ))}
+                  </div>
+                ))
+              })()}
             </>
           )}
         </div>

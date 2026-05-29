@@ -37,19 +37,19 @@ export const BASE_CLIMAS: ClimaEntry[] = [
 ]
 
 export const BASE_KEYWORDS: KeywordEntry[] = [
-  { id: 'kw-base-blitz',    keyword: 'Blitz',           category: 'Ação',            type: 'neutral',  desc: 'Ação vira **Ação Livre**. Só pode ser ativada **1x por Round**.' },
-  { id: 'kw-base-delay',    keyword: 'Delay',           category: 'Ação',            type: 'neutral',  desc: 'Ação é consumida ao declarar, mas resolve depois. Entra em [Cooldown 1] e ao acabar resolve sem custo.' },
-  { id: 'kw-base-cooldown', keyword: 'Cooldown',        category: 'Ação',            type: 'neutral',  desc: 'Após o uso, a ação fica indisponível por **X Rounds**.' },
+  { id: 'kw-base-blitz',    keyword: 'Blitz',           category: 'Neutro',          type: 'neutral',  desc: 'Ação vira **Ação Livre**. Só pode ser ativada **1x por Round**.' },
+  { id: 'kw-base-delay',    keyword: 'Delay',           category: 'Neutro',          type: 'neutral',  desc: 'Ação é consumida ao declarar, mas resolve depois. Entra em [Cooldown 1] e ao acabar resolve sem custo.' },
+  { id: 'kw-base-cooldown', keyword: 'Cooldown',        category: 'Neutro',          type: 'neutral',  desc: 'Após o uso, a ação fica indisponível por **X Rounds**.' },
   { id: 'kw-base-secatk',   keyword: 'Security Attack', category: 'Ataque / Efeito', type: 'neutral',  desc: 'Modifica quanto de Defesa o ataque reduz do alvo. Também afeta a redução de Armadura com [Piercing].' },
   { id: 'kw-base-blast',    keyword: 'Blast',           category: 'Ataque / Efeito', type: 'neutral',  desc: 'Atinge todos num raio X a partir de um ponto no alcance. Apenas a **maior Defesa** entre os alvos é reduzida da rolagem.' },
   { id: 'kw-base-jamming',  keyword: 'Jamming',         category: 'Ataque / Efeito', type: 'neutral',  desc: 'Ignora **Digital Body** e quaisquer variações.' },
   { id: 'kw-base-alliance', keyword: 'Alliance',        category: 'Ataque / Efeito', type: 'neutral',  desc: 'Pode consumir ação de aliado no alcance. Ataque recebe [Security Attack +1] e adiciona dados = valor de uma Afinidade do aliado.' },
   { id: 'kw-base-piercing', keyword: 'Piercing',        category: 'Ataque / Efeito', type: 'neutral',  desc: 'Ignora [Blocker] e não sofre redução de dados pela Defesa. Ao causar dano, reduz Armadura pelo [Security Attack] atual.' },
   { id: 'kw-base-assassin', keyword: 'Assassinate',     category: 'Ataque / Efeito', type: 'neutral',  desc: 'Ignora [Imune], [Inefetivo], [Resistente]. Não é redirecionado por [Decoy]. Permite escolher alvo livremente.' },
-  { id: 'kw-base-counter',  keyword: 'Counter',         category: 'Reações',         type: 'reaction', desc: 'Quando alvo de ataque corpo a corpo, rola **Força + Briga**. Se vencer, anula e causa dano. Não funciona vs nível 5+.' },
-  { id: 'kw-base-blocker',  keyword: 'Blocker',         category: 'Reações',         type: 'reaction', desc: 'Intercepta ataque a um aliado, teleportando-se e recebendo o golpe no lugar. Blocker é removido após.' },
-  { id: 'kw-base-save',     keyword: 'Save',            category: 'Reações',         type: 'reaction', desc: 'Retorna o Digimon ao Digivice. Pode voltar como Ação Livre no próximo turno do Domador.' },
-  { id: 'kw-base-apurge',   keyword: 'Armor Purge',     category: 'Reações',         type: 'reaction', desc: 'Quando Digimon sofreria dano fatal, remove 1 carga de [Armor Evolution] e reduz o dano a 0.' },
+  { id: 'kw-base-counter',  keyword: 'Counter',         category: 'Reação',         type: 'reaction', desc: 'Quando alvo de ataque corpo a corpo, rola **Força + Briga**. Se vencer, anula e causa dano. Não funciona vs nível 5+.' },
+  { id: 'kw-base-blocker',  keyword: 'Blocker',         category: 'Reação',         type: 'reaction', desc: 'Intercepta ataque a um aliado, teleportando-se e recebendo o golpe no lugar. Blocker é removido após.' },
+  { id: 'kw-base-save',     keyword: 'Save',            category: 'Reação',         type: 'reaction', desc: 'Retorna o Digimon ao Digivice. Pode voltar como Ação Livre no próximo turno do Domador.' },
+  { id: 'kw-base-apurge',   keyword: 'Armor Purge',     category: 'Reação',         type: 'reaction', desc: 'Quando Digimon sofreria dano fatal, remove 1 carga de [Armor Evolution] e reduz o dano a 0.' },
 ]
 
 export const BASE_CONDITIONS: ConditionEntry[] = [

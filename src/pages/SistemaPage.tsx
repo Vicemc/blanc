@@ -60,7 +60,7 @@ function Rule({ num, id, title, sub, children }: RuleProps) {
 function kwTagLabel(kw: KeywordEntry): string {
   if (kw.type === 'reaction') return 'Reação'
   const cat = kw.category ?? ''
-  if (cat.includes('Ação')) return 'Ação'
+  if (cat === 'Neutro' || cat === 'Ação') return 'Ação'
   if (cat.includes('Ataque')) return 'Ataque'
   return kw.category ?? 'Keyword'
 }
@@ -70,9 +70,11 @@ function kwTagVariant(kw: KeywordEntry): string {
 }
 
 const KW_CAT_HEADER: Record<string, string> = {
-  'Ação':            'Tipo: Ação',
+  'Neutro':          'Tipo: Neutro / Ação',
+  'Ação':            'Tipo: Neutro / Ação',
   'Ataque / Efeito': 'Tipo: Ataque / Efeito',
-  'Reações':         'Tipo: Reações',
+  'Reação':          'Tipo: Reação',
+  'Reações':         'Tipo: Reação',
 }
 
 // ── Condition → display helpers ───────────────────────────────────────────────

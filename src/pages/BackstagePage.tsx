@@ -559,7 +559,7 @@ function KeywordCrud({ state, onUpdate }: Props) {
   const [editId, setEditId]   = useState<string | null>(null)
   const [editDraft, setED]    = useState<KeywordEntry | null>(null)
   const [adding, setAdding]   = useState(false)
-  const [addDraft, setAD]     = useState<Omit<KeywordEntry,'id'>>({ keyword:'', category:'Ação', type:'neutral', desc:'', resist:'' })
+  const [addDraft, setAD]     = useState<Omit<KeywordEntry,'id'>>({ keyword:'', category:'Neutro', type:'neutral', desc:'', resist:'' })
 
   const groups = groupBy(effective, k => k.category ?? 'Outros')
 
@@ -826,9 +826,11 @@ function KwCondForm<T extends { category?: string; type: KwType; desc: string; r
             onChange={e => setDraft({ ...draft, category: e.target.value })}
             placeholder="Categoria (ex: Ferimento)" style={fld} />
         )}
-        <select value={draft.type} onChange={e => setDraft({ ...draft, type: e.target.value as KwType })} style={fld}>
-          {KW_TYPES.map(t => <option key={t} value={t}>{KW_TYPE_LABELS[t]}</option>)}
-        </select>
+        {!isKeyword && (
+          <select value={draft.type} onChange={e => setDraft({ ...draft, type: e.target.value as KwType })} style={fld}>
+            {KW_TYPES.map(t => <option key={t} value={t}>{KW_TYPE_LABELS[t]}</option>)}
+          </select>
+        )}
       </div>
       <textarea value={draft.desc}
         onChange={e => setDraft({ ...draft, desc: e.target.value })}
@@ -906,7 +908,24 @@ function JogressCrud({ state, onUpdate }: Props) {
     const next = editId
       ? configs.map(c => c.id === editId ? cfg : c)
       : [...configs, cfg]
-    onUpdate({ ...state, jogressConfigs: next })
+
+    // Auto-add Jogress TamerSkill to both locks when creating a new config
+    let tamers = state.tamers
+    if (!editId) {
+      const jogressSkill: TamerSkill = {
+        type: 'passive',
+        keyword: 'Jogress',
+        title: `Jogress: ${cfg.name}`,
+        effect: `Domain Jogress — ${cfg.name}. Ativa o Domain fusionado com o outro Domador Fechadura.`,
+      }
+      tamers = tamers.map(t => {
+        if (t.id !== cfg.lock1Id && t.id !== cfg.lock2Id) return t
+        if (t.tamerSkills.some(s => s.title === jogressSkill.title)) return t
+        return { ...t, tamerSkills: [...t.tamerSkills, jogressSkill] }
+      })
+    }
+
+    onUpdate({ ...state, jogressConfigs: next, tamers })
     setEditId(null); setAdding(false); setDraft(emptyConfig())
   }
 
