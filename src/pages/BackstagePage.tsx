@@ -858,7 +858,10 @@ const JOGRESS_PW_KEY = 'gm_jogress_verified'
 
 function JogressCrud({ state, onUpdate }: Props) {
   const configs: JogressConfig[] = state.jogressConfigs ?? []
-  const lockOptions = state.tamers.map(t => ({ id: t.id, name: t.name }))
+  const pcIds = new Set(TAMER_OPTIONS.map(t => t.id))
+  const lockOptions = state.tamers
+    .filter(t => !pcIds.has(t.id))
+    .map(t => ({ id: t.id, name: t.name }))
 
   // Password gate
   const [pwOk,       setPwOk]       = useState(() => !!localStorage.getItem(JOGRESS_PW_KEY))
