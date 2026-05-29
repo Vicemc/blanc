@@ -80,7 +80,7 @@ function isVisible(state: AppState, key: string) {
 function setVisibility(state: AppState, key: string, visible: boolean) {
   const visibility = { ...(state.visibility ?? {}) }
   if (visible) {
-    visibility[key] = true
+    visibility[key] = 'full'
   } else {
     delete visibility[key]
   }
@@ -111,7 +111,7 @@ function buildDefaultState(): AppState {
     customConditions: [],
     jogressConfigs:   [],
     tokenDefs:  [],
-    visibility: { intro: true, bestiary: true },
+    visibility: { intro: 'full', bestiary: 'full' },
   }
 }
 

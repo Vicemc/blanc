@@ -1,6 +1,6 @@
 import React, { useState, useCallback, useMemo, useEffect, useRef } from 'react'
 import type { AppState, Stage, ActorRef, TamerSkill, ConditionEntry, JogressConfig, TokenDef } from '../types'
-import { findTamer, findDigimon, findBug, makeStage, DIGIMON_DEFAULT_IMAGES } from '../data/store'
+import { findTamer, findDigimon, findBug, makeStage, DIGIMON_DEFAULT_IMAGES, getVisLevel } from '../data/store'
 import { findSurvivor, findSign } from '../data/domain'
 import { PageHead } from '../components/PageHead'
 import { GrainFill } from '../components/GrainFill'
@@ -518,7 +518,7 @@ function GenericSkillToggles({ skills, actorSt, onChange }: {
 
 // ── ActorChip ─────────────────────────────────────────────────────────────────
 
-function ActorChip({ actor, state, actorSt, onOpen, onRemove, onChange, onEvolve, tokenMeta, onSpawnToken }: {
+function ActorChip({ actor, state, actorSt, onOpen, onRemove, onChange, onEvolve, tokenMeta, onSpawnToken, isGM }: {
   actor: ActorRef; state: AppState
   actorSt: ActorState | undefined
   onOpen: () => void; onRemove: () => void
@@ -526,10 +526,22 @@ function ActorChip({ actor, state, actorSt, onOpen, onRemove, onChange, onEvolve
   onEvolve?: (newStageIdx: number) => void
   tokenMeta?: Record<string, { name: string; level: string }>
   onSpawnToken?: (token: TokenSpawn) => void
+  isGM?: boolean
 }) {
   const [showState, setShowState] = useState(false)
   const [showEvo,   setShowEvo]   = useState(false)
   const r = resolveActor(state, actor, tokenMeta)
+
+  // Visibilidade: players só vêem foto+nome se nível for 'name'
+  const visType = actor.kind === 'wild' ? 'bestiary'
+    : actor.kind === 'pair'     ? 'bestiary'
+    : actor.kind === 'bug'      ? 'bug'
+    : actor.kind === 'sign'     ? 'sign'
+    : actor.kind === 'human'    ? 'tamer'
+    : 'survivor'
+  const visId   = actor.kind === 'pair' ? actor.digimonId : actor.id
+  const visLevel = isGM ? 'full' : getVisLevel(state, visType, visId)
+  const nameOnly = visLevel === 'name'
 
   const displayHp  = actorSt?.hp      ?? (r.stats.find(([k]) => k === 'HP')?.[1]  ?? '?')
   const displayDef = actorSt?.defesa   ?? (r.stats.find(([k]) => k === 'DEF')?.[1] ?? '?')
@@ -633,166 +645,166 @@ function ActorChip({ actor, state, actorSt, onOpen, onRemove, onChange, onEvolve
           : <div className="grain" />}
       </div>
       <h5 className={styles.actorName} style={{ cursor: 'pointer' }} onClick={onOpen}>{r.title}</h5>
-      <div className={styles.actorType}>
-        {r.type}
-        {tamerName && (
-          <span style={{ display: 'block', fontFamily: 'var(--font-mono)', fontSize: 9,
-            letterSpacing: '0.08em', color: 'var(--ink-mute)', marginTop: 1 }}>
-            ⟷ {tamerName}
-          </span>
-        )}
-      </div>
-      <div className={styles.actorStats}>
-        <span>HP: {displayHp}</span>
-        {actor.kind !== 'human' && actor.kind !== 'survivor' && <span>DEF: {displayDef}</span>}
-        {displayArm > 0 && actor.kind !== 'human' && actor.kind !== 'survivor' && <span>ARM: {displayArm}</span>}
-        {/* Eisuke/Survivor: mostrar DEF apenas se > 0 */}
-        {(actor.kind === 'human' || actor.kind === 'survivor') && Number(displayDef) > 0 && <span style={{ color: 'var(--blue)' }}>DEF: {displayDef}</span>}
-        {condCount > 0 && <span style={{ color: 'var(--coral)' }}>{condCount} cond.</span>}
-      </div>
-
-      {/* Botão de evolução — só para Digimons parceiros com estágios disponíveis */}
-      {evoStages.length > 0 && (
-        <button onClick={() => setShowEvo(p => !p)}
-          style={{ fontFamily: 'var(--font-mono)', fontSize: 9, letterSpacing: '0.1em',
-            textTransform: 'uppercase', background: showEvo ? 'var(--teal)' : 'transparent',
-            border: `1px solid ${showEvo ? 'var(--teal)' : 'var(--line)'}`,
-            color: showEvo ? '#f6f2e9' : 'var(--teal)',
-            borderRadius: 4, padding: '2px 6px', cursor: 'pointer', marginTop: 4, width: '100%' }}>
-          ↑ Evoluir
-        </button>
-      )}
-
-      {/* Mini-picker de estágios */}
-      {showEvo && (
-        <div style={{ marginTop: 6, background: 'var(--paper)', border: '1px solid var(--teal)',
-          borderRadius: 8, overflow: 'hidden' }}>
-          {evoStages.map(({ s, i }) => (
-            <button key={i} onClick={() => handleEvolve(i)}
-              style={{ display: 'block', width: '100%', textAlign: 'left',
-                padding: '7px 10px', border: 'none', borderBottom: '1px solid var(--line-soft)',
-                background: 'transparent', cursor: 'pointer', fontFamily: 'var(--font-body)' }}
-              onMouseEnter={e => (e.currentTarget.style.background = 'var(--paper-deep)')}
-              onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}>
-              <div style={{ fontFamily: 'var(--font-display)', fontSize: 12, textTransform: 'uppercase' }}>
-                {s.stageName}
-              </div>
-              <div style={{ fontFamily: 'var(--font-mono)', fontSize: 9, color: 'var(--ink-mute)',
-                letterSpacing: '0.08em', marginTop: 1 }}>
-                {s.level}
-                {s.cost && s.cost !== '—' && s.cost !== '0'
-                  ? ` · ${s.cost}` : ''}
-              </div>
-            </button>
-          ))}
+      {nameOnly && (
+        <div style={{ fontFamily: 'var(--font-mono)', fontSize: 9, color: 'var(--ink-mute)',
+          letterSpacing: '0.1em', textTransform: 'uppercase', textAlign: 'center', padding: '4px 0' }}>
+          • • •
         </div>
       )}
-
-      {/* Twilight Memories — passiva do Hibito, invoca Silhouette Token */}
-      {hasTwilightMemories && onSpawnToken && (
-        <button onClick={() => onSpawnToken({ name: 'Silhouette Token', level: '', qty: 1 })}
-          style={{ fontFamily: 'var(--font-mono)', fontSize: 9, letterSpacing: '0.1em',
-            textTransform: 'uppercase', background: 'transparent',
-            border: '1px solid var(--purple)', borderRadius: 4,
-            padding: '2px 6px', cursor: 'pointer', color: 'var(--purple)',
-            marginTop: 4, width: '100%',
-            transition: 'all 0.12s' }}
-          onMouseEnter={e => { e.currentTarget.style.background = 'var(--purple)'; e.currentTarget.style.color = '#f6f2e9' }}
-          onMouseLeave={e => { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.color = 'var(--purple)' }}>
-          ⊕ Silhouette Token (Twilight Memories)
-        </button>
-      )}
-
-      {/* My Body as a Shield — só para Eisuke quando a skill está na ficha */}
-      {hasMbas && (
+      {!nameOnly && (
         <>
-          <button onClick={() => setShowMbas(p => !p)}
-            style={{ fontFamily: 'var(--font-mono)', fontSize: 9, letterSpacing: '0.1em',
-              textTransform: 'uppercase', width: '100%', marginTop: 4,
-              background: showMbas ? 'var(--blue)' : 'transparent',
-              border: `1px solid ${showMbas ? 'var(--blue)' : 'var(--line)'}`,
-              color: showMbas ? '#f6f2e9' : 'var(--blue)',
-              borderRadius: 4, padding: '2px 6px', cursor: 'pointer' }}>
-            ⊕ My Body as a Shield
-          </button>
-          {showMbas && (
-            <div style={{ marginTop: 6, padding: '8px 10px', background: 'var(--paper)',
-              border: '1px solid var(--blue)', borderRadius: 8 }}>
-              <div style={{ fontFamily: 'var(--font-mono)', fontSize: 9, letterSpacing: '0.1em',
-                textTransform: 'uppercase', color: 'var(--ink-mute)', marginBottom: 6 }}>
-                Escolha X (Memory gasta)
-              </div>
-              <div style={{ display: 'flex', gap: 4, marginBottom: 8 }}>
-                {[1, 2, 3].map(v => (
-                  <button key={v} onClick={() => setMbasX(v)}
-                    style={{ flex: 1, padding: '4px 0', borderRadius: 6, cursor: 'pointer',
-                      fontFamily: 'var(--font-mono)', fontSize: 13, fontWeight: 700,
-                      border: `1.5px solid ${mbasX === v ? 'var(--blue)' : 'var(--line)'}`,
-                      background: mbasX === v ? 'var(--blue)' : 'transparent',
-                      color: mbasX === v ? '#f6f2e9' : 'var(--ink-soft)' }}>
-                    {v}
-                  </button>
-                ))}
-              </div>
-              <div style={{ fontFamily: 'var(--font-mono)', fontSize: 9, color: 'var(--ink-mute)',
-                marginBottom: 8, lineHeight: 1.5 }}>
-                DEF +{mbasX} · Blocker
-              </div>
-              <button onClick={activateMbas}
-                style={{ width: '100%', padding: '5px 0', borderRadius: 6, cursor: 'pointer',
-                  background: 'var(--blue)', color: '#f6f2e9', border: 'none',
-                  fontFamily: 'var(--font-body)', fontWeight: 600, fontSize: 11 }}>
-                Ativar
-              </button>
+          <div className={styles.actorType}>
+            {r.type}
+            {tamerName && (
+              <span style={{ display: 'block', fontFamily: 'var(--font-mono)', fontSize: 9,
+                letterSpacing: '0.08em', color: 'var(--ink-mute)', marginTop: 1 }}>
+                ⟷ {tamerName}
+              </span>
+            )}
+          </div>
+          <div className={styles.actorStats}>
+            <span>HP: {displayHp}</span>
+            {actor.kind !== 'human' && actor.kind !== 'survivor' && <span>DEF: {displayDef}</span>}
+            {displayArm > 0 && actor.kind !== 'human' && actor.kind !== 'survivor' && <span>ARM: {displayArm}</span>}
+            {(actor.kind === 'human' || actor.kind === 'survivor') && Number(displayDef) > 0 && <span style={{ color: 'var(--blue)' }}>DEF: {displayDef}</span>}
+            {condCount > 0 && <span style={{ color: 'var(--coral)' }}>{condCount} cond.</span>}
+          </div>
+
+          {evoStages.length > 0 && (
+            <button onClick={() => setShowEvo(p => !p)}
+              style={{ fontFamily: 'var(--font-mono)', fontSize: 9, letterSpacing: '0.1em',
+                textTransform: 'uppercase', background: showEvo ? 'var(--teal)' : 'transparent',
+                border: `1px solid ${showEvo ? 'var(--teal)' : 'var(--line)'}`,
+                color: showEvo ? '#f6f2e9' : 'var(--teal)',
+                borderRadius: 4, padding: '2px 6px', cursor: 'pointer', marginTop: 4, width: '100%' }}>
+              ↑ Evoluir
+            </button>
+          )}
+
+          {showEvo && (
+            <div style={{ marginTop: 6, background: 'var(--paper)', border: '1px solid var(--teal)',
+              borderRadius: 8, overflow: 'hidden' }}>
+              {evoStages.map(({ s, i }) => (
+                <button key={i} onClick={() => handleEvolve(i)}
+                  style={{ display: 'block', width: '100%', textAlign: 'left',
+                    padding: '7px 10px', border: 'none', borderBottom: '1px solid var(--line-soft)',
+                    background: 'transparent', cursor: 'pointer', fontFamily: 'var(--font-body)' }}
+                  onMouseEnter={e => (e.currentTarget.style.background = 'var(--paper-deep)')}
+                  onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}>
+                  <div style={{ fontFamily: 'var(--font-display)', fontSize: 12, textTransform: 'uppercase' }}>
+                    {s.stageName}
+                  </div>
+                  <div style={{ fontFamily: 'var(--font-mono)', fontSize: 9, color: 'var(--ink-mute)',
+                    letterSpacing: '0.08em', marginTop: 1 }}>
+                    {s.level}
+                    {s.cost && s.cost !== '—' && s.cost !== '0' ? ` · ${s.cost}` : ''}
+                  </div>
+                </button>
+              ))}
             </div>
           )}
+
+          {hasTwilightMemories && onSpawnToken && (
+            <button onClick={() => onSpawnToken({ name: 'Silhouette Token', level: '', qty: 1 })}
+              style={{ fontFamily: 'var(--font-mono)', fontSize: 9, letterSpacing: '0.1em',
+                textTransform: 'uppercase', background: 'transparent',
+                border: '1px solid var(--purple)', borderRadius: 4,
+                padding: '2px 6px', cursor: 'pointer', color: 'var(--purple)',
+                marginTop: 4, width: '100%', transition: 'all 0.12s' }}
+              onMouseEnter={e => { e.currentTarget.style.background = 'var(--purple)'; e.currentTarget.style.color = '#f6f2e9' }}
+              onMouseLeave={e => { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.color = 'var(--purple)' }}>
+              ⊕ Silhouette Token (Twilight Memories)
+            </button>
+          )}
+
+          {hasMbas && (
+            <>
+              <button onClick={() => setShowMbas(p => !p)}
+                style={{ fontFamily: 'var(--font-mono)', fontSize: 9, letterSpacing: '0.1em',
+                  textTransform: 'uppercase', width: '100%', marginTop: 4,
+                  background: showMbas ? 'var(--blue)' : 'transparent',
+                  border: `1px solid ${showMbas ? 'var(--blue)' : 'var(--line)'}`,
+                  color: showMbas ? '#f6f2e9' : 'var(--blue)',
+                  borderRadius: 4, padding: '2px 6px', cursor: 'pointer' }}>
+                ⊕ My Body as a Shield
+              </button>
+              {showMbas && (
+                <div style={{ marginTop: 6, padding: '8px 10px', background: 'var(--paper)',
+                  border: '1px solid var(--blue)', borderRadius: 8 }}>
+                  <div style={{ fontFamily: 'var(--font-mono)', fontSize: 9, letterSpacing: '0.1em',
+                    textTransform: 'uppercase', color: 'var(--ink-mute)', marginBottom: 6 }}>
+                    Escolha X (Memory gasta)
+                  </div>
+                  <div style={{ display: 'flex', gap: 4, marginBottom: 8 }}>
+                    {[1, 2, 3].map(v => (
+                      <button key={v} onClick={() => setMbasX(v)}
+                        style={{ flex: 1, padding: '4px 0', borderRadius: 6, cursor: 'pointer',
+                          fontFamily: 'var(--font-mono)', fontSize: 13, fontWeight: 700,
+                          border: `1.5px solid ${mbasX === v ? 'var(--blue)' : 'var(--line)'}`,
+                          background: mbasX === v ? 'var(--blue)' : 'transparent',
+                          color: mbasX === v ? '#f6f2e9' : 'var(--ink-soft)' }}>
+                        {v}
+                      </button>
+                    ))}
+                  </div>
+                  <div style={{ fontFamily: 'var(--font-mono)', fontSize: 9, color: 'var(--ink-mute)',
+                    marginBottom: 8, lineHeight: 1.5 }}>
+                    DEF +{mbasX} · Blocker
+                  </div>
+                  <button onClick={activateMbas}
+                    style={{ width: '100%', padding: '5px 0', borderRadius: 6, cursor: 'pointer',
+                      background: 'var(--blue)', color: '#f6f2e9', border: 'none',
+                      fontFamily: 'var(--font-body)', fontWeight: 600, fontSize: 11 }}>
+                    Ativar
+                  </button>
+                </div>
+              )}
+            </>
+          )}
+
+          {bmbsActive && (
+            <button onClick={toggleBmbs}
+              style={{ fontFamily: 'var(--font-mono)', fontSize: 9, letterSpacing: '0.1em',
+                textTransform: 'uppercase', width: '100%', marginTop: 4,
+                background: bmbsIsOn ? 'var(--blue)' : 'transparent',
+                border: `1px solid var(--blue)`,
+                color: bmbsIsOn ? '#f6f2e9' : 'var(--blue)',
+                borderRadius: 4, padding: '2px 6px', cursor: 'pointer' }}>
+              {bmbsIsOn ? '✓ Before My Body Submits (DEF +1)' : '○ Before My Body Submits (DEF +1)'}
+            </button>
+          )}
+
+          {actor.kind === 'human' && actorSt && (() => {
+            const t = findTamer(state, actor.id)
+            if (!t) return null
+            const SPECIAL_KEYWORDS = ['My Body as a Shield', 'Before My Body Submits']
+            const genericSkills = t.tamerSkills.filter(sk =>
+              sk.toggleBonus && !SPECIAL_KEYWORDS.includes(sk.keyword)
+            )
+            if (genericSkills.length === 0) return null
+            return <GenericSkillToggles skills={genericSkills} actorSt={actorSt} onChange={onChange} />
+          })()}
+
+          {actor.kind === 'survivor' && actorSt && (() => {
+            const sv = findSurvivor(state, actor.id)
+            if (!sv) return null
+            const toggleSkills = (sv.survivorSkills ?? []).filter(sk => sk.toggleBonus)
+            if (toggleSkills.length === 0) return null
+            return <GenericSkillToggles skills={toggleSkills} actorSt={actorSt} onChange={onChange} />
+          })()}
+
+          <button onClick={() => setShowState(p => !p)}
+            style={{ fontFamily: 'var(--font-mono)', fontSize: 9, letterSpacing: '0.1em',
+              textTransform: 'uppercase', background: 'transparent', border: '1px dashed var(--line)',
+              borderRadius: 4, padding: '2px 6px', cursor: 'pointer', color: 'var(--ink-mute)',
+              marginTop: 4, width: '100%' }}>
+            {showState ? 'fechar' : '⊙ estado'}
+          </button>
+          {showState && actorSt && (
+            <ActorStatePanel aKey={actorKey(actor)} aState={actorSt} onChange={onChange}
+              isTamer={actor.kind === 'human' || actor.kind === 'survivor'} />
+          )}
         </>
-      )}
-
-      {/* Before My Body Submits — passiva do Eisuke, só visível se DEF > 0 */}
-      {bmbsActive && (
-        <button onClick={toggleBmbs}
-          style={{ fontFamily: 'var(--font-mono)', fontSize: 9, letterSpacing: '0.1em',
-            textTransform: 'uppercase', width: '100%', marginTop: 4,
-            background: bmbsIsOn ? 'var(--blue)' : 'transparent',
-            border: `1px solid var(--blue)`,
-            color: bmbsIsOn ? '#f6f2e9' : 'var(--blue)',
-            borderRadius: 4, padding: '2px 6px', cursor: 'pointer' }}>
-          {bmbsIsOn ? '✓ Before My Body Submits (DEF +1)' : '○ Before My Body Submits (DEF +1)'}
-        </button>
-      )}
-
-      {/* ── Skills genéricas com toggleBonus no Palco ── */}
-      {actor.kind === 'human' && actorSt && (() => {
-        const t = findTamer(state, actor.id)
-        if (!t) return null
-        const SPECIAL_KEYWORDS = ['My Body as a Shield', 'Before My Body Submits']
-        const genericSkills = t.tamerSkills.filter(sk =>
-          sk.toggleBonus && !SPECIAL_KEYWORDS.includes(sk.keyword)
-        )
-        if (genericSkills.length === 0) return null
-        return <GenericSkillToggles skills={genericSkills} actorSt={actorSt} onChange={onChange} />
-      })()}
-
-      {/* ── Survivor skills com toggleBonus ── */}
-      {actor.kind === 'survivor' && actorSt && (() => {
-        const sv = findSurvivor(state, actor.id)
-        if (!sv) return null
-        const toggleSkills = (sv.survivorSkills ?? []).filter(sk => sk.toggleBonus)
-        if (toggleSkills.length === 0) return null
-        return <GenericSkillToggles skills={toggleSkills} actorSt={actorSt} onChange={onChange} />
-      })()}
-
-      <button onClick={() => setShowState(p => !p)}
-        style={{ fontFamily: 'var(--font-mono)', fontSize: 9, letterSpacing: '0.1em',
-          textTransform: 'uppercase', background: 'transparent', border: '1px dashed var(--line)',
-          borderRadius: 4, padding: '2px 6px', cursor: 'pointer', color: 'var(--ink-mute)',
-          marginTop: 4, width: '100%' }}>
-        {showState ? 'fechar' : '⊙ estado'}
-      </button>
-      {showState && actorSt && (
-        <ActorStatePanel aKey={actorKey(actor)} aState={actorSt} onChange={onChange}
-          isTamer={actor.kind === 'human' || actor.kind === 'survivor'} />
       )}
     </div>
   )
@@ -2300,7 +2312,8 @@ function PalcoView({ stage, state, onUpdate, onBack, isGM = false }: {
                   onRemove={() => removeActor(side,i)}
                   onChange={newSt => updateActorState(actorKey(a), newSt)}
                   onEvolve={a.kind === 'pair' ? (newIdx) => evolveActor(side, i, newIdx) : undefined}
-                  onSpawnToken={spawnToken} />
+                  onSpawnToken={spawnToken}
+                  isGM={isGM} />
               ))}
               <div className={styles.addActor} onClick={() => setPickerSide(side)}>+ adicionar ator</div>
             </div>

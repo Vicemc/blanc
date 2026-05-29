@@ -388,9 +388,10 @@ export interface AppState {
   customKeywords:   KeywordEntry[];    // keywords gerenciadas pelo GM (vazio = usar padrões)
   customConditions: ConditionEntry[];  // condições gerenciadas pelo GM (vazio = usar padrões)
   jogressConfigs:   JogressConfig[];   // configurações de Jogress adicionadas pelo GM
+  jogressPassword?: string             // senha do portal de Domain Jogress (GM define)
   tokenDefs:      TokenDef[];      // tokens definidos (aba Tokens da Goggle Girl)
   // Controle de visibilidade (GM only)
-  visibility:  VisibilityMap;      // chave: 'tipo:id', valor: true = visível para players
+  visibility:  VisibilityMap;      // chave: 'tipo:id', valor: nível de visibilidade
 }
 
 // ---------- Sector ----------
@@ -467,8 +468,13 @@ export interface JogressGroup {
 export interface JogressConfig {
   id:           string
   name:         string    // nome do Domain fusionado, ex: "Domain of Time"
+  lock1Id?:     string    // tamer ID da Fechadura 1
+  lock2Id?:     string    // tamer ID da Fechadura 2
+  lock1Skills?: JogressSkill[]  // skills únicas da Fechadura 1 no Jogress
+  lock2Skills?: JogressSkill[]  // skills únicas da Fechadura 2 no Jogress
   memoryGroups: JogressGroup[]   // grupos de passivas de memória selecionáveis
   ownPassives:  JogressSkill[]   // passivas sempre ativas quando o Jogress está ativo
+  visible?:     boolean   // false = só GM vê (padrão)
 }
 
 // ---------- Token definition (Goggle Girl aba Tokens) ----------
@@ -505,8 +511,9 @@ export interface PalcoLogEntry {
 
 // ---------- Visibility control ----------
 // Chave: entidade + id (ex: 'stage:stage-abc123', 'bestiary:d-wild-xyz', 'skill_phase:stp-...')
-// Valor: true = visível para players; false = oculto (só GM vê)
-export type VisibilityMap = Record<string, boolean>
+// 'hidden' = só GM vê · 'name' = players vêem foto + nome · 'full' = players vêem tudo
+export type VisibilityLevel = 'hidden' | 'name' | 'full'
+export type VisibilityMap = Record<string, VisibilityLevel>
 
 export interface Sign {
   id:         string;

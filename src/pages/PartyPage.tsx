@@ -1,7 +1,7 @@
 import { useState, useCallback } from 'react'
-import type { AppState, Tamer, Survivor } from '../types'
+import type { AppState, Tamer, Survivor, VisibilityLevel } from '../types'
 import { PORTRAIT_LIST } from '../types'
-import { findDigimon, makeTamer, makeSlimLine } from '../data/store'
+import { findDigimon, makeTamer, makeSlimLine, getVisLevel, setVisibility } from '../data/store'
 import { makeSurvivor } from '../data/domain'
 import { uploadImage, saveStateToDB } from '../lib/db'
 import { PageHead } from '../components/PageHead'
@@ -10,6 +10,30 @@ import { SheetModal } from '../components/Sheet'
 import type { SheetSubject } from '../components/Sheet'
 import { useSettings } from '../lib/settings'
 import styles from './PartyPage.module.css'
+
+// ── Eye-toggle: cicla hidden ↔ full ─────────────────────────────────────────
+function EyeToggle({ type, id, state, onUpdate }: {
+  type: string; id: string; state: AppState; onUpdate: (s: AppState) => void
+}) {
+  const level = getVisLevel(state, type, id)
+  const next: VisibilityLevel = level === 'hidden' ? 'full' : 'hidden'
+  const visible = level === 'full'
+  return (
+    <button
+      title={visible ? 'Visível para players — clique para ocultar' : 'Oculto dos players — clique para revelar'}
+      onClick={e => { e.stopPropagation(); onUpdate(setVisibility(state, type, id, next)) }}
+      style={{
+        position: 'absolute', top: 6, left: 6, zIndex: 10,
+        width: 22, height: 22, borderRadius: '50%', border: 'none', cursor: 'pointer',
+        display: 'flex', alignItems: 'center', justifyContent: 'center',
+        background: visible ? 'rgba(110,157,112,0.85)' : 'rgba(0,0,0,0.45)',
+        color: '#f6f2e9', fontSize: 11, lineHeight: 1,
+        backdropFilter: 'blur(2px)',
+      }}>
+      {visible ? '●' : '○'}
+    </button>
+  )
+}
 
 interface Props {
   state: AppState
@@ -303,6 +327,16 @@ export default function PartyPage({ state, onUpdate, canEdit, isGM }: Props) {
     if (uploadedToStorage) void saveStateToDB(newState)
   }, [state, onUpdate])
 
+  const handleSurvivorImageUpload = useCallback(async (svId: string, dataUrl: string) => {
+    const url = await uploadImage(dataUrl, svId)
+    const uploadedToStorage = url != null && !url.startsWith('data:')
+    const ext = dataUrl.match(/data:image\/([^;]+);/)?.[1] ?? 'webp'
+    const imageKey = uploadedToStorage ? `${svId}.${ext}` : null
+    const newState = { ...state, survivors: (state.survivors ?? []).map(sv => sv.id === svId ? { ...sv, image: url ?? dataUrl, imageKey } : sv) }
+    onUpdate(newState)
+    if (uploadedToStorage) void saveStateToDB(newState)
+  }, [state, onUpdate])
+
   return (
     <div className={styles.page}>
       <PageHead title="Party" tag="Aqueles que carregam o sonho" pageId="party" />
@@ -330,12 +364,15 @@ export default function PartyPage({ state, onUpdate, canEdit, isGM }: Props) {
       )}
 
       <div className={compactGrid ? styles.gridCompact : styles.grid}>
-        {state.tamers.map(t => {
+        {state.tamers
+          .filter(t => isGM || getVisLevel(state, 'tamer', t.id) !== 'hidden')
+          .map(t => {
           const digi = t.digimonId ? findDigimon(state, t.digimonId) : null
           const cur  = digi ? (digi.stages[digi.currentStage] ?? digi.stages[1] ?? digi.stages[0]) : null
           return (
             <div key={t.id} className={styles.card} onClick={() => setOpen({ kind:'tamer', id:t.id })}>
-              <div className={`${styles.portrait} fill-${t.portrait}`}>
+              <div className={`${styles.portrait} fill-${t.portrait}`} style={{ position: 'relative' }}>
+                {isGM && <EyeToggle type="tamer" id={t.id} state={state} onUpdate={onUpdate} />}
                 {t.image
                   ? <img key={t.image} src={t.image} alt="" style={{ width:'100%', height:'100%', objectFit:'cover' }}
                       onError={e => { (e.currentTarget as HTMLImageElement).style.display = 'none' }} />
@@ -380,13 +417,31 @@ export default function PartyPage({ state, onUpdate, canEdit, isGM }: Props) {
           )
         })}
         {/* Survivor cards */}
-        {(state.survivors ?? []).map(sv => (
+        {(state.survivors ?? [])
+          .filter(sv => isGM || getVisLevel(state, 'survivor', sv.id) !== 'hidden')
+          .map(sv => (
           <div key={sv.id} className={styles.card} onClick={() => setOpen({ kind: 'survivor', id: sv.id })}>
-            <div className={`${styles.portrait} fill-${sv.portrait}`}>
+            <div className={`${styles.portrait} fill-${sv.portrait}`} style={{ position: 'relative' }}>
+              {isGM && <EyeToggle type="survivor" id={sv.id} state={state} onUpdate={onUpdate} />}
               {sv.image
                 ? <img key={sv.image} src={sv.image} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }}
                     onError={e => { (e.currentTarget as HTMLImageElement).style.display = 'none' }} />
                 : <div className="grain" />}
+              <label className={styles.uploadHint} onClick={e => e.stopPropagation()}>
+                trocar foto
+                <input type="file" accept="image/*" style={{ display: 'none' }} onChange={e => {
+                  const f = e.target.files?.[0]; if (!f) return
+                  const r = new FileReader(); r.onload = ev => { handleSurvivorImageUpload(sv.id, ev.target?.result as string) }; r.readAsDataURL(f)
+                }} />
+              </label>
+            </div>
+            <div className={styles.cardActions}>
+              <button className={styles.cardActionBtn} title="Exportar ficha"
+                onClick={e => { e.stopPropagation(); exportJson(sv, `survivor-${sv.id}-${new Date().toISOString().slice(0, 10)}.json`) }}>↓</button>
+              <button className={styles.cardActionBtn} title="Importar ficha"
+                onClick={e => { e.stopPropagation(); importJson<typeof sv>(imported => {
+                  onUpdate({ ...state, survivors: (state.survivors ?? []).map(x => x.id === sv.id ? { ...imported, id: sv.id } : x) })
+                }) }}>↑</button>
             </div>
             <div className={styles.info}>
               <div style={{ fontFamily: 'var(--font-mono)', fontSize: 9, letterSpacing: '0.14em', textTransform: 'uppercase', color: 'var(--ink-mute)', marginBottom: 2 }}>Survivor</div>

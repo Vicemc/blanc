@@ -1,12 +1,37 @@
 import React, { useState, useMemo } from 'react'
-import type { AppState, DigimonLine, Bug, Sign, SectorFolder, BugFolder as BugFolderType, TokenDef } from '../types'
+import type { AppState, DigimonLine, Bug, Sign, SectorFolder, BugFolder as BugFolderType, TokenDef, VisibilityLevel } from '../types'
 import { BUG_COLORS, PORTRAIT_LIST } from '../types'
-import { makeWildDigimon, makeBug, makeSign, DEFAULT_TOKEN_DEFS } from '../data/store'
+import { makeWildDigimon, makeBug, makeSign, DEFAULT_TOKEN_DEFS, getVisLevel, setVisibility } from '../data/store'
 import { PageHead } from '../components/PageHead'
 import { GrainFill } from '../components/GrainFill'
 import { SheetModal } from '../components/Sheet'
 import type { SheetSubject } from '../components/Sheet'
 import styles from './GogglePage.module.css'
+
+// ── Eye-toggle com 3 níveis para Bestiário ────────────────────────────────────
+function EyeToggle3({ type, id, state, onUpdate }: {
+  type: string; id: string; state: AppState; onUpdate: (s: AppState) => void
+}) {
+  const level = getVisLevel(state, type, id)
+  const next: VisibilityLevel = level === 'hidden' ? 'name' : level === 'name' ? 'full' : 'hidden'
+  const icon = level === 'hidden' ? '○' : level === 'name' ? '◑' : '●'
+  const bg   = level === 'hidden' ? 'rgba(0,0,0,0.45)' : level === 'name' ? 'rgba(231,212,163,0.85)' : 'rgba(110,157,112,0.85)'
+  const color = level === 'hidden' ? '#f6f2e9' : level === 'name' ? '#5a4800' : '#f6f2e9'
+  return (
+    <button
+      title={`${level === 'hidden' ? 'Oculto' : level === 'name' ? 'Foto + Nome' : 'Completo'} — clique para alternar`}
+      onClick={e => { e.stopPropagation(); onUpdate(setVisibility(state, type, id, next)) }}
+      style={{
+        position: 'absolute', top: 4, left: 4, zIndex: 10,
+        width: 20, height: 20, borderRadius: '50%', border: 'none', cursor: 'pointer',
+        display: 'flex', alignItems: 'center', justifyContent: 'center',
+        background: bg, color, fontSize: 10, lineHeight: 1,
+        backdropFilter: 'blur(2px)',
+      }}>
+      {icon}
+    </button>
+  )
+}
 
 interface Props { state: AppState; onUpdate: (s: AppState) => void; canEdit?: (tamerId?: string) => boolean; isGM?: boolean }
 
@@ -31,9 +56,10 @@ function importJson<T>(onLoad: (data: T) => void) {
 }
 
 // ── Cards ─────────────────────────────────────────────────────────────────────
-function DigiCard({ d, onClick, onDelete, onExport, onImport }: {
+function DigiCard({ d, onClick, onDelete, onExport, onImport, eyeNode }: {
   d: DigimonLine; onClick: () => void; onDelete?: (e: React.MouseEvent) => void
   onExport: (e: React.MouseEvent) => void; onImport: (e: React.MouseEvent) => void
+  eyeNode?: React.ReactNode
 }) {
   const s = d.stages[d.currentStage ?? 0] ?? d.stages[0]
   return (
@@ -44,6 +70,7 @@ function DigiCard({ d, onClick, onDelete, onExport, onImport }: {
         <button className={styles.cardActionBtn} onClick={onImport} title="Importar">↑</button>
       </div>
       <div className={`${styles.cardPortrait} fill-${s.portrait}`} style={{ position: 'relative' }}>
+        {eyeNode}
         <div className="grain" />
         {d.image && <img src={d.image} alt={d.name} style={{ position:'absolute', inset:0, width:'100%', height:'100%', objectFit:'cover' }} />}
       </div>
@@ -56,9 +83,10 @@ function DigiCard({ d, onClick, onDelete, onExport, onImport }: {
   )
 }
 
-function BugCard({ b, onClick, onDelete, onExport, onImport }: {
+function BugCard({ b, onClick, onDelete, onExport, onImport, eyeNode }: {
   b: Bug; onClick: () => void; onDelete?: (e: React.MouseEvent) => void
   onExport: (e: React.MouseEvent) => void; onImport: (e: React.MouseEvent) => void
+  eyeNode?: React.ReactNode
 }) {
   return (
     <div className={styles.card} onClick={onClick}>
@@ -68,6 +96,7 @@ function BugCard({ b, onClick, onDelete, onExport, onImport }: {
         <button className={styles.cardActionBtn} onClick={onImport} title="Importar">↑</button>
       </div>
       <div className={`${styles.cardPortrait} fill-bug-${b.color}`} style={{ position: 'relative' }}>
+        {eyeNode}
         <div className="grain grain-invert" />
         {b.image && <img src={b.image} alt={b.name} style={{ position:'absolute', inset:0, width:'100%', height:'100%', objectFit:'cover' }} />}
       </div>
@@ -80,9 +109,10 @@ function BugCard({ b, onClick, onDelete, onExport, onImport }: {
   )
 }
 
-function SignCard({ sg, onClick, onDelete, onExport, onImport }: {
+function SignCard({ sg, onClick, onDelete, onExport, onImport, eyeNode }: {
   sg: Sign; onClick: () => void; onDelete?: (e: React.MouseEvent) => void
   onExport: (e: React.MouseEvent) => void; onImport: (e: React.MouseEvent) => void
+  eyeNode?: React.ReactNode
 }) {
   return (
     <div className={styles.card} onClick={onClick}>
@@ -92,6 +122,7 @@ function SignCard({ sg, onClick, onDelete, onExport, onImport }: {
         <button className={styles.cardActionBtn} onClick={onImport} title="Importar">↑</button>
       </div>
       <div className={`${styles.cardPortrait} fill-indigo`} style={{ position: 'relative', display:'flex', alignItems:'center', justifyContent:'center' }}>
+        {eyeNode}
         <div className="grain" />
         {sg.image
           ? <img src={sg.image} alt={sg.name} style={{ position:'absolute', inset:0, width:'100%', height:'100%', objectFit:'cover' }} />
@@ -345,14 +376,17 @@ function SectorFolderComp({ sector, digimons, state, onUpdate, onOpen, onDeleteF
           </div>
           {digimons.length === 0 && <div className={styles.empty}>~ nenhum digimon neste setor ~</div>}
           <div className={styles.cardGrid}>
-            {digimons.map(d => (
+            {digimons
+              .filter(d => isGM || getVisLevel(state, 'bestiary', d.id) !== 'hidden')
+              .map(d => (
               <DigiCard key={d.id} d={d}
                 onClick={() => onOpen(d.tamerId ? { kind:'digimon', id: d.id } : { kind:'wild', id: d.id })}
                 onDelete={isGM ? (e) => deleteWild(d.id, e) : undefined}
                 onExport={(e) => { e.stopPropagation(); exportJson(d, `digimon-${d.id}-${new Date().toISOString().slice(0,10)}.json`) }}
                 onImport={(e) => { e.stopPropagation(); importJson<DigimonLine>(imported => {
                   onUpdate({ ...state, bestiary: state.bestiary.map(x => x.id === d.id ? { ...imported, id: d.id } : x) })
-                }) }} />
+                }) }}
+                eyeNode={isGM ? <EyeToggle3 type="bestiary" id={d.id} state={state} onUpdate={onUpdate} /> : undefined} />
             ))}
           </div>
         </div>
@@ -394,14 +428,17 @@ function BugFolderComp({ folder, bugs, state, onUpdate, onOpen, onDeleteFolder, 
           </div>
           {bugs.length === 0 && <div className={styles.empty}>~ nenhum bug desta classe registrado ~</div>}
           <div className={styles.cardGrid}>
-            {bugs.map(b => (
+            {bugs
+              .filter(b => isGM || getVisLevel(state, 'bug', b.id) !== 'hidden')
+              .map(b => (
               <BugCard key={b.id} b={b}
                 onClick={() => onOpen({ kind:'bug', id: b.id })}
                 onDelete={isGM ? (e) => deleteBug(b.id, e) : undefined}
                 onExport={(e) => { e.stopPropagation(); exportJson(b, `bug-${b.id}-${new Date().toISOString().slice(0,10)}.json`) }}
                 onImport={(e) => { e.stopPropagation(); importJson<Bug>(imported => {
                   onUpdate({ ...state, bugs: state.bugs.map(x => x.id === b.id ? { ...imported, id: b.id } : x) })
-                }) }} />
+                }) }}
+                eyeNode={isGM ? <EyeToggle3 type="bug" id={b.id} state={state} onUpdate={onUpdate} /> : undefined} />
             ))}
           </div>
         </div>
@@ -459,7 +496,9 @@ function SignsTab({ state, onUpdate, onOpen, isGM }: { state: AppState; onUpdate
       )}
 
       <div className={styles.cardGrid}>
-        {signs.map(sg => (
+        {signs
+          .filter(sg => isGM || getVisLevel(state, 'sign', sg.id) !== 'hidden')
+          .map(sg => (
           <SignCard key={sg.id} sg={sg}
             onClick={() => onOpen({ kind: 'sign', id: sg.id })}
             onDelete={isGM ? (e) => deleteSign(sg.id, e) : undefined}
@@ -467,6 +506,7 @@ function SignsTab({ state, onUpdate, onOpen, isGM }: { state: AppState; onUpdate
             onImport={(e) => { e.stopPropagation(); importJson<Sign>(imported => {
               onUpdate({ ...state, signs: signs.map(x => x.id === sg.id ? { ...imported, id: sg.id } : x) })
             }) }}
+            eyeNode={isGM ? <EyeToggle3 type="sign" id={sg.id} state={state} onUpdate={onUpdate} /> : undefined}
           />
         ))}
       </div>

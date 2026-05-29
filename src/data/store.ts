@@ -625,6 +625,22 @@ export function visKey(type: string, id: string): string {
   return `${type}:${id}`
 }
 
+export function getVisLevel(
+  state: AppState,
+  type: string,
+  id: string,
+): import('../types').VisibilityLevel {
+  const key = visKey(type, id)
+  if (!(key in state.visibility)) {
+    return type === 'stage' ? 'full' : 'hidden'
+  }
+  const raw = state.visibility[key] as any
+  // Migrate old boolean values
+  if (raw === true)  return 'full'
+  if (raw === false) return 'hidden'
+  return raw as import('../types').VisibilityLevel
+}
+
 export function isVisible(
   state: AppState,
   type: string,
@@ -632,25 +648,18 @@ export function isVisible(
   isGM: boolean,
 ): boolean {
   if (isGM) return true
-  const key = visKey(type, id)
-  // Se não está no mapa, usa default por tipo
-  if (!(key in state.visibility)) {
-    // Stages são visíveis por padrão; skill phases, evoluções e entradas do bestiário são ocultas por padrão
-    if (type === 'stage') return true
-    return false
-  }
-  return state.visibility[key] === true
+  return getVisLevel(state, type, id) !== 'hidden'
 }
 
 export function setVisibility(
   state: AppState,
   type: string,
   id: string,
-  visible: boolean,
+  level: import('../types').VisibilityLevel,
 ): AppState {
   return {
     ...state,
-    visibility: { ...state.visibility, [visKey(type, id)]: visible },
+    visibility: { ...state.visibility, [visKey(type, id)]: level },
   }
 }
 

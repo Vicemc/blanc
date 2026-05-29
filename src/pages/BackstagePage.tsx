@@ -6,12 +6,13 @@ import { listProfiles, setUserRole } from '../lib/auth'
 import type { UserProfile } from '../lib/auth'
 import { useAuth } from '../components/AuthProvider'
 import { useSettings } from '../lib/settings'
-import type { AppState, SkillTreePhase, TamerSkill, ClimaEntry, KeywordEntry, ConditionEntry, JogressConfig, JogressGroup, JogressSkill } from '../types'
+import type { AppState, SkillTreePhase, TamerSkill, ClimaEntry, KeywordEntry, ConditionEntry, JogressConfig, JogressGroup, JogressSkill, VisibilityLevel } from '../types'
 import { saveStateToDB } from '../lib/db'
 import { supabase } from '../lib/supabase'
 import { SheetModal } from '../components/Sheet'
 import type { SheetSubject } from '../components/Sheet'
 import { BASE_CLIMAS, BASE_KEYWORDS, BASE_CONDITIONS, getEffectiveClimas, groupBy } from '../data/rulesData'
+import { getVisLevel, setVisibility, visKey } from '../data/store'
 
 interface Props {
   state:    AppState
@@ -604,6 +605,7 @@ function KeywordCrud({ state, onUpdate }: Props) {
                   <KwCondForm<KeywordEntry>
                     draft={editDraft} setDraft={setED as any}
                     nameField="keyword" namePlaceholder="Keyword"
+                    isKeyword
                     onSave={saveEdit} onCancel={() => { setEditId(null); setED(null) }}
                   />
                 ) : (
@@ -659,6 +661,7 @@ function KeywordCrud({ state, onUpdate }: Props) {
         <KwCondForm<Omit<KeywordEntry,'id'>>
           draft={addDraft} setDraft={setAD as any}
           nameField="keyword" namePlaceholder="Keyword"
+          isKeyword
           onSave={addEntry} onCancel={() => setAdding(false)}
         />
       )}
@@ -782,9 +785,18 @@ function ConditionCrud({ state, onUpdate }: Props) {
   )
 }
 
+const KW_CATEGORIES = ['Neutro', 'Ataque / Efeito', 'Reação'] as const
+type KwCategory = typeof KW_CATEGORIES[number]
+
+// Maps keyword category → type
+function kwCategoryToType(cat: KwCategory): KwType {
+  if (cat === 'Reação') return 'reaction'
+  return 'neutral'
+}
+
 // ── Shared form for Keyword / Condition ────────────────────────────────────────
 function KwCondForm<T extends { category?: string; type: KwType; desc: string; resist?: string }>({
-  draft, setDraft, nameField, namePlaceholder, onSave, onCancel,
+  draft, setDraft, nameField, namePlaceholder, onSave, onCancel, isKeyword,
 }: {
   draft: T
   setDraft: (v: T) => void
@@ -792,6 +804,7 @@ function KwCondForm<T extends { category?: string; type: KwType; desc: string; r
   namePlaceholder: string
   onSave: () => void
   onCancel: () => void
+  isKeyword?: boolean
 }) {
   const nameVal = (draft as any)[nameField] as string ?? ''
   return (
@@ -800,9 +813,19 @@ function KwCondForm<T extends { category?: string; type: KwType; desc: string; r
         <input value={nameVal}
           onChange={e => setDraft({ ...draft, [nameField]: e.target.value })}
           placeholder={namePlaceholder} style={fld} />
-        <input value={draft.category ?? ''}
-          onChange={e => setDraft({ ...draft, category: e.target.value })}
-          placeholder="Categoria (ex: Ação, Ferimento)" style={fld} />
+        {isKeyword ? (
+          <select value={draft.category ?? 'Neutro'}
+            onChange={e => {
+              const cat = e.target.value as KwCategory
+              setDraft({ ...draft, category: cat, type: kwCategoryToType(cat) })
+            }} style={fld}>
+            {KW_CATEGORIES.map(c => <option key={c} value={c}>{c}</option>)}
+          </select>
+        ) : (
+          <input value={draft.category ?? ''}
+            onChange={e => setDraft({ ...draft, category: e.target.value })}
+            placeholder="Categoria (ex: Ferimento)" style={fld} />
+        )}
         <select value={draft.type} onChange={e => setDraft({ ...draft, type: e.target.value as KwType })} style={fld}>
           {KW_TYPES.map(t => <option key={t} value={t}>{KW_TYPE_LABELS[t]}</option>)}
         </select>
@@ -827,15 +850,57 @@ function KwCondForm<T extends { category?: string; type: KwType; desc: string; r
 }
 
 // ── JogressCrud ───────────────────────────────────────────────────────────────
+
+const JOGRESS_LOCK_OPTIONS = [
+  { id: 't-hare',   name: 'Hare'   },
+  { id: 't-hibito', name: 'Hibito' },
+  { id: 't-chi',    name: 'Chi'    },
+  { id: 't-ledo',   name: 'Ledo'   },
+  ...TAMER_OPTIONS,
+]
+const uniqueLockOptions = JOGRESS_LOCK_OPTIONS.filter(
+  (opt, i, arr) => arr.findIndex(o => o.id === opt.id) === i
+)
+
+const JOGRESS_PW_KEY = 'gm_jogress_verified'
+
 function JogressCrud({ state, onUpdate }: Props) {
   const configs: JogressConfig[] = state.jogressConfigs ?? []
-  const [editId,  setEditId]  = useState<string | null>(null)
-  const [adding,  setAdding]  = useState(false)
+
+  // Password gate
+  const [pwOk,       setPwOk]       = useState(() => !!localStorage.getItem(JOGRESS_PW_KEY))
+  const [pwInput,    setPwInput]     = useState('')
+  const [pwError,    setPwError]     = useState(false)
+  const [settingPw,  setSettingPw]   = useState(false)
+  const [newPwInput, setNewPwInput]  = useState('')
+
+  // Form
+  const [editId, setEditId] = useState<string | null>(null)
+  const [adding, setAdding] = useState(false)
 
   const emptyConfig = (): Omit<JogressConfig, 'id'> => ({
-    name: '', memoryGroups: [], ownPassives: [],
+    name: '', lock1Id: '', lock2Id: '',
+    lock1Skills: [], lock2Skills: [],
+    memoryGroups: [], ownPassives: [], visible: false,
   })
   const [draft, setDraft] = useState<Omit<JogressConfig, 'id'>>(emptyConfig())
+
+  const verifyPw = () => {
+    const stored = state.jogressPassword ?? ''
+    if (!stored) { setPwOk(true); localStorage.setItem(JOGRESS_PW_KEY, '1'); return }
+    if (pwInput === stored) {
+      setPwOk(true); setPwError(false)
+      localStorage.setItem(JOGRESS_PW_KEY, '1')
+    } else {
+      setPwError(true)
+    }
+  }
+
+  const savePw = () => {
+    if (!newPwInput.trim()) return
+    onUpdate({ ...state, jogressPassword: newPwInput.trim() })
+    setSettingPw(false); setNewPwInput('')
+  }
 
   const save = (cfg: JogressConfig) => {
     const next = editId
@@ -845,44 +910,68 @@ function JogressCrud({ state, onUpdate }: Props) {
     setEditId(null); setAdding(false); setDraft(emptyConfig())
   }
 
-  const del = (id: string) => onUpdate({ ...state, jogressConfigs: configs.filter(c => c.id !== id) })
-
-  const startEdit = (cfg: JogressConfig) => {
-    setEditId(cfg.id); setDraft({ name: cfg.name, memoryGroups: cfg.memoryGroups, ownPassives: cfg.ownPassives }); setAdding(true)
+  const del = (id: string) => {
+    if (!confirm('Remover este Domain Jogress?')) return
+    onUpdate({ ...state, jogressConfigs: configs.filter(c => c.id !== id) })
   }
 
-  // ── Skill inline editor ─────────────────────────────────────────────────────
-  function SkillListEditor({ skills, onChange }: { skills: JogressSkill[]; onChange: (s: JogressSkill[]) => void }) {
-    const [newTitle,  setNewTitle]  = useState('')
-    const [newEffect, setNewEffect] = useState('')
+  const startEdit = (cfg: JogressConfig) => {
+    setEditId(cfg.id)
+    setDraft({
+      name: cfg.name, lock1Id: cfg.lock1Id ?? '', lock2Id: cfg.lock2Id ?? '',
+      lock1Skills: cfg.lock1Skills ?? [], lock2Skills: cfg.lock2Skills ?? [],
+      memoryGroups: cfg.memoryGroups, ownPassives: cfg.ownPassives,
+      visible: cfg.visible ?? false,
+    })
+    setAdding(true)
+  }
+
+  const toggleVisible = (id: string) => {
+    onUpdate({
+      ...state,
+      jogressConfigs: configs.map(c =>
+        c.id === id ? { ...c, visible: !c.visible } : c
+      ),
+    })
+  }
+
+  // ── Simple passiva editor ──────────────────────────────────────────────────
+  function PassivaEditor({ skills, onChange, label }: {
+    skills: JogressSkill[]; onChange: (s: JogressSkill[]) => void; label: string
+  }) {
+    const [title,  setTitle]  = useState('')
+    const [effect, setEffect] = useState('')
     const add = () => {
-      if (!newTitle.trim()) return
-      onChange([...skills, { id: `js-${Date.now().toString(36)}`, title: newTitle.trim(), effect: newEffect.trim() }])
-      setNewTitle(''); setNewEffect('')
+      if (!title.trim()) return
+      onChange([...skills, { id: `js-${Date.now().toString(36)}`, title: title.trim(), effect: effect.trim() }])
+      setTitle(''); setEffect('')
     }
     return (
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+      <div>
+        <div style={{ fontFamily: 'var(--font-mono)', fontSize: 10, color: 'var(--ink-mute)', marginBottom: 6 }}>{label}</div>
         {skills.map((s, i) => (
-          <div key={s.id} style={{ display: 'flex', gap: 6, alignItems: 'flex-start', padding: '6px 10px', borderRadius: 6, border: '1px solid var(--line-soft)', background: 'var(--paper)' }}>
+          <div key={s.id} style={{ display: 'flex', gap: 6, alignItems: 'flex-start', padding: '6px 10px',
+            borderRadius: 6, border: '1px solid var(--line-soft)', background: 'var(--paper)', marginBottom: 4 }}>
             <div style={{ flex: 1 }}>
               <div style={{ fontFamily: 'var(--font-mono)', fontSize: 11, fontWeight: 700 }}>{s.title}</div>
               <div style={{ fontFamily: 'var(--font-body)', fontSize: 12, color: 'var(--ink-mute)', marginTop: 2 }}>{s.effect}</div>
             </div>
             <button onClick={() => onChange(skills.filter((_, j) => j !== i))}
-              style={{ background: 'transparent', border: 'none', cursor: 'pointer', color: 'var(--ink-mute)', fontSize: 16, lineHeight: 1, padding: '0 4px' }}>×</button>
+              style={{ background: 'transparent', border: 'none', cursor: 'pointer', color: 'var(--ink-mute)', fontSize: 16, lineHeight: 1 }}>×</button>
           </div>
         ))}
-        <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginTop: 4 }}>
-          <input value={newTitle} onChange={e => setNewTitle(e.target.value)} placeholder="Título da passiva *" style={fldSm} />
-          <textarea value={newEffect} onChange={e => setNewEffect(e.target.value)} placeholder="Efeito" rows={2}
-            style={{ ...fld, resize: 'vertical', minHeight: 48 }} />
-          <button onClick={add} style={{ padding: '6px 14px', borderRadius: 999, border: '1px solid var(--teal)', background: 'var(--teal)', color: 'var(--paper)', cursor: 'pointer', fontFamily: 'var(--font-body)', fontWeight: 700, fontSize: 12, alignSelf: 'flex-end' }}>+ Adicionar</button>
+        <div style={{ display: 'flex', gap: 6, marginTop: 4 }}>
+          <input value={title} onChange={e => setTitle(e.target.value)} placeholder="Título *" style={{ ...fldSm, flex: 1 }} />
+          <input value={effect} onChange={e => setEffect(e.target.value)} placeholder="Efeito" style={{ ...fldSm, flex: 2 }} />
+          <button onClick={add} style={{ padding: '5px 12px', borderRadius: 999, border: '1px solid var(--teal)',
+            background: 'var(--teal)', color: 'var(--paper)', cursor: 'pointer',
+            fontFamily: 'var(--font-body)', fontWeight: 700, fontSize: 12, whiteSpace: 'nowrap' }}>+ Add</button>
         </div>
       </div>
     )
   }
 
-  // ── Group (memory group) inline editor ─────────────────────────────────────
+  // ── Memory group editor ────────────────────────────────────────────────────
   function GroupListEditor({ groups, onChange }: { groups: JogressGroup[]; onChange: (g: JogressGroup[]) => void }) {
     const [newDomain, setNewDomain] = useState('')
     const addGroup = () => {
@@ -891,7 +980,7 @@ function JogressCrud({ state, onUpdate }: Props) {
       setNewDomain('')
     }
     return (
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
         {groups.map((g, gi) => (
           <div key={g.id} style={{ padding: '10px 12px', borderRadius: 8, border: '1px solid var(--line)', background: 'var(--paper-deep)' }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
@@ -899,75 +988,329 @@ function JogressCrud({ state, onUpdate }: Props) {
               <button onClick={() => onChange(groups.filter((_, j) => j !== gi))}
                 style={{ background: 'transparent', border: 'none', cursor: 'pointer', color: 'var(--ink-mute)', fontSize: 14 }}>×</button>
             </div>
-            <SkillListEditor skills={g.skills}
+            <PassivaEditor label="Passivas deste group" skills={g.skills}
               onChange={skills => onChange(groups.map((x, j) => j === gi ? { ...x, skills } : x))} />
           </div>
         ))}
         <div style={{ display: 'flex', gap: 6 }}>
           <input value={newDomain} onChange={e => setNewDomain(e.target.value)} placeholder="Nome do Domain (ex: Domain of Sky)" style={fld} />
-          <button onClick={addGroup} style={{ padding: '6px 14px', borderRadius: 999, border: '1px solid var(--line)', background: 'transparent', cursor: 'pointer', fontFamily: 'var(--font-body)', fontSize: 12, whiteSpace: 'nowrap' }}>+ Grupo</button>
+          <button onClick={addGroup} style={{ padding: '6px 14px', borderRadius: 999, border: '1px solid var(--line)',
+            background: 'transparent', cursor: 'pointer', fontFamily: 'var(--font-body)', fontSize: 12, whiteSpace: 'nowrap' }}>+ Grupo</button>
         </div>
+      </div>
+    )
+  }
+
+  // ── Password gate ──────────────────────────────────────────────────────────
+  if (!pwOk) {
+    return (
+      <div style={{ maxWidth: 400 }}>
+        <div style={{ fontFamily: 'var(--font-mono)', fontSize: 11, color: 'var(--ink-mute)', marginBottom: 16 }}>
+          Domain Jogress é protegido por senha. Insira a senha do GM para acessar.
+        </div>
+        <div style={{ display: 'flex', gap: 8 }}>
+          <input
+            type="password" value={pwInput}
+            onChange={e => { setPwInput(e.target.value); setPwError(false) }}
+            onKeyDown={e => e.key === 'Enter' && verifyPw()}
+            placeholder="Senha do GM"
+            style={{ ...fld, flex: 1, borderColor: pwError ? 'var(--coral)' : undefined }} />
+          <button onClick={verifyPw} style={{ padding: '7px 18px', borderRadius: 999, cursor: 'pointer',
+            border: '1px solid var(--teal)', background: 'var(--teal)', color: 'var(--paper)',
+            fontFamily: 'var(--font-body)', fontWeight: 700, fontSize: 13 }}>
+            Entrar
+          </button>
+        </div>
+        {pwError && (
+          <div style={{ fontFamily: 'var(--font-mono)', fontSize: 11, color: 'var(--coral)', marginTop: 8 }}>
+            Senha incorreta.
+          </div>
+        )}
+        {!state.jogressPassword && (
+          <div style={{ marginTop: 16, fontFamily: 'var(--font-mono)', fontSize: 10, color: 'var(--ink-mute)' }}>
+            Nenhuma senha definida. Clique em Entrar para acessar sem senha e defina uma depois.
+          </div>
+        )}
       </div>
     )
   }
 
   return (
     <div>
-      <div style={{ fontFamily: 'var(--font-mono)', fontSize: 11, color: 'var(--ink-mute)', marginBottom: 16, lineHeight: 1.5 }}>
-        Cada Jogress define um domain fusionado (ex: "Domain of Time"), os grupos de passivas de memória selecionáveis e as passivas próprias sempre ativas quando o Jogress estiver ativo no Palco.
+      {/* Header + senha */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 16 }}>
+        <div style={{ fontFamily: 'var(--font-mono)', fontSize: 11, color: 'var(--ink-mute)', flex: 1, lineHeight: 1.5 }}>
+          Domain Jogress fusiona dois Digivices Fechadura. Oculto dos players por padrão.
+        </div>
+        <button onClick={() => setSettingPw(p => !p)}
+          style={{ padding: '4px 12px', borderRadius: 999, cursor: 'pointer',
+            border: '1px solid var(--line)', background: 'transparent',
+            fontFamily: 'var(--font-mono)', fontSize: 10, color: 'var(--ink-mute)' }}>
+          {state.jogressPassword ? '🔑 Trocar Senha' : '🔑 Definir Senha'}
+        </button>
+        <button onClick={() => { localStorage.removeItem(JOGRESS_PW_KEY); setPwOk(false) }}
+          style={{ padding: '4px 12px', borderRadius: 999, cursor: 'pointer',
+            border: '1px solid var(--line)', background: 'transparent',
+            fontFamily: 'var(--font-mono)', fontSize: 10, color: 'var(--ink-mute)' }}>
+          Travar
+        </button>
       </div>
 
-      {/* Lista existente */}
-      {configs.map(cfg => (
-        <div key={cfg.id} style={{ padding: '12px 16px', borderRadius: 8, border: '1px solid var(--line)', marginBottom: 10, display: 'flex', alignItems: 'flex-start', gap: 12, background: 'var(--paper-deep)' }}>
-          <div style={{ flex: 1 }}>
-            <div style={{ fontFamily: 'var(--font-display)', fontSize: 15, textTransform: 'uppercase', marginBottom: 4 }}>{cfg.name}</div>
-            <div style={{ fontFamily: 'var(--font-mono)', fontSize: 10, color: 'var(--ink-mute)', letterSpacing: '0.08em' }}>
-              {cfg.memoryGroups.length} grupo(s) de memória · {cfg.ownPassives.length} passiva(s) própria(s)
-            </div>
-          </div>
-          <button onClick={() => startEdit(cfg)} style={{ ...fldSm, width: 'auto', padding: '4px 12px', fontSize: 12, cursor: 'pointer' }}>Editar</button>
-          <button onClick={() => del(cfg.id)} style={{ ...fldSm, width: 'auto', padding: '4px 12px', fontSize: 12, cursor: 'pointer', color: 'var(--coral)', borderColor: 'var(--coral)' }}>×</button>
+      {settingPw && (
+        <div style={{ display: 'flex', gap: 8, marginBottom: 16 }}>
+          <input type="password" value={newPwInput} onChange={e => setNewPwInput(e.target.value)}
+            placeholder="Nova senha do portal"
+            style={{ ...fld, flex: 1 }} />
+          <button onClick={savePw} style={{ padding: '7px 16px', borderRadius: 999, cursor: 'pointer',
+            border: '1px solid var(--teal)', background: 'var(--teal)', color: 'var(--paper)',
+            fontFamily: 'var(--font-body)', fontWeight: 700, fontSize: 12 }}>Salvar Senha</button>
+          <button onClick={() => { setSettingPw(false); setNewPwInput('') }}
+            style={{ padding: '7px 12px', borderRadius: 999, cursor: 'pointer',
+              border: '1px solid var(--line)', background: 'transparent',
+              fontFamily: 'var(--font-body)', fontSize: 12, color: 'var(--ink-mute)' }}>×</button>
         </div>
-      ))}
+      )}
+
+      {/* Lista existente */}
+      {configs.map(cfg => {
+        const lock1Name = uniqueLockOptions.find(o => o.id === cfg.lock1Id)?.name ?? cfg.lock1Id ?? '—'
+        const lock2Name = uniqueLockOptions.find(o => o.id === cfg.lock2Id)?.name ?? cfg.lock2Id ?? '—'
+        return (
+          <div key={cfg.id} style={{ padding: '12px 16px', borderRadius: 8, border: '1px solid var(--line)',
+            marginBottom: 10, display: 'flex', alignItems: 'flex-start', gap: 12,
+            background: 'var(--paper-deep)', opacity: cfg.visible ? 1 : 0.75 }}>
+            <div style={{ flex: 1 }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4 }}>
+                <div style={{ fontFamily: 'var(--font-display)', fontSize: 15, textTransform: 'uppercase' }}>{cfg.name}</div>
+                <span style={{ fontFamily: 'var(--font-mono)', fontSize: 9, padding: '1px 6px',
+                  borderRadius: 999, background: cfg.visible ? 'rgba(110,157,112,0.15)' : 'var(--paper-deep)',
+                  border: `1px solid ${cfg.visible ? 'var(--green)' : 'var(--line)'}`,
+                  color: cfg.visible ? 'var(--green)' : 'var(--ink-mute)' }}>
+                  {cfg.visible ? 'visível' : 'oculto'}
+                </span>
+              </div>
+              <div style={{ fontFamily: 'var(--font-mono)', fontSize: 10, color: 'var(--ink-mute)', letterSpacing: '0.06em' }}>
+                {lock1Name} ⟷ {lock2Name} · {cfg.memoryGroups.length} grupo(s) · {cfg.ownPassives.length} passiva(s)
+              </div>
+            </div>
+            <button onClick={() => toggleVisible(cfg.id)}
+              style={{ padding: '4px 10px', borderRadius: 999, cursor: 'pointer',
+                border: '1px solid var(--line)', background: 'transparent',
+                fontFamily: 'var(--font-mono)', fontSize: 10, color: 'var(--ink-mute)' }}>
+              {cfg.visible ? '○ Ocultar' : '● Revelar'}
+            </button>
+            <button onClick={() => startEdit(cfg)} style={{ ...fldSm, width: 'auto', padding: '4px 12px', fontSize: 12, cursor: 'pointer' }}>Editar</button>
+            <button onClick={() => del(cfg.id)} style={{ ...fldSm, width: 'auto', padding: '4px 12px', fontSize: 12, cursor: 'pointer', color: 'var(--coral)', borderColor: 'var(--coral)' }}>×</button>
+          </div>
+        )
+      })}
 
       {/* Formulário de adição/edição */}
       {adding ? (
         <div style={{ padding: '16px', borderRadius: 10, border: '1px solid var(--line)', background: 'var(--paper)', marginTop: 12 }}>
           <div style={{ fontFamily: 'var(--font-mono)', fontSize: 11, letterSpacing: '0.1em', textTransform: 'uppercase', marginBottom: 14 }}>
-            {editId ? 'Editar Jogress' : 'Novo Jogress'}
+            {editId ? 'Editar Domain Jogress' : 'Novo Domain Jogress'}
           </div>
+
+          {/* Nome */}
           <div style={{ marginBottom: 12 }}>
             <label style={{ fontFamily: 'var(--font-mono)', fontSize: 10, color: 'var(--ink-mute)', display: 'block', marginBottom: 4 }}>Nome do Domain Fusionado</label>
             <input value={draft.name} onChange={e => setDraft(d => ({ ...d, name: e.target.value }))} placeholder="ex: Domain of Time" style={fld} />
           </div>
+
+          {/* Fechaduras */}
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 12 }}>
+            <div>
+              <label style={{ fontFamily: 'var(--font-mono)', fontSize: 10, color: 'var(--ink-mute)', display: 'block', marginBottom: 4 }}>Fechadura 1 (NPC)</label>
+              <select value={draft.lock1Id ?? ''} onChange={e => setDraft(d => ({ ...d, lock1Id: e.target.value }))} style={fld}>
+                <option value="">— selecione —</option>
+                {uniqueLockOptions.map(o => <option key={o.id} value={o.id}>{o.name}</option>)}
+              </select>
+            </div>
+            <div>
+              <label style={{ fontFamily: 'var(--font-mono)', fontSize: 10, color: 'var(--ink-mute)', display: 'block', marginBottom: 4 }}>Fechadura 2 (NPC)</label>
+              <select value={draft.lock2Id ?? ''} onChange={e => setDraft(d => ({ ...d, lock2Id: e.target.value }))} style={fld}>
+                <option value="">— selecione —</option>
+                {uniqueLockOptions.map(o => <option key={o.id} value={o.id}>{o.name}</option>)}
+              </select>
+            </div>
+          </div>
+
+          {/* Skills únicas por Fechadura */}
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 12,
+            padding: '12px', border: '1px solid var(--line-soft)', borderRadius: 8, background: 'var(--paper-deep)' }}>
+            <PassivaEditor
+              label={`Skills exclusivas de ${uniqueLockOptions.find(o => o.id === draft.lock1Id)?.name ?? 'Fechadura 1'}`}
+              skills={draft.lock1Skills ?? []}
+              onChange={s => setDraft(d => ({ ...d, lock1Skills: s }))}
+            />
+            <PassivaEditor
+              label={`Skills exclusivas de ${uniqueLockOptions.find(o => o.id === draft.lock2Id)?.name ?? 'Fechadura 2'}`}
+              skills={draft.lock2Skills ?? []}
+              onChange={s => setDraft(d => ({ ...d, lock2Skills: s }))}
+            />
+          </div>
+
+          {/* Grupos de memória */}
           <div style={{ marginBottom: 12 }}>
             <label style={{ fontFamily: 'var(--font-mono)', fontSize: 10, color: 'var(--ink-mute)', display: 'block', marginBottom: 8 }}>Grupos de Passivas de Memória</label>
             <GroupListEditor groups={draft.memoryGroups} onChange={g => setDraft(d => ({ ...d, memoryGroups: g }))} />
           </div>
+
+          {/* Passivas próprias */}
           <div style={{ marginBottom: 16 }}>
-            <label style={{ fontFamily: 'var(--font-mono)', fontSize: 10, color: 'var(--ink-mute)', display: 'block', marginBottom: 8 }}>Passivas Próprias do Domain Fusionado</label>
-            <SkillListEditor skills={draft.ownPassives} onChange={s => setDraft(d => ({ ...d, ownPassives: s }))} />
+            <PassivaEditor label="Passivas Próprias do Domain Fusionado (sempre ativas)" skills={draft.ownPassives} onChange={s => setDraft(d => ({ ...d, ownPassives: s }))} />
           </div>
+
+          {/* Visibilidade */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 16,
+            padding: '10px 14px', border: '1px solid var(--line-soft)', borderRadius: 8,
+            background: 'var(--paper-deep)' }}>
+            <span style={{ fontFamily: 'var(--font-mono)', fontSize: 10, color: 'var(--ink-mute)', flex: 1 }}>
+              Visível para players
+            </span>
+            <button onClick={() => setDraft(d => ({ ...d, visible: !d.visible }))}
+              style={{ padding: '4px 14px', borderRadius: 999, cursor: 'pointer',
+                border: `1px solid ${draft.visible ? 'var(--green)' : 'var(--line)'}`,
+                background: draft.visible ? 'rgba(110,157,112,0.15)' : 'transparent',
+                fontFamily: 'var(--font-mono)', fontSize: 10,
+                color: draft.visible ? 'var(--green)' : 'var(--ink-mute)' }}>
+              {draft.visible ? '● Visível' : '○ Oculto'}
+            </button>
+          </div>
+
           <div style={{ display: 'flex', gap: 8 }}>
             <button
               disabled={!draft.name.trim()}
               onClick={() => save({ id: editId ?? `jcfg-${Date.now().toString(36)}`, ...draft })}
-              style={{ padding: '7px 18px', borderRadius: 999, cursor: draft.name.trim() ? 'pointer' : 'not-allowed', border: '1px solid var(--teal)', background: 'var(--teal)', color: 'var(--paper)', fontFamily: 'var(--font-body)', fontWeight: 700, fontSize: 13, opacity: draft.name.trim() ? 1 : 0.5 }}>
+              style={{ padding: '7px 18px', borderRadius: 999, cursor: draft.name.trim() ? 'pointer' : 'not-allowed',
+                border: '1px solid var(--teal)', background: 'var(--teal)', color: 'var(--paper)',
+                fontFamily: 'var(--font-body)', fontWeight: 700, fontSize: 13, opacity: draft.name.trim() ? 1 : 0.5 }}>
               Salvar
             </button>
             <button onClick={() => { setAdding(false); setEditId(null); setDraft(emptyConfig()) }}
-              style={{ padding: '7px 18px', borderRadius: 999, cursor: 'pointer', border: '1px solid var(--line)', background: 'transparent', fontFamily: 'var(--font-body)', fontSize: 13, color: 'var(--ink-mute)' }}>
+              style={{ padding: '7px 18px', borderRadius: 999, cursor: 'pointer', border: '1px solid var(--line)',
+                background: 'transparent', fontFamily: 'var(--font-body)', fontSize: 13, color: 'var(--ink-mute)' }}>
               Cancelar
             </button>
           </div>
         </div>
       ) : (
         <button onClick={() => setAdding(true)}
-          style={{ marginTop: 8, padding: '8px 20px', borderRadius: 999, border: '1px solid var(--line)', background: 'transparent', cursor: 'pointer', fontFamily: 'var(--font-mono)', fontSize: 11, letterSpacing: '0.08em', textTransform: 'uppercase', color: 'var(--ink-mute)' }}>
-          + Novo Jogress
+          style={{ marginTop: 8, padding: '8px 20px', borderRadius: 999, border: '1px solid var(--line)',
+            background: 'transparent', cursor: 'pointer', fontFamily: 'var(--font-mono)', fontSize: 11,
+            letterSpacing: '0.08em', textTransform: 'uppercase', color: 'var(--ink-mute)' }}>
+          + Novo Domain Jogress
         </button>
       )}
+    </div>
+  )
+}
+
+// ── VisibilitySection ─────────────────────────────────────────────────────────
+
+type VEntityKind = 'tamer' | 'survivor' | 'bestiary' | 'bug' | 'sign' | 'stage'
+
+const VIS_LABELS: Record<VisibilityLevel, { label: string; bg: string; color: string }> = {
+  hidden: { label: 'Oculto',      bg: 'var(--paper-deep)',          color: 'var(--ink-mute)' },
+  name:   { label: 'Foto + Nome', bg: 'rgba(231,212,163,0.2)',       color: 'var(--gold)'     },
+  full:   { label: 'Completo',    bg: 'rgba(110,157,112,0.15)',      color: 'var(--green)'    },
+}
+
+// Bestiary supports 3 levels; everything else toggles hidden ↔ full
+function nextLevel(current: VisibilityLevel, isBestiary: boolean): VisibilityLevel {
+  if (isBestiary) {
+    if (current === 'hidden') return 'name'
+    if (current === 'name')   return 'full'
+    return 'hidden'
+  }
+  return current === 'hidden' ? 'full' : 'hidden'
+}
+
+function VisRow({ label, sub, type, id, state, onUpdate, isBestiary }: {
+  label: string; sub?: string; type: string; id: string
+  state: AppState; onUpdate: (s: AppState) => void; isBestiary?: boolean
+}) {
+  const level = getVisLevel(state, type, id)
+  const { label: lvlLabel, bg, color } = VIS_LABELS[level]
+  return (
+    <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '8px 12px',
+      border: '1px solid var(--line)', borderRadius: 8, background: 'var(--paper)' }}>
+      <div style={{ flex: 1, minWidth: 0 }}>
+        <div style={{ fontFamily: 'var(--font-display)', fontSize: 13, textTransform: 'uppercase',
+          letterSpacing: '-0.01em', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+          {label}
+        </div>
+        {sub && <div style={{ fontFamily: 'var(--font-mono)', fontSize: 9, color: 'var(--ink-mute)', letterSpacing: '0.08em' }}>{sub}</div>}
+      </div>
+      <button onClick={() => onUpdate(setVisibility(state, type, id, nextLevel(level, !!isBestiary)))}
+        style={{ padding: '3px 12px', borderRadius: 999, cursor: 'pointer',
+          border: `1px solid ${color}`, background: bg, color,
+          fontFamily: 'var(--font-mono)', fontSize: 9, letterSpacing: '0.1em',
+          textTransform: 'uppercase', whiteSpace: 'nowrap' }}>
+        {lvlLabel}
+      </button>
+    </div>
+  )
+}
+
+function VisibilitySection({ state, onUpdate }: Props) {
+  const [filter, setFilter] = useState<VEntityKind | 'all'>('all')
+
+  const KINDS: { id: VEntityKind | 'all'; label: string }[] = [
+    { id: 'all',      label: 'Todos'      },
+    { id: 'tamer',    label: 'Tamers'     },
+    { id: 'survivor', label: 'Survivors'  },
+    { id: 'bestiary', label: 'Bestiário'  },
+    { id: 'bug',      label: 'BUGs'       },
+    { id: 'sign',     label: 'SIGNs'      },
+    { id: 'stage',    label: 'Palcos'     },
+  ]
+
+  const show = (k: VEntityKind) => filter === 'all' || filter === k
+
+  return (
+    <div>
+      <div style={{ fontFamily: 'var(--font-mono)', fontSize: 10, color: 'var(--ink-mute)', marginBottom: 12, lineHeight: 1.6 }}>
+        Controle o que os players conseguem ver. <b>Oculto</b> = só GM vê.{' '}
+        <b>Foto + Nome</b> = players vêem imagem e nome (bestiário). <b>Completo</b> = players vêem tudo.
+        <br />Novos itens ficam <b>Ocultos</b> por padrão.
+      </div>
+
+      {/* Filtro */}
+      <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap', marginBottom: 16 }}>
+        {KINDS.map(k => (
+          <button key={k.id} onClick={() => setFilter(k.id as any)}
+            style={{ padding: '4px 12px', borderRadius: 999, cursor: 'pointer',
+              fontFamily: 'var(--font-mono)', fontSize: 10, letterSpacing: '0.08em',
+              border: `1px solid ${filter === k.id ? 'var(--ink)' : 'var(--line)'}`,
+              background: filter === k.id ? 'var(--ink)' : 'transparent',
+              color: filter === k.id ? 'var(--paper)' : 'var(--ink-mute)' }}>
+            {k.label}
+          </button>
+        ))}
+      </div>
+
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+        {show('tamer') && state.tamers.map(t =>
+          <VisRow key={t.id} label={t.name} sub="Tamer" type="tamer" id={t.id} state={state} onUpdate={onUpdate} />
+        )}
+        {show('survivor') && (state.survivors ?? []).map(sv =>
+          <VisRow key={sv.id} label={sv.name} sub="Survivor" type="survivor" id={sv.id} state={state} onUpdate={onUpdate} />
+        )}
+        {show('bestiary') && state.bestiary.filter(d => !d.tamerId).map(d =>
+          <VisRow key={d.id} label={d.name.replace(' Line', '')} sub="Bestiário" type="bestiary" id={d.id} state={state} onUpdate={onUpdate} isBestiary />
+        )}
+        {show('bug') && state.bugs.map(b =>
+          <VisRow key={b.id} label={b.name} sub={`BUG · ${b.class}.${b.color}`} type="bug" id={b.id} state={state} onUpdate={onUpdate} />
+        )}
+        {show('sign') && (state.signs ?? []).map(sg =>
+          <VisRow key={sg.id} label={sg.name} sub={sg.code} type="sign" id={sg.id} state={state} onUpdate={onUpdate} />
+        )}
+        {show('stage') && state.stages.map(s =>
+          <VisRow key={s.id} label={s.title} sub="Palco" type="stage" id={s.id} state={state} onUpdate={onUpdate} />
+        )}
+      </div>
     </div>
   )
 }
@@ -1008,7 +1351,7 @@ function RulesSection({ state, onUpdate }: Props) {
 
 // ── BackstagePage ─────────────────────────────────────────────────────────────
 
-type Tab = 'usuarios' | 'fichas' | 'skilltree' | 'regras'
+type Tab = 'usuarios' | 'fichas' | 'skilltree' | 'regras' | 'visibilidade'
 
 export default function BackstagePage({ state, onUpdate }: Props) {
   const { isGM } = useAuth()
@@ -1026,10 +1369,11 @@ export default function BackstagePage({ state, onUpdate }: Props) {
   }
 
   const TABS: { id: Tab; label: string }[] = [
-    { id: 'usuarios',  label: 'Usuários'   },
-    { id: 'fichas',    label: 'Fichas'     },
-    { id: 'skilltree', label: 'Skill Tree' },
-    { id: 'regras',    label: 'Regras'     },
+    { id: 'usuarios',    label: 'Usuários'     },
+    { id: 'fichas',      label: 'Fichas'       },
+    { id: 'skilltree',   label: 'Skill Tree'   },
+    { id: 'regras',      label: 'Regras'       },
+    { id: 'visibilidade', label: 'Visibilidade' },
   ]
 
   return (
@@ -1066,10 +1410,11 @@ export default function BackstagePage({ state, onUpdate }: Props) {
 
       {/* Conteúdo */}
       <div style={{ padding: '0 56px' }}>
-        {tab === 'usuarios'  && <UsersSection    state={state} onUpdate={onUpdate} />}
-        {tab === 'fichas'    && <SheetSection    state={state} onUpdate={onUpdate} />}
-        {tab === 'skilltree' && <SkillTreeSection state={state} onUpdate={onUpdate} />}
-        {tab === 'regras'    && <RulesSection    state={state} onUpdate={onUpdate} />}
+        {tab === 'usuarios'     && <UsersSection      state={state} onUpdate={onUpdate} />}
+        {tab === 'fichas'       && <SheetSection      state={state} onUpdate={onUpdate} />}
+        {tab === 'skilltree'    && <SkillTreeSection  state={state} onUpdate={onUpdate} />}
+        {tab === 'regras'       && <RulesSection      state={state} onUpdate={onUpdate} />}
+        {tab === 'visibilidade' && <VisibilitySection state={state} onUpdate={onUpdate} />}
       </div>
     </div>
   )

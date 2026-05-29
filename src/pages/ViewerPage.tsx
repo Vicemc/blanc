@@ -24,8 +24,13 @@ export default function ViewerPage({ state }: Props) {
     ?? state.stages[state.stages.length - 1]
     ?? null
 
-  const vis = state.visibility ?? {}
-  const isVis = (type: string, id: string) => vis[`${type}:${id}`] !== false
+  const isVis = (type: string, id: string) => {
+    const raw = (state.visibility ?? {})[`${type}:${id}`] as unknown
+    if (raw === false || raw === 'hidden' || raw === undefined) {
+      return type === 'stage'
+    }
+    return true
+  }
 
   const TABS: { id: ViewTab; label: string }[] = [
     { id: 'party',    label: 'Party' },
