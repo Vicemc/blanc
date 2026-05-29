@@ -853,21 +853,12 @@ function KwCondForm<T extends { category?: string; type: KwType; desc: string; r
 
 // ── JogressCrud ───────────────────────────────────────────────────────────────
 
-const JOGRESS_LOCK_OPTIONS = [
-  { id: 't-hare',   name: 'Hare'   },
-  { id: 't-hibito', name: 'Hibito' },
-  { id: 't-chi',    name: 'Chi'    },
-  { id: 't-ledo',   name: 'Ledo'   },
-  ...TAMER_OPTIONS,
-]
-const uniqueLockOptions = JOGRESS_LOCK_OPTIONS.filter(
-  (opt, i, arr) => arr.findIndex(o => o.id === opt.id) === i
-)
 
 const JOGRESS_PW_KEY = 'gm_jogress_verified'
 
 function JogressCrud({ state, onUpdate }: Props) {
   const configs: JogressConfig[] = state.jogressConfigs ?? []
+  const lockOptions = state.tamers.map(t => ({ id: t.id, name: t.name }))
 
   // Password gate
   const [pwOk,       setPwOk]       = useState(() => !!localStorage.getItem(JOGRESS_PW_KEY))
@@ -1092,8 +1083,8 @@ function JogressCrud({ state, onUpdate }: Props) {
 
       {/* Lista existente */}
       {configs.map(cfg => {
-        const lock1Name = uniqueLockOptions.find(o => o.id === cfg.lock1Id)?.name ?? cfg.lock1Id ?? '—'
-        const lock2Name = uniqueLockOptions.find(o => o.id === cfg.lock2Id)?.name ?? cfg.lock2Id ?? '—'
+        const lock1Name = lockOptions.find(o => o.id === cfg.lock1Id)?.name ?? cfg.lock1Id ?? '—'
+        const lock2Name = lockOptions.find(o => o.id === cfg.lock2Id)?.name ?? cfg.lock2Id ?? '—'
         return (
           <div key={cfg.id} style={{ padding: '12px 16px', borderRadius: 8, border: '1px solid var(--line)',
             marginBottom: 10, display: 'flex', alignItems: 'flex-start', gap: 12,
@@ -1143,14 +1134,14 @@ function JogressCrud({ state, onUpdate }: Props) {
               <label style={{ fontFamily: 'var(--font-mono)', fontSize: 10, color: 'var(--ink-mute)', display: 'block', marginBottom: 4 }}>Fechadura 1 (NPC)</label>
               <select value={draft.lock1Id ?? ''} onChange={e => setDraft(d => ({ ...d, lock1Id: e.target.value }))} style={fld}>
                 <option value="">— selecione —</option>
-                {uniqueLockOptions.map(o => <option key={o.id} value={o.id}>{o.name}</option>)}
+                {lockOptions.map(o => <option key={o.id} value={o.id}>{o.name}</option>)}
               </select>
             </div>
             <div>
               <label style={{ fontFamily: 'var(--font-mono)', fontSize: 10, color: 'var(--ink-mute)', display: 'block', marginBottom: 4 }}>Fechadura 2 (NPC)</label>
               <select value={draft.lock2Id ?? ''} onChange={e => setDraft(d => ({ ...d, lock2Id: e.target.value }))} style={fld}>
                 <option value="">— selecione —</option>
-                {uniqueLockOptions.map(o => <option key={o.id} value={o.id}>{o.name}</option>)}
+                {lockOptions.map(o => <option key={o.id} value={o.id}>{o.name}</option>)}
               </select>
             </div>
           </div>
@@ -1159,12 +1150,12 @@ function JogressCrud({ state, onUpdate }: Props) {
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 12,
             padding: '12px', border: '1px solid var(--line-soft)', borderRadius: 8, background: 'var(--paper-deep)' }}>
             <PassivaEditor
-              label={`Skills exclusivas de ${uniqueLockOptions.find(o => o.id === draft.lock1Id)?.name ?? 'Fechadura 1'}`}
+              label={`Skills exclusivas de ${lockOptions.find(o => o.id === draft.lock1Id)?.name ?? 'Fechadura 1'}`}
               skills={draft.lock1Skills ?? []}
               onChange={s => setDraft(d => ({ ...d, lock1Skills: s }))}
             />
             <PassivaEditor
-              label={`Skills exclusivas de ${uniqueLockOptions.find(o => o.id === draft.lock2Id)?.name ?? 'Fechadura 2'}`}
+              label={`Skills exclusivas de ${lockOptions.find(o => o.id === draft.lock2Id)?.name ?? 'Fechadura 2'}`}
               skills={draft.lock2Skills ?? []}
               onChange={s => setDraft(d => ({ ...d, lock2Skills: s }))}
             />
