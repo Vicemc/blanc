@@ -1292,7 +1292,7 @@ function VisibilitySection({ state, onUpdate }: Props) {
     <div>
       <div style={{ fontFamily: 'var(--font-mono)', fontSize: 10, color: 'var(--ink-mute)', marginBottom: 12, lineHeight: 1.6 }}>
         Controle o que os players conseguem ver. <b>Oculto</b> = só GM vê.{' '}
-        <b>Foto + Nome</b> = players vêem imagem e nome (bestiário). <b>Completo</b> = players vêem tudo.
+        <b>Foto + Nome</b> = players vêem imagem e nome (bestiário, BUGs, SIGNs). <b>Completo</b> = players vêem tudo.
         <br />Novos itens ficam <b>Ocultos</b> por padrão.
       </div>
 
@@ -1321,10 +1321,10 @@ function VisibilitySection({ state, onUpdate }: Props) {
           <VisRow key={d.id} label={d.name.replace(' Line', '')} sub="Bestiário" type="bestiary" id={d.id} state={state} onUpdate={onUpdate} isBestiary />
         )}
         {show('bug') && state.bugs.map(b =>
-          <VisRow key={b.id} label={b.name} sub={`BUG · ${b.class}.${b.color}`} type="bug" id={b.id} state={state} onUpdate={onUpdate} />
+          <VisRow key={b.id} label={b.name} sub={`BUG · ${b.class}.${b.color}`} type="bug" id={b.id} state={state} onUpdate={onUpdate} isBestiary />
         )}
         {show('sign') && (state.signs ?? []).map(sg =>
-          <VisRow key={sg.id} label={sg.name} sub={sg.code} type="sign" id={sg.id} state={state} onUpdate={onUpdate} />
+          <VisRow key={sg.id} label={sg.name} sub={sg.code} type="sign" id={sg.id} state={state} onUpdate={onUpdate} isBestiary />
         )}
         {show('stage') && state.stages.map(s =>
           <VisRow key={s.id} label={s.title} sub="Palco" type="stage" id={s.id} state={state} onUpdate={onUpdate} />
