@@ -701,7 +701,7 @@ export default function DigiZapPage({ state, profile, isGM, onUnreadChange }: Pr
                           </button>
                         )
                       ))}
-                      {(['❤','👍','😂','😢','🔥'] as const).map(e => (
+                      {(['❤','👍','😂','😢','🔥','💀','🥺','🫃','😩'] as const).map(e => (
                         <button key={e} onClick={() => toggleReaction(msg, e)}
                           title={`Reagir ${e}`}
                           style={{ padding: '0 5px', border: 'none', background: 'transparent',
