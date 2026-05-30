@@ -4,7 +4,7 @@ import type {
   AttributeKey, TamerSkill, DigimonSkill,
 } from '../../types'
 import {
-  ATTRIBUTE_GROUPS, ATTRIBUTE_KEYS, PORTRAIT_LIST, BUG_COLORS,
+  ATTRIBUTE_GROUPS, ATTRIBUTE_KEYS, AFFINITY_KEYS, PORTRAIT_LIST, BUG_COLORS,
 } from '../../types'
 import {
   calcDigimonDerived, makeDefaultAttributes, DIGIMON_DEFAULT_IMAGES,
@@ -174,8 +174,9 @@ function BugInfoEditor({ bug, onSave }: { bug: Bug; onSave: (b: Bug) => void }) 
 }
 
 // ── StageDiff ──────────────────────────────────────────────────────
-// Comparação de atributos entre o estágio atual e o próximo revelado.
-function StageDiff({ line, stageIdx }: { line: DigimonLine; stageIdx: number }) {
+// Comparação de status e afinidades entre o estágio atual e o próximo revelado.
+// Para digimons com tamer vinculado, usa o HP/Defesa/Iniciativa/Deslocamento derivados.
+function StageDiff({ line, stageIdx, tamer }: { line: DigimonLine; stageIdx: number; tamer?: Tamer }) {
   const cur  = line.stages[stageIdx]
   const next = line.stages[stageIdx + 1]
   if (!cur || !next || next.locked) {
@@ -183,11 +184,58 @@ function StageDiff({ line, stageIdx }: { line: DigimonLine; stageIdx: number }) 
       ~ não há próximo estágio revelado para comparar ~
     </div>
   }
-  const rows: { label: string; from: number; to: number }[] = ATTRIBUTE_KEYS.map(k => ({
-    label: k, from: cur.attributes[k] ?? 0, to: next.attributes[k] ?? 0,
-  }))
-  rows.push({ label: 'Tamanho', from: cur.size, to: next.size })
-  rows.push({ label: 'Velocidade', from: cur.speed, to: next.speed })
+
+  const isDerived = !!tamer
+  const tamerHP   = tamer ? tamer.status.HP.max : undefined
+  const evBonusOf = (idx: number) => (idx > 1 ? idx - 1 : 0)
+
+  const statusOf = (s: typeof cur, idx: number) => {
+    const base = isDerived
+      ? calcDigimonDerived(s.attributes, s.size, s.speed, evBonusOf(idx), tamerHP, s.level)
+      : { HP: s.status.HP, Defesa: s.status.Defesa, Iniciativa: s.status.Iniciativa, Deslocamento: s.status.Deslocamento }
+    return { ...base, Armadura: s.status.Armadura }
+  }
+  const curStatus  = statusOf(cur,  stageIdx)
+  const nextStatus = statusOf(next, stageIdx + 1)
+
+  const statusRows: { label: string; from: number; to: number }[] = [
+    { label: 'HP',           from: curStatus.HP,           to: nextStatus.HP },
+    { label: 'Deslocamento', from: curStatus.Deslocamento, to: nextStatus.Deslocamento },
+    { label: 'Iniciativa',   from: curStatus.Iniciativa,   to: nextStatus.Iniciativa },
+    { label: 'Defesa',       from: curStatus.Defesa,       to: nextStatus.Defesa },
+    { label: 'Armadura',     from: curStatus.Armadura,     to: nextStatus.Armadura },
+  ]
+
+  const affinityRows = AFFINITY_KEYS
+    .map(k => ({ label: k, from: cur.affinity[k] ?? 0, to: next.affinity[k] ?? 0 }))
+    .filter(r => r.from !== 0 || r.to !== 0)
+
+  const renderRow = (r: { label: string; from: number; to: number }) => {
+    const d = r.to - r.from
+    return (
+      <div key={r.label} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+        gap: 10, padding: '5px 12px', borderTop: '1px solid var(--line-soft)',
+        fontFamily: 'var(--font-mono)', fontSize: 11 }}>
+        <span style={{ color: 'var(--ink-soft)' }}>{r.label}</span>
+        <span style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+          <span style={{ color: 'var(--ink-mute)' }}>{r.from} → {r.to}</span>
+          {d !== 0 && (
+            <span style={{ fontWeight: 700, minWidth: 28, textAlign: 'right',
+              color: d > 0 ? 'var(--green)' : 'var(--coral)' }}>{d > 0 ? `+${d}` : d}</span>
+          )}
+        </span>
+      </div>
+    )
+  }
+
+  const sectionHeader = (label: string) => (
+    <div style={{ padding: '6px 12px', borderTop: '1px solid var(--line-soft)',
+      background: 'var(--paper-deep)', fontFamily: 'var(--font-mono)', fontSize: 9,
+      letterSpacing: '0.12em', textTransform: 'uppercase', color: 'var(--ink-mute)', fontWeight: 700 }}>
+      {label}
+    </div>
+  )
+
   return (
     <div style={{ border: '1px solid var(--line-soft)', borderRadius: 8, overflow: 'hidden', marginTop: 8 }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', padding: '6px 12px',
@@ -195,23 +243,16 @@ function StageDiff({ line, stageIdx }: { line: DigimonLine; stageIdx: number }) 
         letterSpacing: '0.1em', textTransform: 'uppercase', color: 'var(--ink-mute)' }}>
         <span>{cur.stageName} → {next.stageName}</span>
       </div>
-      {rows.map(r => {
-        const d = r.to - r.from
-        return (
-          <div key={r.label} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center',
-            gap: 10, padding: '5px 12px', borderTop: '1px solid var(--line-soft)',
-            fontFamily: 'var(--font-mono)', fontSize: 11 }}>
-            <span style={{ color: 'var(--ink-soft)' }}>{r.label}</span>
-            <span style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-              <span style={{ color: 'var(--ink-mute)' }}>{r.from} → {r.to}</span>
-              {d !== 0 && (
-                <span style={{ fontWeight: 700, minWidth: 28, textAlign: 'right',
-                  color: d > 0 ? 'var(--green)' : 'var(--coral)' }}>{d > 0 ? `+${d}` : d}</span>
-              )}
-            </span>
-          </div>
-        )
-      })}
+
+      {sectionHeader('Status')}
+      {statusRows.map(renderRow)}
+
+      {affinityRows.length > 0 && (
+        <>
+          {sectionHeader('Afinidades')}
+          {affinityRows.map(renderRow)}
+        </>
+      )}
     </div>
   )
 }
@@ -443,7 +484,7 @@ export function DigimonStageView({ line, stageIdx, tamer, editable, isGM, onSave
           <button className={styles.btnGhost} style={{ fontSize: 11 }} onClick={() => setShowDiff(d => !d)}>
             {showDiff ? '✕ Ocultar comparação' : '⇄ Comparar com próximo estágio'}
           </button>
-          {showDiff && <StageDiff line={line} stageIdx={stageIdx} />}
+          {showDiff && <StageDiff line={line} stageIdx={stageIdx} tamer={tamer} />}
         </div>
       )}
 
