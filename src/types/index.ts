@@ -368,6 +368,16 @@ export interface StageClock {
   color:    string;
 }
 
+// Entrada na fila de iniciativa de um Palco.
+// Para a maioria dos atores, há uma entrada por ator (id = actorKey por padrão).
+// Bosses podem ter múltiplas entradas (extra: true) com valores arbitrários do GM.
+export interface InitiativeEntry {
+  id:        string;
+  actorKey:  string;
+  init:      number;
+  extra?:    boolean;
+}
+
 export interface Stage {
   id:          string;
   title:       string;
@@ -384,7 +394,12 @@ export interface Stage {
   clima?:         string | null;
   log?:           PalcoLogEntry[];
   tokenMeta?:     Record<string, { name: string; level: string }>;
-  activeActorKey?: string;   // ator com o turno atual (ordem de iniciativa)
+  activeActorKey?: string;   // legado — substituído por activeInitiativeId quando initiativeOrder existe
+
+  // ── Fila de iniciativa explícita (Round 0 → 1d10 + Iniciativa) ──
+  // Quando definida, sobrepõe a ordenação automática por status.
+  initiativeOrder?:    InitiativeEntry[];
+  activeInitiativeId?: string;
 }
 
 // ---------- Image export ----------

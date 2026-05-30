@@ -1,7 +1,8 @@
 import React, { useState, useCallback, useMemo, useEffect, useRef } from 'react'
-import type { AppState, Stage, ActorRef, TamerSkill, ConditionEntry, JogressConfig, TokenDef } from '../types'
+import type { AppState, Stage, ActorRef, TamerSkill, ConditionEntry, JogressConfig, TokenDef, InitiativeEntry } from '../types'
 import { findTamer, findDigimon, findBug, makeStage, DIGIMON_DEFAULT_IMAGES, getVisLevel } from '../data/store'
 import { findSurvivor, findSign } from '../data/domain'
+import { rollD10 } from '../lib/dice'
 import { PageHead } from '../components/PageHead'
 
 import { SheetModal } from '../components/Sheet'
@@ -2044,52 +2045,174 @@ function applyRoundAdvance(s: Stage): Stage {
 }
 
 // ── Painel de Ordem de Turno (iniciativa) ─────────────────────────────────────
-function TurnOrderPanel({ order, activeKey, round, onSetActive, onNext, onReset }: {
-  order: { key: string; title: string; init: number; portrait: string; side: 'allies' | 'enemies' }[]
-  activeKey?: string
-  round: number
-  onSetActive: (key: string) => void
-  onNext: () => void
-  onReset: () => void
+function TurnOrderPanel({
+  order, actors, activeId, round, canEdit,
+  onSetActive, onNext, onReset, onRoll, onReorder, onAddExtraTurn, onRemoveEntry, onClear,
+}: {
+  order:   { id: string; key: string; title: string; init: number; portrait: string; side: 'allies' | 'enemies'; extra: boolean }[]
+  actors:  { key: string; title: string }[]
+  activeId?: string
+  round:   number
+  canEdit: boolean
+  onSetActive:     (id: string) => void
+  onNext:          () => void
+  onReset:         () => void
+  onRoll:          () => void
+  onReorder:       (sourceId: string, targetId: string) => void
+  onAddExtraTurn:  (actorKey: string, init: number) => void
+  onRemoveEntry:   (entryId: string) => void
+  onClear:         () => void
 }) {
-  if (order.length === 0) return null
-  const activeIdx = order.findIndex(o => o.key === activeKey)
+  const [dragId, setDragId]    = useState<string | null>(null)
+  const [overId, setOverId]    = useState<string | null>(null)
+  const [extraOpen, setExtraOpen] = useState(false)
+  const [extraActor, setExtraActor] = useState<string>('')
+  const [extraInit, setExtraInit]   = useState<string>('')
+
+  const activeIdx = activeId ? order.findIndex(o => o.id === activeId) : -1
+
+  const submitExtra = () => {
+    const init = parseInt(extraInit)
+    if (!extraActor || isNaN(init)) return
+    onAddExtraTurn(extraActor, init)
+    setExtraActor(''); setExtraInit(''); setExtraOpen(false)
+  }
+
   return (
-    <div className={styles.domainPanel} style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
-      <span style={{ fontFamily: 'var(--font-mono)', fontSize: 10, letterSpacing: '0.12em',
-        textTransform: 'uppercase', color: 'var(--ink-mute)' }}>Iniciativa</span>
-      <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', flex: 1 }}>
-        {order.map((o, i) => {
-          const isActive = activeKey ? o.key === activeKey : i === 0
-          return (
-            <button key={o.key} onClick={() => onSetActive(o.key)}
-              title={`Iniciativa ${o.init}`}
-              style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '4px 10px',
-                borderRadius: 999, cursor: 'pointer',
-                border: `1px solid ${isActive ? 'var(--ink)' : 'var(--line)'}`,
-                background: isActive ? 'var(--ink)' : 'transparent',
-                color: isActive ? 'var(--paper)' : 'var(--ink-soft)',
-                fontFamily: 'var(--font-body)', fontSize: 12 }}>
-              <span style={{ width: 14, height: 14, borderRadius: 4, overflow: 'hidden', position: 'relative', flexShrink: 0 }}>
-                <span className={`fill-${o.portrait}`} style={{ position: 'absolute', inset: 0 }} />
-              </span>
-              {o.title}
-              <span style={{ fontFamily: 'var(--font-mono)', fontSize: 9, opacity: 0.7 }}>{o.init}</span>
-            </button>
-          )
-        })}
+    <div className={styles.domainPanel} style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+        <span style={{ fontFamily: 'var(--font-mono)', fontSize: 10, letterSpacing: '0.12em',
+          textTransform: 'uppercase', color: 'var(--ink-mute)' }}>Iniciativa</span>
+
+        <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', flex: 1, minHeight: 28 }}>
+          {order.length === 0 && (
+            <span style={{ fontFamily: 'var(--font-serif)', fontStyle: 'italic', fontSize: 13, color: 'var(--ink-mute)' }}>
+              ~ adicione atores ao palco e role a iniciativa ~
+            </span>
+          )}
+          {order.map((o, i) => {
+            const isActive = activeId ? o.id === activeId : i === 0
+            const isDragOver = overId === o.id && dragId !== null && dragId !== o.id
+            return (
+              <button key={o.id}
+                draggable={canEdit}
+                onDragStart={canEdit ? e => {
+                  e.dataTransfer.setData('text/plain', o.id)
+                  e.dataTransfer.effectAllowed = 'move'
+                  setDragId(o.id)
+                } : undefined}
+                onDragEnd={canEdit ? () => { setDragId(null); setOverId(null) } : undefined}
+                onDragOver={canEdit ? e => {
+                  if (!dragId || dragId === o.id) return
+                  e.preventDefault()
+                  e.dataTransfer.dropEffect = 'move'
+                  setOverId(o.id)
+                } : undefined}
+                onDragLeave={canEdit ? () => { if (overId === o.id) setOverId(null) } : undefined}
+                onDrop={canEdit ? e => {
+                  e.preventDefault()
+                  const sourceId = e.dataTransfer.getData('text/plain')
+                  if (sourceId && sourceId !== o.id) onReorder(sourceId, o.id)
+                  setDragId(null); setOverId(null)
+                } : undefined}
+                onClick={() => onSetActive(o.id)}
+                title={`Iniciativa ${o.init}${o.extra ? ' · turno extra' : ''}${canEdit ? ' · arraste para reordenar' : ''}`}
+                style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '4px 10px',
+                  borderRadius: 999, cursor: canEdit ? 'grab' : 'pointer',
+                  border: `1px solid ${isDragOver ? 'var(--teal)' : isActive ? 'var(--ink)' : (o.extra ? 'var(--gold)' : 'var(--line)')}`,
+                  background: isActive ? 'var(--ink)' : (isDragOver ? 'rgba(74,155,155,0.12)' : 'transparent'),
+                  color: isActive ? 'var(--paper)' : 'var(--ink-soft)',
+                  opacity: dragId === o.id ? 0.4 : 1,
+                  fontFamily: 'var(--font-body)', fontSize: 12,
+                  transition: 'background 0.12s, border-color 0.12s, opacity 0.12s' }}>
+                <span style={{ width: 14, height: 14, borderRadius: 4, overflow: 'hidden', position: 'relative', flexShrink: 0 }}>
+                  <span className={`fill-${o.portrait}`} style={{ position: 'absolute', inset: 0 }} />
+                </span>
+                {o.title}
+                {o.extra && <span style={{ fontFamily: 'var(--font-mono)', fontSize: 8, letterSpacing: '0.08em',
+                  textTransform: 'uppercase', color: isActive ? 'var(--paper)' : 'var(--gold)', fontWeight: 700 }}>+T</span>}
+                <span style={{ fontFamily: 'var(--font-mono)', fontSize: 9, opacity: 0.7 }}>{o.init}</span>
+                {canEdit && o.extra && (
+                  <span onClick={e => { e.stopPropagation(); onRemoveEntry(o.id) }}
+                    style={{ cursor: 'pointer', fontFamily: 'var(--font-mono)', fontSize: 11,
+                      color: isActive ? 'var(--paper)' : 'var(--coral)', marginLeft: 2 }}
+                    title="Remover turno extra">×</span>
+                )}
+              </button>
+            )
+          })}
+        </div>
+
+        <button onClick={onNext} disabled={order.length === 0}
+          style={{ padding: '5px 14px', borderRadius: 999, cursor: order.length === 0 ? 'not-allowed' : 'pointer',
+            border: '1px solid var(--coral)', background: 'var(--coral)', color: 'var(--paper)',
+            opacity: order.length === 0 ? 0.5 : 1,
+            fontFamily: 'var(--font-mono)', fontSize: 10, letterSpacing: '0.08em', textTransform: 'uppercase' }}>
+          ▶ Próximo turno
+        </button>
+        <button onClick={onReset} title="Reiniciar ordem para o primeiro"
+          style={{ padding: '5px 10px', borderRadius: 999, cursor: 'pointer',
+            border: '1px solid var(--line)', background: 'transparent', color: 'var(--ink-mute)',
+            fontFamily: 'var(--font-mono)', fontSize: 10 }}>↺</button>
+        {activeIdx >= 0 && <span style={{ fontFamily: 'var(--font-mono)', fontSize: 9, color: 'var(--ink-mute)' }}>R{round} · {activeIdx + 1}/{order.length}</span>}
       </div>
-      <button onClick={onNext}
-        style={{ padding: '5px 14px', borderRadius: 999, cursor: 'pointer',
-          border: '1px solid var(--coral)', background: 'var(--coral)', color: 'var(--paper)',
-          fontFamily: 'var(--font-mono)', fontSize: 10, letterSpacing: '0.08em', textTransform: 'uppercase' }}>
-        ▶ Próximo turno
-      </button>
-      <button onClick={onReset} title="Reiniciar ordem"
-        style={{ padding: '5px 10px', borderRadius: 999, cursor: 'pointer',
-          border: '1px solid var(--line)', background: 'transparent', color: 'var(--ink-mute)',
-          fontFamily: 'var(--font-mono)', fontSize: 10 }}>↺</button>
-      {activeIdx >= 0 && <span style={{ fontFamily: 'var(--font-mono)', fontSize: 9, color: 'var(--ink-mute)' }}>R{round} · {activeIdx + 1}/{order.length}</span>}
+
+      {canEdit && (
+        <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'center' }}>
+          <button onClick={onRoll} disabled={actors.length === 0}
+            title="Rola 1d10 + Iniciativa para todos os atores no palco"
+            style={{ padding: '4px 12px', borderRadius: 999, cursor: actors.length === 0 ? 'not-allowed' : 'pointer',
+              border: '1px solid var(--teal)', background: 'var(--teal)', color: 'var(--paper)',
+              opacity: actors.length === 0 ? 0.5 : 1,
+              fontFamily: 'var(--font-mono)', fontSize: 10, letterSpacing: '0.08em', textTransform: 'uppercase' }}>
+            🎲 Rolar iniciativa
+          </button>
+          <button onClick={() => setExtraOpen(p => !p)}
+            disabled={actors.length === 0}
+            style={{ padding: '4px 12px', borderRadius: 999, cursor: actors.length === 0 ? 'not-allowed' : 'pointer',
+              border: '1px solid var(--gold)', background: extraOpen ? 'var(--gold)' : 'transparent',
+              color: extraOpen ? 'var(--paper)' : 'var(--gold)',
+              opacity: actors.length === 0 ? 0.5 : 1,
+              fontFamily: 'var(--font-mono)', fontSize: 10, letterSpacing: '0.08em', textTransform: 'uppercase' }}>
+            + Turno extra
+          </button>
+          <button onClick={onClear} disabled={order.length === 0}
+            title="Limpar fila de iniciativa (volta à ordenação automática por status)"
+            style={{ padding: '4px 12px', borderRadius: 999, cursor: order.length === 0 ? 'not-allowed' : 'pointer',
+              border: '1px solid var(--line)', background: 'transparent', color: 'var(--ink-mute)',
+              opacity: order.length === 0 ? 0.5 : 1,
+              fontFamily: 'var(--font-mono)', fontSize: 10, letterSpacing: '0.08em', textTransform: 'uppercase' }}>
+            🗑 Limpar
+          </button>
+          {extraOpen && (
+            <div style={{ display: 'flex', gap: 6, alignItems: 'center', flexWrap: 'wrap',
+              padding: '4px 10px', borderRadius: 8, background: 'var(--paper-deep)',
+              border: '1px solid var(--line-soft)' }}>
+              <select value={extraActor} onChange={e => setExtraActor(e.target.value)}
+                style={{ padding: '4px 8px', borderRadius: 6, border: '1px solid var(--line)',
+                  background: 'var(--paper)', color: 'var(--ink)', fontFamily: 'var(--font-body)', fontSize: 12 }}>
+                <option value="">— ator —</option>
+                {actors.map(a => <option key={a.key} value={a.key}>{a.title}</option>)}
+              </select>
+              <input type="number" value={extraInit} onChange={e => setExtraInit(e.target.value)}
+                placeholder="iniciativa" onKeyDown={e => e.key === 'Enter' && submitExtra()}
+                style={{ width: 80, padding: '4px 8px', borderRadius: 6, border: '1px solid var(--line)',
+                  background: 'var(--paper)', color: 'var(--ink)', fontFamily: 'var(--font-mono)', fontSize: 12 }} />
+              <button onClick={submitExtra} disabled={!extraActor || !extraInit}
+                style={{ padding: '4px 12px', borderRadius: 999, cursor: 'pointer',
+                  border: '1px solid var(--ink)', background: 'var(--ink)', color: 'var(--paper)',
+                  opacity: (!extraActor || !extraInit) ? 0.5 : 1,
+                  fontFamily: 'var(--font-mono)', fontSize: 10, letterSpacing: '0.08em', textTransform: 'uppercase' }}>
+                ✓ Adicionar
+              </button>
+              <button onClick={() => { setExtraOpen(false); setExtraActor(''); setExtraInit('') }}
+                style={{ padding: '4px 10px', borderRadius: 999, cursor: 'pointer',
+                  border: '1px solid var(--line)', background: 'transparent', color: 'var(--ink-mute)',
+                  fontFamily: 'var(--font-mono)', fontSize: 10 }}>×</button>
+            </div>
+          )}
+        </div>
+      )}
     </div>
   )
 }
@@ -2374,32 +2497,124 @@ function PalcoView({ stage, state, onUpdate, onBack, isGM = false }: {
 
   const domainTamers = useMemo(() => getDomainTamers(stage, state), [stage, state])
 
-  // Ordem de iniciativa (maior primeiro)
+  // Ordem de iniciativa.
+  // Quando stage.initiativeOrder existe (após o GM rolar), usa a ordem persistida.
+  // Caso contrário, cai para ordenação automática pelo status Iniciativa.
   const turnOrder = useMemo(() => {
     const mk = (a: ActorRef, side: 'allies' | 'enemies') => {
       const r = resolveActor(state, a, rt.tokenMeta)
-      return { key: actorKey(a), title: r.title, init: getInitiative(state, a), portrait: r.portrait, side }
+      return { actorKey: actorKey(a), title: r.title, baseInit: getInitiative(state, a), portrait: r.portrait, side }
     }
-    const arr = [
+    const allActors = [
       ...stage.sides.allies.map(a => mk(a, 'allies' as const)),
       ...stage.sides.enemies.map(a => mk(a, 'enemies' as const)),
     ]
-    return arr.sort((x, y) => y.init - x.init || x.key.localeCompare(y.key))
-  }, [stage.sides, state, rt.tokenMeta])
+    const byKey = new Map(allActors.map(a => [a.actorKey, a]))
 
-  const setActiveActor = (key: string) => mutateStage(s => ({ ...s, activeActorKey: key }))
+    if (stage.initiativeOrder && stage.initiativeOrder.length > 0) {
+      return stage.initiativeOrder
+        .map(e => {
+          const info = byKey.get(e.actorKey)
+          if (!info) return null
+          return {
+            id: e.id, key: e.actorKey, init: e.init,
+            title: info.title, portrait: info.portrait, side: info.side, extra: !!e.extra,
+          }
+        })
+        .filter((x): x is NonNullable<typeof x> => x !== null)
+    }
+
+    return allActors
+      .map(info => ({
+        id: info.actorKey, key: info.actorKey, init: info.baseInit,
+        title: info.title, portrait: info.portrait, side: info.side, extra: false,
+      }))
+      .sort((x, y) => y.init - x.init || x.key.localeCompare(y.key))
+  }, [stage.sides, stage.initiativeOrder, state, rt.tokenMeta])
+
+  const activeId = stage.activeInitiativeId ?? stage.activeActorKey ?? turnOrder[0]?.id
+  const setActiveActor = (id: string) => mutateStage(s => ({ ...s, activeInitiativeId: id }))
   const nextTurn = () => {
     if (turnOrder.length === 0) return
-    const idx = turnOrder.findIndex(o => o.key === stage.activeActorKey)
+    const idx = turnOrder.findIndex(o => o.id === activeId)
     const nextIdx = idx < 0 ? 0 : (idx + 1) % turnOrder.length
     const wrapped = idx >= 0 && nextIdx === 0
     mutateStage(s => {
-      let ns: Stage = { ...s, activeActorKey: turnOrder[nextIdx].key }
+      let ns: Stage = { ...s, activeInitiativeId: turnOrder[nextIdx].id }
       if (wrapped) ns = applyRoundAdvance(ns)
       return ns
     })
   }
-  const resetTurns = () => mutateStage(s => ({ ...s, activeActorKey: turnOrder[0]?.key }))
+  const resetTurns = () => mutateStage(s => ({ ...s, activeInitiativeId: turnOrder[0]?.id }))
+
+  // Rola 1d10 + Iniciativa para todos os atores no palco, ordena descendente
+  // e persiste como initiativeOrder. Reseta o ator ativo para o primeiro.
+  const rollAllInitiative = () => {
+    const all: ActorRef[] = [...stage.sides.allies, ...stage.sides.enemies]
+    if (all.length === 0) return
+    const seed = Date.now().toString(36)
+    const entries: InitiativeEntry[] = all.map(a => {
+      const stat = getInitiative(state, a)
+      const roll = rollD10()
+      return {
+        id: `ini-${actorKey(a)}-${seed}-${Math.random().toString(36).slice(2, 6)}`,
+        actorKey: actorKey(a),
+        init: roll + stat,
+      }
+    })
+    entries.sort((x, y) => y.init - x.init)
+    mutateStage(s => ({ ...s, initiativeOrder: entries, activeInitiativeId: entries[0]?.id }))
+  }
+
+  // Reordena via drag-and-drop. Se initiativeOrder ainda não existe, faz snapshot
+  // da turnOrder atual antes de aplicar a mudança.
+  const reorderInitiative = (sourceId: string, targetId: string) => {
+    if (sourceId === targetId) return
+    mutateStage(s => {
+      const snapshot: InitiativeEntry[] = s.initiativeOrder ?? turnOrder.map(o => ({
+        id: o.id, actorKey: o.key, init: o.init, ...(o.extra ? { extra: true } : {}),
+      }))
+      const sourceIdx = snapshot.findIndex(e => e.id === sourceId)
+      const targetIdx = snapshot.findIndex(e => e.id === targetId)
+      if (sourceIdx < 0 || targetIdx < 0) return s
+      const next = [...snapshot]
+      const [moved] = next.splice(sourceIdx, 1)
+      const insertIdx = sourceIdx < targetIdx ? targetIdx - 1 : targetIdx
+      next.splice(insertIdx, 0, moved)
+      return { ...s, initiativeOrder: next }
+    })
+  }
+
+  // Adiciona um turno extra para um ator (boss). O GM define o valor de iniciativa.
+  const addExtraTurn = (targetActorKey: string, init: number) => {
+    mutateStage(s => {
+      const snapshot: InitiativeEntry[] = s.initiativeOrder ?? turnOrder.map(o => ({
+        id: o.id, actorKey: o.key, init: o.init, ...(o.extra ? { extra: true } : {}),
+      }))
+      const newEntry: InitiativeEntry = {
+        id: `ini-extra-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 6)}`,
+        actorKey: targetActorKey, init, extra: true,
+      }
+      const next = [...snapshot, newEntry].sort((a, b) => b.init - a.init)
+      return { ...s, initiativeOrder: next }
+    })
+  }
+
+  const removeInitiativeEntry = (entryId: string) => {
+    mutateStage(s => {
+      if (!s.initiativeOrder) return s
+      const next = s.initiativeOrder.filter(e => e.id !== entryId)
+      const nextActive = s.activeInitiativeId === entryId ? next[0]?.id : s.activeInitiativeId
+      return { ...s, initiativeOrder: next, activeInitiativeId: nextActive }
+    })
+  }
+
+  const clearInitiative = () => {
+    mutateStage(s => {
+      const { initiativeOrder: _i, activeInitiativeId: _a, ...rest } = s
+      return rest as Stage
+    })
+  }
 
   // Aplica condições a um ator-alvo (usado pelo targeting de skills)
   const applyConditionsToTarget = (targetKey: string, conds: import('../types').PalcoCondition[]) => {
@@ -2515,11 +2730,18 @@ function PalcoView({ stage, state, onUpdate, onBack, isGM = false }: {
 
       <TurnOrderPanel
         order={turnOrder}
-        activeKey={stage.activeActorKey}
+        actors={actorList}
+        activeId={activeId}
         round={rt.roundCurrent}
+        canEdit={isGM}
         onSetActive={setActiveActor}
         onNext={nextTurn}
         onReset={resetTurns}
+        onRoll={rollAllInitiative}
+        onReorder={reorderInitiative}
+        onAddExtraTurn={addExtraTurn}
+        onRemoveEntry={removeInitiativeEntry}
+        onClear={clearInitiative}
       />
 
       <ClimaPanel
