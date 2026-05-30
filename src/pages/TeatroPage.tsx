@@ -1,4 +1,5 @@
 import React, { useState, useCallback, useMemo, useEffect, useRef } from 'react'
+import { useLocation } from 'react-router-dom'
 import type { AppState, Stage, ActorRef, TamerSkill, ConditionEntry, JogressConfig, TokenDef, InitiativeEntry } from '../types'
 import { findTamer, findDigimon, findBug, makeStage, DIGIMON_DEFAULT_IMAGES, getVisLevel } from '../data/store'
 import { findSurvivor, findSign } from '../data/domain'
@@ -2814,6 +2815,17 @@ function PalcoView({ stage, state, onUpdate, onBack, isGM = false }: {
 export default function TeatroPage({ state, onUpdate, isGM = false }: Props) {
   const [openStage, setOpenStage] = useState<string|null>(null)
   const stage = openStage ? state.stages.find(s => s.id === openStage) ?? null : null
+  const location = useLocation()
+
+  // Deep-link: navegação com state.openStage abre o palco direto
+  useEffect(() => {
+    const navState = location.state as { openStage?: string } | null
+    if (navState?.openStage && state.stages.some(s => s.id === navState.openStage)) {
+      setOpenStage(navState.openStage)
+      // Limpa o state pra não reabrir em re-renders
+      window.history.replaceState({}, '')
+    }
+  }, [location.state, state.stages])
 
   const newStage = () => {
     const s = makeStage(`stage-${Date.now().toString(36)}`)

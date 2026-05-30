@@ -11,28 +11,19 @@ import type { SheetSubject } from '../components/Sheet'
 import { useSettings } from '../lib/settings'
 import styles from './PartyPage.module.css'
 
-// ── Eye-toggle: cicla hidden ↔ full ─────────────────────────────────────────
-function EyeToggle({ type, id, state, onUpdate }: {
-  type: string; id: string; state: AppState; onUpdate: (s: AppState) => void
-}) {
-  const level = getVisLevel(state, type, id)
-  const next: VisibilityLevel = level === 'hidden' ? 'full' : 'hidden'
-  const visible = level === 'full'
-  return (
-    <button
-      title={visible ? 'Visível para players — clique para ocultar' : 'Oculto dos players — clique para revelar'}
-      onClick={e => { e.stopPropagation(); onUpdate(setVisibility(state, type, id, next)) }}
-      style={{
-        position: 'absolute', top: 6, left: 6, zIndex: 10,
-        width: 22, height: 22, borderRadius: '50%', border: 'none', cursor: 'pointer',
-        display: 'flex', alignItems: 'center', justifyContent: 'center',
-        background: visible ? 'rgba(110,157,112,0.85)' : 'rgba(0,0,0,0.45)',
-        color: '#f6f2e9', fontSize: 11, lineHeight: 1,
-        backdropFilter: 'blur(2px)',
-      }}>
-      {visible ? '●' : '○'}
-    </button>
-  )
+// IDs dos NPCs Fechadura — usado para inserir novos tamers entre os Survivors e os Fechaduras
+const NPC_FECHADURA_IDS = new Set([
+  't-hare', 't-kanade', 't-shinra', 't-kumo', 't-hibito', 't-emi', 't-shiro'
+])
+
+function splitTamersByLockBoundary(tamers: AppState['tamers']) {
+  const lastLockIndex = tamers.reduce((idx, t, i) =>
+    NPC_FECHADURA_IDS.has(t.id) ? i : idx, -1)
+  if (lastLockIndex < 0) return { coreTamers: tamers, extraTamers: [] }
+  return {
+    coreTamers: tamers.slice(0, lastLockIndex + 1),
+    extraTamers: tamers.slice(lastLockIndex + 1),
+  }
 }
 
 interface Props {
@@ -169,7 +160,16 @@ function AddTamerModal({ state, onSave, onClose }: { state: AppState; onSave: (s
       ...makeTamer(id, name.toUpperCase(), surname, portrait, parseInt(age)||17, parseInt(height)||170, sign||'—', digimonId),
       tagline, birthday: birthday||'—', voice: voice||'—',
     }
-    onSave({ ...state, tamers: [...state.tamers, tamer], bestiary: newBestiary })
+    // Insere o novo tamer imediatamente depois dos Survivors (PCs principais),
+    // antes da primeira Fechadura. Tamers adicionados subsequentemente preservam
+    // a ordem de inserção (não viram pilha).
+    const newTamers = [...state.tamers]
+    let insertAt = newTamers.length
+    for (let i = 0; i < newTamers.length; i++) {
+      if (NPC_FECHADURA_IDS.has(newTamers[i].id)) { insertAt = i; break }
+    }
+    newTamers.splice(insertAt, 0, tamer)
+    onSave({ ...state, tamers: newTamers, bestiary: newBestiary })
     onClose()
   }
 
@@ -310,6 +310,7 @@ export default function PartyPage({ state, onUpdate, canEdit, isGM }: Props) {
   const [open, setOpen]         = useState<SheetSubject | null>(null)
   const [showAdd, setShowAdd]   = useState(false)
   const [showAddSv, setShowAddSv] = useState(false)
+  const { coreTamers, extraTamers } = splitTamersByLockBoundary(state.tamers)
   const { settings, update: updateSettings } = useSettings()
   const compactGrid = settings.partyCompact
   const setCompactGrid = (v: boolean | ((prev: boolean) => boolean)) => {
@@ -336,6 +337,56 @@ export default function PartyPage({ state, onUpdate, canEdit, isGM }: Props) {
     onUpdate(newState)
     if (uploadedToStorage) void saveStateToDB(newState)
   }, [state, onUpdate])
+
+  const renderTamerCard = (t: Tamer) => {
+    const digi = t.digimonId ? findDigimon(state, t.digimonId) : null
+    const cur  = digi ? (digi.stages[digi.currentStage] ?? digi.stages[1] ?? digi.stages[0]) : null
+    return (
+      <div key={t.id} className={styles.card} onClick={() => setOpen({ kind:'tamer', id:t.id })}>
+        <div className={`${styles.portrait} fill-${t.portrait}`}>
+          {t.image
+            ? <img key={t.image} src={t.image} alt="" style={{ width:'100%', height:'100%', objectFit:'cover' }}
+                onError={e => { (e.currentTarget as HTMLImageElement).style.display = 'none' }} />
+            : <div className="grain" />}
+          <label className={styles.uploadHint} onClick={e => e.stopPropagation()}>
+            trocar foto
+            <input type="file" accept="image/*" style={{ display:'none' }} onChange={e => {
+              const f = e.target.files?.[0]; if (!f) return
+              const r = new FileReader(); r.onload = ev => { handleImageUpload(t.id, ev.target?.result as string) }; r.readAsDataURL(f)
+            }} />
+          </label>
+        </div>
+        <div className={styles.cardActions}>
+          <button className={styles.cardActionBtn} title="Exportar ficha"
+            onClick={e => { e.stopPropagation(); exportJson(t, `tamer-${t.id}-${new Date().toISOString().slice(0,10)}.json`) }}>↓</button>
+          <button className={styles.cardActionBtn} title="Importar ficha"
+            onClick={e => { e.stopPropagation(); importJson<typeof t>(imported => {
+              onUpdate({ ...state, tamers: state.tamers.map(x => x.id === t.id ? { ...imported, id: t.id } : x) })
+            }) }}>↑</button>
+        </div>
+        <div className={styles.info}>
+          <h3 className={styles.name}>{t.name}</h3>
+          <div className={styles.meta}>{t.age} anos · {t.sign} · {t.height} cm</div>
+          <div className={styles.tagline}>~ {t.tagline} ~</div>
+          <div className={styles.xpBar}>
+            <span className={styles.xpPill}>XP livre: <b>{t.xp}</b></span>
+          </div>
+          {digi ? (
+            <div className={styles.digiStrip}>
+              <div className={`${styles.mini} fill-${cur?.portrait ?? 'sage'}`} style={{ position:'relative', overflow:'hidden' }}>
+                {digi.image
+                  ? <img src={digi.image} alt={digi.name} style={{ width:'100%', height:'100%', objectFit:'cover', position:'absolute', inset:0 }} />
+                  : <div className="grain" />}
+              </div>
+              <span className={styles.digiName}>{digi.name.replace(' Line','')} <span className={styles.dim}>· {digi.stages.length - 1} estágios</span></span>
+            </div>
+          ) : (
+            <div className={styles.noDigi}>~ ainda sem digimon vinculado ~</div>
+          )}
+        </div>
+      </div>
+    )
+  }
 
   return (
     <div className={styles.page}>
@@ -364,84 +415,15 @@ export default function PartyPage({ state, onUpdate, canEdit, isGM }: Props) {
       )}
 
       <div className={compactGrid ? styles.gridCompact : styles.grid}>
-        {state.tamers
-          .filter(t => isGM || getVisLevel(state, 'tamer', t.id) !== 'hidden')
-          .map(t => {
-          const digi = t.digimonId ? findDigimon(state, t.digimonId) : null
-          const cur  = digi ? (digi.stages[digi.currentStage] ?? digi.stages[1] ?? digi.stages[0]) : null
-          return (
-            <div key={t.id} className={styles.card} onClick={() => setOpen({ kind:'tamer', id:t.id })}>
-              <div className={`${styles.portrait} fill-${t.portrait}`} style={{ position: 'relative' }}>
-                {isGM && <EyeToggle type="tamer" id={t.id} state={state} onUpdate={onUpdate} />}
-                {t.image
-                  ? <img key={t.image} src={t.image} alt="" style={{ width:'100%', height:'100%', objectFit:'cover' }}
-                      onError={e => { (e.currentTarget as HTMLImageElement).style.display = 'none' }} />
-                  : <div className="grain" />}
-                <label className={styles.uploadHint} onClick={e => e.stopPropagation()}>
-                  trocar foto
-                  <input type="file" accept="image/*" style={{ display:'none' }} onChange={e => {
-                    const f = e.target.files?.[0]; if (!f) return
-                    const r = new FileReader(); r.onload = ev => { handleImageUpload(t.id, ev.target?.result as string) }; r.readAsDataURL(f)
-                  }} />
-                </label>
-              </div>
-              <div className={styles.cardActions}>
-                <button className={styles.cardActionBtn} title="Exportar ficha"
-                  onClick={e => { e.stopPropagation(); exportJson(t, `tamer-${t.id}-${new Date().toISOString().slice(0,10)}.json`) }}>↓</button>
-                <button className={styles.cardActionBtn} title="Importar ficha"
-                  onClick={e => { e.stopPropagation(); importJson<typeof t>(imported => {
-                    onUpdate({ ...state, tamers: state.tamers.map(x => x.id === t.id ? { ...imported, id: t.id } : x) })
-                  }) }}>↑</button>
-              </div>
-              <div className={styles.info}>
-                <h3 className={styles.name}>{t.name}</h3>
-                <div className={styles.meta}>{t.age} anos · {t.sign} · {t.height} cm</div>
-                <div className={styles.tagline}>~ {t.tagline} ~</div>
-                <div className={styles.xpBar}>
-                  <span className={styles.xpPill}>XP livre: <b>{t.xp}</b></span>
-                </div>
-                {digi ? (
-                  <div className={styles.digiStrip}>
-                    <div className={`${styles.mini} fill-${cur?.portrait ?? 'sage'}`} style={{ position:'relative', overflow:'hidden' }}>
-                      {digi.image
-                        ? <img src={digi.image} alt={digi.name} style={{ width:'100%', height:'100%', objectFit:'cover', position:'absolute', inset:0 }} />
-                        : <div className="grain" />}
-                    </div>
-                    <span className={styles.digiName}>{digi.name.replace(' Line','')} <span className={styles.dim}>· {digi.stages.length - 1} estágios</span></span>
-                  </div>
-                ) : (
-                  <div className={styles.noDigi}>~ ainda sem digimon vinculado ~</div>
-                )}
-              </div>
-            </div>
-          )
-        })}
+        {coreTamers.map(renderTamerCard)}
         {/* Survivor cards */}
-        {(state.survivors ?? [])
-          .filter(sv => isGM || getVisLevel(state, 'survivor', sv.id) !== 'hidden')
-          .map(sv => (
+        {(state.survivors ?? []).map(sv => (
           <div key={sv.id} className={styles.card} onClick={() => setOpen({ kind: 'survivor', id: sv.id })}>
-            <div className={`${styles.portrait} fill-${sv.portrait}`} style={{ position: 'relative' }}>
-              {isGM && <EyeToggle type="survivor" id={sv.id} state={state} onUpdate={onUpdate} />}
+            <div className={`${styles.portrait} fill-${sv.portrait}`}>
               {sv.image
                 ? <img key={sv.image} src={sv.image} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }}
                     onError={e => { (e.currentTarget as HTMLImageElement).style.display = 'none' }} />
                 : <div className="grain" />}
-              <label className={styles.uploadHint} onClick={e => e.stopPropagation()}>
-                trocar foto
-                <input type="file" accept="image/*" style={{ display: 'none' }} onChange={e => {
-                  const f = e.target.files?.[0]; if (!f) return
-                  const r = new FileReader(); r.onload = ev => { handleSurvivorImageUpload(sv.id, ev.target?.result as string) }; r.readAsDataURL(f)
-                }} />
-              </label>
-            </div>
-            <div className={styles.cardActions}>
-              <button className={styles.cardActionBtn} title="Exportar ficha"
-                onClick={e => { e.stopPropagation(); exportJson(sv, `survivor-${sv.id}-${new Date().toISOString().slice(0, 10)}.json`) }}>↓</button>
-              <button className={styles.cardActionBtn} title="Importar ficha"
-                onClick={e => { e.stopPropagation(); importJson<typeof sv>(imported => {
-                  onUpdate({ ...state, survivors: (state.survivors ?? []).map(x => x.id === sv.id ? { ...imported, id: sv.id } : x) })
-                }) }}>↑</button>
             </div>
             <div className={styles.info}>
               <div style={{ fontFamily: 'var(--font-mono)', fontSize: 9, letterSpacing: '0.14em', textTransform: 'uppercase', color: 'var(--ink-mute)', marginBottom: 2 }}>Survivor</div>
@@ -455,6 +437,7 @@ export default function PartyPage({ state, onUpdate, canEdit, isGM }: Props) {
             </div>
           </div>
         ))}
+        {extraTamers.map(renderTamerCard)}
         {isGM && <div className={styles.addCard} onClick={() => setShowAdd(true)}>+ Novo Tamer</div>}
       </div>
 

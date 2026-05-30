@@ -105,7 +105,7 @@ function TamerSkillsWithDomainTabs({ tamer, editable, passiveToggles, setPassive
 
   const hasMultipleDomains = domainGroups.length >= 2
 
-  const [activeTab, setActiveTab] = useState<string>('geral')
+  const [activeTab, setActiveTab] = useState<string>('Geral')
 
   const renderSkills = (skills: { s: TamerSkill; origIdx: number }[]) =>
     [...skills]
@@ -129,19 +129,20 @@ function TamerSkillsWithDomainTabs({ tamer, editable, passiveToggles, setPassive
     return <>{renderSkills(indexed)}</>
   }
 
+  // Aba "Geral" → skills sem "Domain of" no keyword.
+  // Demais abas → uma por keyword "Domain of …".
   const groups: Record<string, { s: TamerSkill; origIdx: number }[]> = { 'Geral': [] }
   for (const g of domainGroups) groups[g] = []
-
   for (const item of indexed) {
-    const k = item.s.keyword
-    if (k.includes('Domain of') && groups[k]) {
-      groups[k].push(item)
+    if (item.s.keyword.includes('Domain of') && groups[item.s.keyword]) {
+      groups[item.s.keyword].push(item)
     } else {
       groups['Geral'].push(item)
     }
   }
 
-  const tabKeys = Object.keys(groups).filter(k => groups[k].length > 0)
+  // Ordena: Geral primeiro, depois Domains
+  const tabKeys = ['Geral', ...domainGroups].filter(k => groups[k]?.length > 0)
   const currentTab = tabKeys.includes(activeTab) ? activeTab : tabKeys[0]
 
   return (

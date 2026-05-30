@@ -2,11 +2,12 @@
 // Painel exclusivo do GM: gerenciar usuários, vincular tamers, liberar Skill Tree.
 
 import React, { useState, useEffect } from 'react'
+import { Link } from 'react-router-dom'
 import { listProfiles, setUserRole } from '../lib/auth'
 import type { UserProfile } from '../lib/auth'
 import { useAuth } from '../components/AuthProvider'
 import { useSettings } from '../lib/settings'
-import type { AppState, SkillTreePhase, TamerSkill, ClimaEntry, KeywordEntry, ConditionEntry, JogressConfig, JogressGroup, JogressSkill, VisibilityLevel } from '../types'
+import type { AppState, ActorRef, SkillTreePhase, TamerSkill, ClimaEntry, KeywordEntry, ConditionEntry, JogressConfig, JogressGroup, JogressSkill, VisibilityLevel } from '../types'
 import { listNotes, saveNote, deleteNote, listItems, saveItem, deleteItem, revealItem,
   listSnapshots, createSnapshot, loadSnapshot, deleteSnapshot } from '../lib/db'
 import type { GMNote, GMItem, SnapshotRow } from '../lib/db'
@@ -14,7 +15,8 @@ import { supabase } from '../lib/supabase'
 import { SheetModal } from '../components/Sheet'
 import type { SheetSubject } from '../components/Sheet'
 import { BASE_KEYWORDS, BASE_CONDITIONS, getEffectiveClimas, groupBy } from '../data/rulesData'
-import { getVisLevel, setVisibility } from '../data/store'
+import { findTamer, findDigimon, findBug, DIGIMON_DEFAULT_IMAGES, getVisLevel, setVisibility } from '../data/store'
+import { findSurvivor } from '../data/domain'
 
 interface Props {
   state:    AppState
@@ -901,25 +903,75 @@ function JogressCrud({ state, onUpdate }: Props) {
   }
 
   const save = (cfg: JogressConfig) => {
-    const next = editId
-      ? configs.map(c => c.id === editId ? cfg : c)
-      : [...configs, cfg]
-
-    // Auto-add Jogress TamerSkill to both locks when creating a new config
+    let workingCfg = cfg
     let tamers = state.tamers
+
+    // Auto-fill (apenas na criação) seguindo as regras do Domain of Time:
+    //   memoryGroups = passivas de cada lock cujo keyword == Domain do próprio lock
+    //   ownPassives  = passivas dos locks cujo keyword == nome do Domain fusionado
     if (!editId) {
-      const getDomainShort = (tamerId: string | undefined): string => {
-        const t = tamerId ? state.tamers.find(x => x.id === tamerId) : null
-        const skill = t?.tamerSkills.find(s => s.title.startsWith('Domain of') || s.keyword === 'Domain')
-        return skill ? skill.title.replace(/^Domain\s+of\s+/i, '').trim() : '?'
+      const lock1 = cfg.lock1Id ? state.tamers.find(t => t.id === cfg.lock1Id) : null
+      const lock2 = cfg.lock2Id ? state.tamers.find(t => t.id === cfg.lock2Id) : null
+
+      const getDomainTitle = (t: typeof lock1): string => {
+        if (!t) return '?'
+        const skill = t.tamerSkills.find(s => s.title.startsWith('Domain of') || s.keyword === 'Domain')
+        return skill?.title?.trim() ?? '?'
       }
-      const lock1Short = getDomainShort(cfg.lock1Id)
-      const lock2Short = getDomainShort(cfg.lock2Id)
+      const shortOf = (title: string) => title.replace(/^Domain\s+of\s+/i, '').trim() || '?'
+
+      const lock1Domain = getDomainTitle(lock1)
+      const lock2Domain = getDomainTitle(lock2)
+      const lock1Short = shortOf(lock1Domain)
+      const lock2Short = shortOf(lock2Domain)
+
+      const seed = Date.now().toString(36)
+      const toJogressSkill = (s: TamerSkill, prefix: string, i: number): JogressSkill => ({
+        id: `${prefix}-${seed}-${i}`,
+        title: s.title,
+        effect: s.effect,
+      })
+
+      // Memory groups: passivas dos próprios locks tagueadas com o seu Domain
+      const memoryGroups: JogressGroup[] = []
+      const lock1Mem = (lock1?.tamerSkills ?? []).filter(s => s.type === 'passive' && s.keyword === lock1Domain)
+      const lock2Mem = (lock2?.tamerSkills ?? []).filter(s => s.type === 'passive' && s.keyword === lock2Domain)
+      if (lock1Mem.length > 0) memoryGroups.push({
+        id: `jg-1-${seed}`, domain: lock1Domain,
+        skills: lock1Mem.map((s, i) => toJogressSkill(s, 'jms1', i)),
+      })
+      if (lock2Mem.length > 0) memoryGroups.push({
+        id: `jg-2-${seed}`, domain: lock2Domain,
+        skills: lock2Mem.map((s, i) => toJogressSkill(s, 'jms2', i)),
+      })
+
+      // Own passives: passivas dos locks tagueadas com o nome do Domain fusionado
+      const fusedPool = [
+        ...(lock1?.tamerSkills ?? []).filter(s => s.type === 'passive' && s.keyword === cfg.name),
+        ...(lock2?.tamerSkills ?? []).filter(s => s.type === 'passive' && s.keyword === cfg.name),
+      ]
+      const seen = new Set<string>()
+      const ownPassives: JogressSkill[] = []
+      fusedPool.forEach((s, i) => {
+        if (seen.has(s.title)) return
+        seen.add(s.title)
+        ownPassives.push(toJogressSkill(s, 'jop', i))
+      })
+
+      // Respeita o que o GM já tiver preenchido manualmente no form
+      workingCfg = {
+        ...cfg,
+        memoryGroups: cfg.memoryGroups.length > 0 ? cfg.memoryGroups : memoryGroups,
+        ownPassives:  cfg.ownPassives.length  > 0 ? cfg.ownPassives  : ownPassives,
+      }
+
+      // Auto-add Jogress TamerSkill aos dois locks
       const jogressSkill: TamerSkill = {
-        type: 'passive',
+        type: 'action',
         keyword: 'Jogress',
         title: `Jogress: ${lock1Short} & ${lock2Short}`,
-        effect: `Domain Jogress — ${cfg.name}. Ativa o Domain fusionado com o outro Domador Fechadura.`,
+        custo: 'Nenhum',
+        effect: `Requerimento: [${lock1Domain}] + [${lock2Domain}]. Ambos Domadores Fechadura podem ativar essa Skill. Escolha uma Skill Passiva que recupere Memory de cada Domain. As Skills escolhidas são herdadas pelo [${cfg.name}]. Em seguida, ative o [${cfg.name}].`,
       }
       tamers = tamers.map(t => {
         if (t.id !== cfg.lock1Id && t.id !== cfg.lock2Id) return t
@@ -927,6 +979,10 @@ function JogressCrud({ state, onUpdate }: Props) {
         return { ...t, tamerSkills: [...t.tamerSkills, jogressSkill] }
       })
     }
+
+    const next = editId
+      ? configs.map(c => c.id === editId ? workingCfg : c)
+      : [...configs, workingCfg]
 
     onUpdate({ ...state, jogressConfigs: next, tamers })
     setEditId(null); setAdding(false); setDraft(emptyConfig())
@@ -1551,11 +1607,103 @@ function GMSection({ state }: { state: AppState }) {
   )
 }
 
+// ── Helpers para chips de atores em combate ──────────────────────────────────
+function actorKeyOf(a: ActorRef): string {
+  if (a.kind === 'human')    return `tamer:${a.id}`
+  if (a.kind === 'pair')     return `digi:${a.digimonId}:${a.stage ?? 0}`
+  if (a.kind === 'wild')     return `wild:${a.id}`
+  if (a.kind === 'survivor') return `survivor:${a.id}`
+  if (a.kind === 'sign')     return `sign:${a.id}`
+  return `bug:${a.id}`
+}
+
+function resolveChipActor(state: AppState, a: ActorRef): {
+  key: string; title: string; portrait: string; image: string | null; hp: number; hpMax: number
+} | null {
+  const key = actorKeyOf(a)
+  if (a.kind === 'human') {
+    const t = findTamer(state, a.id); if (!t) return null
+    return { key, title: t.name, portrait: t.portrait, image: t.image, hp: t.status.HP.v, hpMax: t.status.HP.max }
+  }
+  if (a.kind === 'pair') {
+    const d = findDigimon(state, a.digimonId); const s = d?.stages[a.stage ?? 0]
+    if (!d || !s) return null
+    const img = s.image ?? DIGIMON_DEFAULT_IMAGES[`${a.digimonId}:${a.stage ?? 0}`] ?? d.image ?? null
+    return { key, title: s.stageName, portrait: s.portrait, image: img, hp: s.status.HP, hpMax: s.status.HP }
+  }
+  if (a.kind === 'wild') {
+    const d = findDigimon(state, a.id); const s = d?.stages[0]
+    if (!d || !s) return null
+    const img = s.image ?? DIGIMON_DEFAULT_IMAGES[`${a.id}:0`] ?? d.image ?? null
+    return { key, title: d.name, portrait: s.portrait, image: img, hp: s.status.HP, hpMax: s.status.HP }
+  }
+  if (a.kind === 'survivor') {
+    const sv = findSurvivor(state, a.id); if (!sv) return null
+    return { key, title: sv.name, portrait: sv.portrait, image: sv.image ?? null, hp: sv.status.HP.v, hpMax: sv.status.HP.max }
+  }
+  if (a.kind === 'sign') {
+    const sg = (state.signs ?? []).find(x => x.id === a.id); if (!sg) return null
+    return { key, title: sg.name, portrait: 'indigo', image: sg.image, hp: sg.status.HP, hpMax: sg.status.HP }
+  }
+  const b = findBug(state, a.id); if (!b) return null
+  return { key, title: b.name, portrait: `bug-${b.color}`, image: b.image, hp: b.status.HP, hpMax: b.status.HP }
+}
+
+function StageActorChip({ portrait, image, title, hp, hpMax, side }: {
+  portrait: string; image: string | null; title: string
+  hp: number; hpMax: number; side: 'allies' | 'enemies'
+}) {
+  const pct = hpMax > 0 ? Math.max(0, Math.min(100, (hp / hpMax) * 100)) : 0
+  const sideColor = side === 'allies' ? 'var(--green)' : 'var(--coral)'
+  const hpColor   = pct > 50 ? 'var(--green)' : pct > 25 ? 'var(--orange)' : 'var(--coral)'
+  return (
+    <div title={`${title} · HP ${hp}/${hpMax}`}
+      style={{ display: 'inline-flex', alignItems: 'center', gap: 8,
+        padding: '4px 12px 4px 4px', borderRadius: 999,
+        border: `1px solid ${sideColor}`, background: 'var(--paper)' }}>
+      <div style={{ width: 26, height: 26, borderRadius: '50%', overflow: 'hidden', position: 'relative', flexShrink: 0 }}>
+        <span className={`fill-${portrait}`} style={{ position: 'absolute', inset: 0 }} />
+        {image && <img src={image} alt={title}
+          style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'cover' }} />}
+      </div>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 2, minWidth: 0 }}>
+        <span style={{ fontFamily: 'var(--font-body)', fontSize: 12, fontWeight: 600, whiteSpace: 'nowrap',
+          overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: 140 }}>{title}</span>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
+          <div style={{ width: 36, height: 3, borderRadius: 999, background: 'var(--line-soft)', overflow: 'hidden' }}>
+            <div style={{ width: `${pct}%`, height: '100%', background: hpColor, transition: 'width 0.15s' }} />
+          </div>
+          <span style={{ fontFamily: 'var(--font-mono)', fontSize: 9, color: 'var(--ink-mute)' }}>
+            {hp}/{hpMax}
+          </span>
+        </div>
+      </div>
+    </div>
+  )
+}
+
 // ── Seção: Dashboard (resumo da campanha + snapshots) ─────────────────────────
 function DashboardSection({ state, onUpdate }: { state: AppState; onUpdate: (s: AppState) => void }) {
   const activeStage = [...state.stages].reverse().find(s => s.sides.allies.length + s.sides.enemies.length > 0)
   const totalXpFree  = state.tamers.reduce((a, t) => a + t.xp, 0)
   const totalXpSpent = state.tamers.reduce((a, t) => a + t.xpSpent, 0)
+
+  // Chips dos atores no palco ativo (usa HP em tempo real quando disponível)
+  const battleChips = activeStage
+    ? ([
+        ...activeStage.sides.allies.map(a => ({ actor: a, side: 'allies' as const })),
+        ...activeStage.sides.enemies.map(a => ({ actor: a, side: 'enemies' as const })),
+      ]
+        .map(({ actor, side }) => {
+          const info = resolveChipActor(state, actor)
+          if (!info) return null
+          const live = activeStage.actorStates?.[info.key]
+          const hp    = live?.hp ?? info.hp
+          const hpMax = live?.hp_max ?? info.hpMax
+          return { ...info, hp, hpMax, side }
+        })
+        .filter((x): x is NonNullable<typeof x> => x !== null))
+    : []
 
   const [snapshots, setSnapshots] = useState<SnapshotRow[]>([])
   const [loadingSnap, setLoadingSnap] = useState(false)
@@ -1587,13 +1735,28 @@ function DashboardSection({ state, onUpdate }: { state: AppState; onUpdate: (s: 
         <div style={{ fontFamily: 'var(--font-mono)', fontSize: 10, letterSpacing: '0.14em',
           textTransform: 'uppercase', color: 'var(--ink-mute)', marginBottom: 8 }}>Palco ativo</div>
         {activeStage ? (
-          <div style={{ border: '1px solid var(--line)', borderRadius: 10, padding: '14px 18px', background: 'var(--paper)' }}>
-            <div style={{ fontFamily: 'var(--font-display)', fontSize: 18, textTransform: 'uppercase' }}>{activeStage.title}</div>
+          <Link to="/teatro" state={{ openStage: activeStage.id }}
+            style={{ display: 'block', textDecoration: 'none', color: 'inherit',
+              border: '1px solid var(--line)', borderRadius: 10, padding: '14px 18px',
+              background: 'var(--paper)', cursor: 'pointer', transition: 'all 0.15s' }}
+            onMouseEnter={e => {
+              e.currentTarget.style.borderColor = 'var(--ink)'
+              e.currentTarget.style.background = 'var(--paper-deep)'
+            }}
+            onMouseLeave={e => {
+              e.currentTarget.style.borderColor = 'var(--line)'
+              e.currentTarget.style.background = 'var(--paper)'
+            }}>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
+              <div style={{ fontFamily: 'var(--font-display)', fontSize: 18, textTransform: 'uppercase' }}>{activeStage.title}</div>
+              <span style={{ fontFamily: 'var(--font-mono)', fontSize: 9, letterSpacing: '0.1em',
+                textTransform: 'uppercase', color: 'var(--ink-mute)' }}>abrir palco →</span>
+            </div>
             <div style={{ fontFamily: 'var(--font-mono)', fontSize: 11, color: 'var(--ink-mute)', marginTop: 4 }}>
               R{activeStage.roundCurrent ?? 0} · Aliados: {activeStage.sides.allies.length} · Inimigos: {activeStage.sides.enemies.length}
               {activeStage.clima && ` · Clima: ${activeStage.clima}`}
             </div>
-          </div>
+          </Link>
         ) : (
           <div style={{ fontFamily: 'var(--font-serif)', fontStyle: 'italic', color: 'var(--ink-mute)' }}>
             ~ nenhum palco ativo ~
@@ -1601,26 +1764,48 @@ function DashboardSection({ state, onUpdate }: { state: AppState; onUpdate: (s: 
         )}
       </div>
 
-      {/* PCs */}
-      <div>
-        <div style={{ fontFamily: 'var(--font-mono)', fontSize: 10, letterSpacing: '0.14em',
-          textTransform: 'uppercase', color: 'var(--ink-mute)', marginBottom: 8 }}>
-          Tamers ({state.tamers.length}) · XP livre: {totalXpFree} · gasto: {totalXpSpent}
-        </div>
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))', gap: 10 }}>
-          {state.tamers.map(t => (
-            <div key={t.id} style={{ border: '1px solid var(--line)', borderRadius: 10, padding: '10px 14px', background: 'var(--paper)' }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                <strong style={{ fontFamily: 'var(--font-display)', fontSize: 14, textTransform: 'uppercase' }}>{t.name}</strong>
-                <span style={{ fontFamily: 'var(--font-mono)', fontSize: 10, color: 'var(--ink-mute)' }}>XP {t.xp}</span>
-              </div>
-              <div style={{ fontFamily: 'var(--font-mono)', fontSize: 11, color: 'var(--ink-soft)', marginTop: 4 }}>
-                HP {t.status.HP.v}/{t.status.HP.max} · Mem {t.status.Memory.v}/{t.status.Memory.max} · DS {t.status.Digisoul.v}/{t.status.Digisoul.max}
-              </div>
+      {/* Tracker dos personagens em combate */}
+      {activeStage ? (
+        <div>
+          <div style={{ fontFamily: 'var(--font-mono)', fontSize: 10, letterSpacing: '0.14em',
+            textTransform: 'uppercase', color: 'var(--ink-mute)', marginBottom: 8 }}>
+            Em combate ({battleChips.length})
+          </div>
+          {battleChips.length > 0 ? (
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+              {battleChips.map(chip => (
+                <StageActorChip key={chip.key}
+                  portrait={chip.portrait} image={chip.image} title={chip.title}
+                  hp={chip.hp} hpMax={chip.hpMax} side={chip.side} />
+              ))}
             </div>
-          ))}
+          ) : (
+            <div style={{ fontFamily: 'var(--font-serif)', fontStyle: 'italic', color: 'var(--ink-mute)' }}>
+              ~ sem atores resolvidos ~
+            </div>
+          )}
         </div>
-      </div>
+      ) : (
+        <div>
+          <div style={{ fontFamily: 'var(--font-mono)', fontSize: 10, letterSpacing: '0.14em',
+            textTransform: 'uppercase', color: 'var(--ink-mute)', marginBottom: 8 }}>
+            Tamers ({state.tamers.length}) · XP livre: {totalXpFree} · gasto: {totalXpSpent}
+          </div>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))', gap: 10 }}>
+            {state.tamers.map(t => (
+              <div key={t.id} style={{ border: '1px solid var(--line)', borderRadius: 10, padding: '10px 14px', background: 'var(--paper)' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <strong style={{ fontFamily: 'var(--font-display)', fontSize: 14, textTransform: 'uppercase' }}>{t.name}</strong>
+                  <span style={{ fontFamily: 'var(--font-mono)', fontSize: 10, color: 'var(--ink-mute)' }}>XP {t.xp}</span>
+                </div>
+                <div style={{ fontFamily: 'var(--font-mono)', fontSize: 11, color: 'var(--ink-soft)', marginTop: 4 }}>
+                  HP {t.status.HP.v}/{t.status.HP.max} · Mem {t.status.Memory.v}/{t.status.Memory.max} · DS {t.status.Digisoul.v}/{t.status.Digisoul.max}
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
 
       {/* Survivors */}
       {(state.survivors ?? []).length > 0 && (
