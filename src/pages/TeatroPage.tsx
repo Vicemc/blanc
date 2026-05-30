@@ -3,7 +3,7 @@ import type { AppState, Stage, ActorRef, TamerSkill, ConditionEntry, JogressConf
 import { findTamer, findDigimon, findBug, makeStage, DIGIMON_DEFAULT_IMAGES, getVisLevel } from '../data/store'
 import { findSurvivor, findSign } from '../data/domain'
 import { PageHead } from '../components/PageHead'
-import { GrainFill } from '../components/GrainFill'
+
 import { SheetModal } from '../components/Sheet'
 import type { SheetSubject, TokenSpawn } from '../components/Sheet'
 import { useSettings } from '../lib/settings'
@@ -44,7 +44,7 @@ const TOKEN_STATS: Record<string, Partial<ActorState>> = {
 interface Clima {
   id:      string
   name:    string
-  type:    'Natural' | 'Especial'
+  type:    'Natural' | 'Não Natural'
   color:   string   // CSS var name
   icon:    string   // emoji
   effects: { tag: string; desc: string; color: string }[]
@@ -79,6 +79,14 @@ const CLIMAS: Clima[] = [
       { tag: 'Água +2', desc: 'Ataques de Água causam +2 de dano.', color: 'blue' },
       { tag: 'Fogo −2', desc: 'Ataques de Fogo causam −2 de dano.', color: 'coral' },
       { tag: 'Paralysis +2', desc: 'Ações de Trovão recebem +1 sucesso e ações com Paralysis aplicam +2 cargas extras.', color: 'teal' },
+    ],
+  },
+  {
+    id: 'deep-darkness', name: 'Deep Darkness', type: 'Não Natural', color: 'purple', icon: '🌑',
+    effects: [
+      { tag: 'Trevas +2',   desc: 'Dano de ataques de [Trevas] +2.', color: 'purple' },
+      { tag: 'Luz −2',      desc: 'Dano de ataques de [Luz] −2.', color: 'gold' },
+      { tag: 'Penalidade',  desc: 'Personagens sem afinidade 3+ à Trevas têm −2 sucessos em todas as rolagens.', color: 'ink-mute' },
     ],
   },
 ]
@@ -129,14 +137,13 @@ interface PalcoLogEntry {
 }
 
 function getRuntime(stage: Stage): StageRuntime & { tokenMeta: Record<string, { name: string; level: string }> } {
-  const s = stage as Stage & Partial<StageRuntime> & { tokenMeta?: Record<string, { name: string; level: string }> }
   return {
-    roundCurrent: s.roundCurrent ?? 0,
-    actorStates:  s.actorStates  ?? {},
-    clocks:       s.clocks       ?? [],
-    clima:        (s as any).clima ?? null,
-    log:          (s as any).log   ?? [],
-    tokenMeta:    s.tokenMeta    ?? {},
+    roundCurrent: stage.roundCurrent ?? 0,
+    actorStates:  stage.actorStates  ?? {},
+    clocks:       stage.clocks       ?? [],
+    clima:        stage.clima        ?? null,
+    log:          stage.log          ?? [],
+    tokenMeta:    stage.tokenMeta    ?? {},
   }
 }
 
@@ -223,7 +230,7 @@ function resolveActor(state: AppState, a: ActorRef, tokenMeta?: Record<string, {
 
 // ── Painel de estado do ator (HP, Defesa, Armadura, Condições) ───────────────
 
-function ActorStatePanel({ aKey, aState, onChange, isTamer = false }: {
+function ActorStatePanel({ aKey: _aKey, aState, onChange, isTamer = false }: {
   aKey: string
   aState: ActorState
   onChange: (s: ActorState) => void
@@ -370,15 +377,16 @@ const btnStyle: React.CSSProperties = {
 // Renderiza botões de palco para qualquer skill com toggleBonus não tratada especialmente.
 // Suporta: statusBonus, xBonus, selfConditions, targetConditions, memoryDelta, palcoLabel.
 
-function GenericSkillToggles({ skills, actorSt, onChange }: {
+function GenericSkillToggles({ skills, actorSt, onChange, targets = [], onApplyTarget }: {
   skills: import('../types').TamerSkill[]
   actorSt: ActorState
   onChange: (s: ActorState) => void
+  targets?: { key: string; title: string }[]
+  onApplyTarget?: (targetKey: string, conds: import('../types').PalcoCondition[]) => void
 }) {
   const [activeSkill, setActiveSkill]   = useState<string | null>(null)
   const [xValues, setXValues]           = useState<Record<string, number>>({})
-  const [pendingTarget, setPendingTarget] = useState<string | null>(null)
-  // pendingTarget: título da skill aguardando seleção de alvo (future — no palco atual, simplificado)
+  const [targetSel, setTargetSel]       = useState<Record<string, string>>({})
 
   return (
     <>
@@ -428,6 +436,12 @@ function GenericSkillToggles({ skills, actorSt, onChange }: {
               { id: `marker-${Date.now().toString(36)}`, label: markerLabel,
                 filled: 1, max: 1, color: 'teal' },
             ]}
+          }
+
+          // targetConditions — aplica num alvo escolhido
+          if (tb.targetConditions?.length && onApplyTarget) {
+            const tgt = targetSel[sk.title]
+            if (tgt) onApplyTarget(tgt, tb.targetConditions)
           }
 
           onChange(newSt)
@@ -498,11 +512,31 @@ function GenericSkillToggles({ skills, actorSt, onChange }: {
                   ).join(' · ')}
                   {tb.selfConditions?.length ? (tb.statusBonus ? ' · ' : '') +
                     tb.selfConditions.map(c => c.label).join(', ') : ''}
+                  {tb.targetConditions?.length ? ` · alvo: ${tb.targetConditions.map(c => c.label).join(', ')}` : ''}
                   {tb.durationRounds ? ` · ${tb.durationRounds}R` : ''}
                 </div>
 
+                {/* Seletor de alvo (targetConditions) */}
+                {tb.targetConditions?.length ? (
+                  <div style={{ marginBottom: 8 }}>
+                    <div style={{ fontFamily: 'var(--font-mono)', fontSize: 9, letterSpacing: '0.1em',
+                      textTransform: 'uppercase', color: 'var(--ink-mute)', marginBottom: 4 }}>Alvo</div>
+                    <select value={targetSel[sk.title] ?? ''}
+                      onChange={e => setTargetSel(p => ({ ...p, [sk.title]: e.target.value }))}
+                      style={{ width: '100%', border: '1px solid var(--line)', borderRadius: 6,
+                        padding: '4px 8px', fontFamily: 'var(--font-body)', fontSize: 12,
+                        background: 'var(--paper)', color: 'var(--ink)' }}>
+                      <option value="">— escolher alvo —</option>
+                      {targets.map(t => <option key={t.key} value={t.key}>{t.title}</option>)}
+                    </select>
+                  </div>
+                ) : null}
+
                 <button onClick={activate}
-                  style={{ width: '100%', padding: '5px 0', borderRadius: 6, cursor: 'pointer',
+                  disabled={!!tb.targetConditions?.length && !targetSel[sk.title]}
+                  style={{ width: '100%', padding: '5px 0', borderRadius: 6,
+                    cursor: (!!tb.targetConditions?.length && !targetSel[sk.title]) ? 'not-allowed' : 'pointer',
+                    opacity: (!!tb.targetConditions?.length && !targetSel[sk.title]) ? 0.5 : 1,
                     background: 'var(--teal)', color: '#f6f2e9', border: 'none',
                     fontFamily: 'var(--font-body)', fontWeight: 600, fontSize: 11 }}>
                   Ativar
@@ -518,7 +552,7 @@ function GenericSkillToggles({ skills, actorSt, onChange }: {
 
 // ── ActorChip ─────────────────────────────────────────────────────────────────
 
-function ActorChip({ actor, state, actorSt, onOpen, onRemove, onChange, onEvolve, tokenMeta, onSpawnToken, isGM }: {
+function ActorChip({ actor, state, actorSt, onOpen, onRemove, onChange, onEvolve, tokenMeta, onSpawnToken, isGM, targets, onApplyTarget }: {
   actor: ActorRef; state: AppState
   actorSt: ActorState | undefined
   onOpen: () => void; onRemove: () => void
@@ -527,6 +561,8 @@ function ActorChip({ actor, state, actorSt, onOpen, onRemove, onChange, onEvolve
   tokenMeta?: Record<string, { name: string; level: string }>
   onSpawnToken?: (token: TokenSpawn) => void
   isGM?: boolean
+  targets?: { key: string; title: string }[]
+  onApplyTarget?: (targetKey: string, conds: import('../types').PalcoCondition[]) => void
 }) {
   const [showState, setShowState] = useState(false)
   const [showEvo,   setShowEvo]   = useState(false)
@@ -782,7 +818,7 @@ function ActorChip({ actor, state, actorSt, onOpen, onRemove, onChange, onEvolve
               sk.toggleBonus && !SPECIAL_KEYWORDS.includes(sk.keyword)
             )
             if (genericSkills.length === 0) return null
-            return <GenericSkillToggles skills={genericSkills} actorSt={actorSt} onChange={onChange} />
+            return <GenericSkillToggles skills={genericSkills} actorSt={actorSt} onChange={onChange} targets={targets} onApplyTarget={onApplyTarget} />
           })()}
 
           {actor.kind === 'survivor' && actorSt && (() => {
@@ -790,7 +826,7 @@ function ActorChip({ actor, state, actorSt, onOpen, onRemove, onChange, onEvolve
             if (!sv) return null
             const toggleSkills = (sv.survivorSkills ?? []).filter(sk => sk.toggleBonus)
             if (toggleSkills.length === 0) return null
-            return <GenericSkillToggles skills={toggleSkills} actorSt={actorSt} onChange={onChange} />
+            return <GenericSkillToggles skills={toggleSkills} actorSt={actorSt} onChange={onChange} targets={targets} onApplyTarget={onApplyTarget} />
           })()}
 
           <button onClick={() => setShowState(p => !p)}
@@ -949,7 +985,7 @@ function Picker({ state, onPick, onClose, onSpawnTokenDef }: {
       }
 
       case 'survivor': {
-        const rows = (state.survivors ?? []).filter(sv => match(sv.name) || match((sv as any).surname) || match(sv.sign))
+        const rows = (state.survivors ?? []).filter(sv => match(sv.name) || match(sv.surname) || match(sv.sign))
         if (!rows.length) return <PEmpty label={curTab.label} query={q} onClear={() => setQ('')} />
         return <PPagedRows resetKey={`${tab}:${q}`} items={rows} renderItem={(sv: any) => (
           <PRow key={sv.id} portrait={sv.portrait} image={sv.image}
@@ -1640,27 +1676,41 @@ function ClimaPanel({ climaId, onChange, customClimas = [] }: {
 
       {/* Seletor */}
       {open && (
-        <div style={{ padding: '10px 16px', display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+        <div style={{ padding: '10px 16px' }}>
+          {(['Natural', 'Não Natural'] as const).map(tipo => {
+            const grupo = allClimas.filter(c => c.type === tipo)
+            if (grupo.length === 0) return null
+            return (
+              <div key={tipo} style={{ marginBottom: 8 }}>
+                <div style={{ fontFamily: 'var(--font-mono)', fontSize: 9, letterSpacing: '0.1em',
+                  textTransform: 'uppercase', color: 'var(--ink-mute)', marginBottom: 4 }}>
+                  {tipo}
+                </div>
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+                  {grupo.map(c => (
+                    <button key={c.id} onClick={() => { onChange(c.id); setOpen(false) }}
+                      style={{ display: 'flex', alignItems: 'center', gap: 6,
+                        padding: '5px 12px', borderRadius: 999, cursor: 'pointer',
+                        fontFamily: 'var(--font-mono)', fontSize: 10, letterSpacing: '0.08em',
+                        border: `1.5px solid ${climaId === c.id ? `var(--${c.color})` : 'var(--line)'}`,
+                        background: climaId === c.id ? `var(--${c.color})` : 'transparent',
+                        color: climaId === c.id ? '#f6f2e9' : 'var(--ink-soft)' }}>
+                      <span style={{ fontSize: 14 }}>{c.icon}</span>
+                      {c.name}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )
+          })}
           <button onClick={() => { onChange(null); setOpen(false) }}
-            style={{ padding: '5px 12px', borderRadius: 999, cursor: 'pointer',
+            style={{ marginTop: 4, padding: '5px 12px', borderRadius: 999, cursor: 'pointer',
               fontFamily: 'var(--font-mono)', fontSize: 10, letterSpacing: '0.08em',
               border: `1.5px solid ${climaId === null ? 'var(--ink)' : 'var(--line)'}`,
               background: climaId === null ? 'var(--ink)' : 'transparent',
               color: climaId === null ? 'var(--paper)' : 'var(--ink-mute)' }}>
             — Sem clima
           </button>
-          {CLIMAS.map(c => (
-            <button key={c.id} onClick={() => { onChange(c.id); setOpen(false) }}
-              style={{ display: 'flex', alignItems: 'center', gap: 6,
-                padding: '5px 12px', borderRadius: 999, cursor: 'pointer',
-                fontFamily: 'var(--font-mono)', fontSize: 10, letterSpacing: '0.08em',
-                border: `1.5px solid ${climaId === c.id ? `var(--${c.color})` : 'var(--line)'}`,
-                background: climaId === c.id ? `var(--${c.color})` : 'transparent',
-                color: climaId === c.id ? '#f6f2e9' : 'var(--ink-soft)' }}>
-              <span style={{ fontSize: 14 }}>{c.icon}</span>
-              {c.name}
-            </button>
-          ))}
         </div>
       )}
     </div>
@@ -1938,6 +1988,112 @@ function ClocksPanel({ clocks, actors, onChange }: {
   )
 }
 
+// ── Iniciativa de um ator ─────────────────────────────────────────────────────
+function getInitiative(state: AppState, a: ActorRef): number {
+  if (a.kind === 'human')    return findTamer(state, a.id)?.status.Iniciativa ?? 0
+  if (a.kind === 'pair')     return findDigimon(state, a.digimonId)?.stages[a.stage ?? 0]?.status.Iniciativa ?? 0
+  if (a.kind === 'wild')     return findDigimon(state, a.id)?.stages[0]?.status.Iniciativa ?? 0
+  if (a.kind === 'survivor') return findSurvivor(state, a.id)?.status.Iniciativa ?? 0
+  if (a.kind === 'sign')     return findSign(state, a.id)?.status.Iniciativa ?? 0
+  return findBug(state, a.id)?.status.Iniciativa ?? 0
+}
+
+// Aplica o avanço de Round: restaura Defesa, decai condições e aplica dano de
+// ferimentos "estourados" (Burn/Poison/Bleed). Mecânica simplificada — o GM
+// ainda pode ajustar manualmente.
+function applyRoundAdvance(s: Stage): Stage {
+  const newRound = (s.roundCurrent ?? 0) + 1
+  const states = s.actorStates ?? {}
+  const newActorStates: Record<string, ActorState> = {}
+  const extraLogs: string[] = []
+
+  Object.entries(states).forEach(([k, v]) => {
+    const a = v as ActorState
+    let hp = a.hp
+    const conds = (a.conditions ?? []).map(c => ({ ...c }))
+
+    // Tick automático por condição (regras simplificadas)
+    for (const c of conds) {
+      const label = c.label.toLowerCase()
+      // Ferimentos "estourados" causam dano e zeram as cargas
+      if (c.filled >= c.max && c.max >= 5) {
+        if (label === 'burn')   { hp = Math.max(0, hp - 7); extraLogs.push(`${k}: Burn estoura → -7 HP`);   c.filled = 0 }
+        if (label === 'poison') { hp = Math.max(0, hp - 1); extraLogs.push(`${k}: Poison estoura → -1 HP`); c.filled = 0 }
+        if (label === 'bleed')  { hp = Math.max(0, hp - 3); extraLogs.push(`${k}: Bleed estoura → -3 HP`);  c.filled = 0 }
+      }
+      // Decay 1 carga / round
+      if (label === 'paralysis' || label === 'flight' || label === 'decoy') {
+        c.filled = Math.max(0, c.filled - 1)
+      }
+    }
+    const filtered = conds.filter(c => c.filled > 0 || c.label.startsWith('__toggle__'))
+
+    newActorStates[k] = { ...a, defesa: a.defesa_base ?? 0, conditions: filtered, hp }
+  })
+
+  const logs: PalcoLogEntry[] = [
+    {
+      id: `log-${Date.now().toString(36)}`, timestamp: Date.now(), kind: 'auto',
+      text: `Round ${newRound} iniciado. Defesa restaurada.`, round: newRound,
+    },
+    ...extraLogs.map((t, i) => ({
+      id: `log-${Date.now().toString(36)}-${i}`, timestamp: Date.now(), kind: 'auto' as const, text: t, round: newRound,
+    })),
+  ]
+  return { ...s, roundCurrent: newRound, actorStates: newActorStates, log: [...(s.log ?? []), ...logs] }
+}
+
+// ── Painel de Ordem de Turno (iniciativa) ─────────────────────────────────────
+function TurnOrderPanel({ order, activeKey, round, onSetActive, onNext, onReset }: {
+  order: { key: string; title: string; init: number; portrait: string; side: 'allies' | 'enemies' }[]
+  activeKey?: string
+  round: number
+  onSetActive: (key: string) => void
+  onNext: () => void
+  onReset: () => void
+}) {
+  if (order.length === 0) return null
+  const activeIdx = order.findIndex(o => o.key === activeKey)
+  return (
+    <div className={styles.domainPanel} style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+      <span style={{ fontFamily: 'var(--font-mono)', fontSize: 10, letterSpacing: '0.12em',
+        textTransform: 'uppercase', color: 'var(--ink-mute)' }}>Iniciativa</span>
+      <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', flex: 1 }}>
+        {order.map((o, i) => {
+          const isActive = activeKey ? o.key === activeKey : i === 0
+          return (
+            <button key={o.key} onClick={() => onSetActive(o.key)}
+              title={`Iniciativa ${o.init}`}
+              style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '4px 10px',
+                borderRadius: 999, cursor: 'pointer',
+                border: `1px solid ${isActive ? 'var(--ink)' : 'var(--line)'}`,
+                background: isActive ? 'var(--ink)' : 'transparent',
+                color: isActive ? 'var(--paper)' : 'var(--ink-soft)',
+                fontFamily: 'var(--font-body)', fontSize: 12 }}>
+              <span style={{ width: 14, height: 14, borderRadius: 4, overflow: 'hidden', position: 'relative', flexShrink: 0 }}>
+                <span className={`fill-${o.portrait}`} style={{ position: 'absolute', inset: 0 }} />
+              </span>
+              {o.title}
+              <span style={{ fontFamily: 'var(--font-mono)', fontSize: 9, opacity: 0.7 }}>{o.init}</span>
+            </button>
+          )
+        })}
+      </div>
+      <button onClick={onNext}
+        style={{ padding: '5px 14px', borderRadius: 999, cursor: 'pointer',
+          border: '1px solid var(--coral)', background: 'var(--coral)', color: 'var(--paper)',
+          fontFamily: 'var(--font-mono)', fontSize: 10, letterSpacing: '0.08em', textTransform: 'uppercase' }}>
+        ▶ Próximo turno
+      </button>
+      <button onClick={onReset} title="Reiniciar ordem"
+        style={{ padding: '5px 10px', borderRadius: 999, cursor: 'pointer',
+          border: '1px solid var(--line)', background: 'transparent', color: 'var(--ink-mute)',
+          fontFamily: 'var(--font-mono)', fontSize: 10 }}>↺</button>
+      {activeIdx >= 0 && <span style={{ fontFamily: 'var(--font-mono)', fontSize: 9, color: 'var(--ink-mute)' }}>R{round} · {activeIdx + 1}/{order.length}</span>}
+    </div>
+  )
+}
+
 // ── PalcoView ─────────────────────────────────────────────────────────────────
 
 function PalcoView({ stage, state, onUpdate, onBack, isGM = false }: {
@@ -1948,6 +2104,8 @@ function PalcoView({ stage, state, onUpdate, onBack, isGM = false }: {
   const [pickerSide, setPickerSide] = useState<'allies'|'enemies'|null>(null)
   const [roundPopupNum, setRoundPopupNum] = useState<number | null>(null)
   const prevRoundRef = useRef<number | null>(null)
+  const undoStack = useRef<Stage[]>([])
+  const [undoDepth, setUndoDepth] = useState(0)
   const { settings } = useSettings()
 
   const rt = getRuntime(stage)
@@ -1973,10 +2131,18 @@ function PalcoView({ stage, state, onUpdate, onBack, isGM = false }: {
   }
 
   const mutateStage = useCallback((fn: (s: Stage) => Stage) => {
+    undoStack.current = [...undoStack.current.slice(-19), stage]
+    setUndoDepth(undoStack.current.length)
     onUpdate({ ...state, stages: state.stages.map(s => s.id === stage.id ? fn(s) : s) })
+  }, [state, stage, onUpdate])
+
+  const undo = useCallback(() => {
+    const prev = undoStack.current.pop()
+    setUndoDepth(undoStack.current.length)
+    if (prev) onUpdate({ ...state, stages: state.stages.map(s => s.id === stage.id ? prev : s) })
   }, [state, stage.id, onUpdate])
 
-  const addLog = useCallback((text: string, kind: 'auto' | 'manual' = 'auto') => {
+  const _addLog = useCallback((text: string, kind: 'auto' | 'manual' = 'auto') => {
     const entry: PalcoLogEntry = {
       id:        `log-${Date.now().toString(36)}`,
       timestamp: Date.now(),
@@ -1984,7 +2150,7 @@ function PalcoView({ stage, state, onUpdate, onBack, isGM = false }: {
       text,
       round:     rt.roundCurrent,
     }
-    mutateStage(s => ({ ...s, log: [...((s as any).log ?? []), entry] } as Stage))
+    mutateStage(s => ({ ...s, log: [...(s.log ?? []), entry] } as Stage))
   }, [mutateStage, rt.roundCurrent])
 
   // Invoca um token no palco, no mesmo lado do tamer que usou a skill
@@ -2015,9 +2181,9 @@ function PalcoView({ stage, state, onUpdate, onBack, isGM = false }: {
       return {
         ...s,
         sides: { ...s.sides, [openSide]: [...s.sides[openSide], ...newRefs] },
-        actorStates: { ...(s as any).actorStates, ...newStates },
+        actorStates: { ...s.actorStates, ...newStates },
         tokenMeta: {
-          ...(s as any).tokenMeta ?? {},
+          ...s.tokenMeta ?? {},
           ...Object.fromEntries(newRefs.map(r => [(r as { kind: 'wild'; id: string }).id, { name: token.name, level: token.level }])),
         },
       } as Stage
@@ -2042,9 +2208,9 @@ function PalcoView({ stage, state, onUpdate, onBack, isGM = false }: {
       return {
         ...s,
         sides: { ...s.sides, [openSide]: [...s.sides[openSide], ...newRefs] },
-        actorStates: { ...(s as any).actorStates, ...newStates },
+        actorStates: { ...s.actorStates, ...newStates },
         tokenMeta: {
-          ...(s as any).tokenMeta ?? {},
+          ...s.tokenMeta ?? {},
           ...Object.fromEntries(newRefs.map(r => [(r as { kind: 'wild'; id: string }).id, { name: def.name, level: def.level }])),
         },
       } as Stage
@@ -2109,7 +2275,7 @@ function PalcoView({ stage, state, onUpdate, onBack, isGM = false }: {
   const updateActorState = (key: string, newState: ActorState) => {
     mutateStage(s => ({
       ...s,
-      actorStates: { ...(s as any).actorStates, [key]: newState },
+      actorStates: { ...s.actorStates, [key]: newState },
     } as Stage))
   }
 
@@ -2140,7 +2306,7 @@ function PalcoView({ stage, state, onUpdate, onBack, isGM = false }: {
         ...s.sides,
         [side]: s.sides[side].map((a, i) => i === idx ? newActor : a),
       }
-      const prevStates = (s as any).actorStates ?? {}
+      const prevStates = s.actorStates ?? {}
       // Remove o estado antigo, insere o novo
       const { [oldKey]: _removed, ...rest } = prevStates
       const newActorStates = { ...rest, [newKey]: newActorState }
@@ -2182,13 +2348,13 @@ function PalcoView({ stage, state, onUpdate, onBack, isGM = false }: {
     const PC_IDS = ['t-naoki', 't-eisuke', 't-miki', 't-yuri', 't-sachi', 't-mori']
     const alreadyTamers = new Set(
       stage.sides.allies
-        .filter(a => a.kind === 'human')
-        .map(a => (a as any).id)
+        .filter((a): a is Extract<ActorRef, { kind: 'human' }> => a.kind === 'human')
+        .map(a => a.id)
     )
     const alreadyDigis = new Set(
       stage.sides.allies
-        .filter(a => a.kind === 'pair')
-        .map(a => (a as any).digimonId)
+        .filter((a): a is Extract<ActorRef, { kind: 'pair' }> => a.kind === 'pair')
+        .map(a => a.digimonId)
     )
     const toAdd: ActorRef[] = []
     for (const tid of PC_IDS) {
@@ -2208,8 +2374,56 @@ function PalcoView({ stage, state, onUpdate, onBack, isGM = false }: {
 
   const domainTamers = useMemo(() => getDomainTamers(stage, state), [stage, state])
 
+  // Ordem de iniciativa (maior primeiro)
+  const turnOrder = useMemo(() => {
+    const mk = (a: ActorRef, side: 'allies' | 'enemies') => {
+      const r = resolveActor(state, a, rt.tokenMeta)
+      return { key: actorKey(a), title: r.title, init: getInitiative(state, a), portrait: r.portrait, side }
+    }
+    const arr = [
+      ...stage.sides.allies.map(a => mk(a, 'allies' as const)),
+      ...stage.sides.enemies.map(a => mk(a, 'enemies' as const)),
+    ]
+    return arr.sort((x, y) => y.init - x.init || x.key.localeCompare(y.key))
+  }, [stage.sides, state, rt.tokenMeta])
+
+  const setActiveActor = (key: string) => mutateStage(s => ({ ...s, activeActorKey: key }))
+  const nextTurn = () => {
+    if (turnOrder.length === 0) return
+    const idx = turnOrder.findIndex(o => o.key === stage.activeActorKey)
+    const nextIdx = idx < 0 ? 0 : (idx + 1) % turnOrder.length
+    const wrapped = idx >= 0 && nextIdx === 0
+    mutateStage(s => {
+      let ns: Stage = { ...s, activeActorKey: turnOrder[nextIdx].key }
+      if (wrapped) ns = applyRoundAdvance(ns)
+      return ns
+    })
+  }
+  const resetTurns = () => mutateStage(s => ({ ...s, activeActorKey: turnOrder[0]?.key }))
+
+  // Aplica condições a um ator-alvo (usado pelo targeting de skills)
+  const applyConditionsToTarget = (targetKey: string, conds: import('../types').PalcoCondition[]) => {
+    mutateStage(s => {
+      const states = { ...(s.actorStates ?? {}) }
+      const cur = states[targetKey]
+      if (!cur) return s
+      const newConds = [...cur.conditions]
+      conds.forEach(pc => {
+        const existing = newConds.find(c => c.label === pc.label)
+        if (existing) {
+          const idx = newConds.indexOf(existing)
+          newConds[idx] = { ...existing, filled: Math.min(existing.max, existing.filled + pc.filled) }
+        } else {
+          newConds.push({ id: `cond-${pc.label}-${Date.now().toString(36)}`, label: pc.label, filled: pc.filled, max: pc.max, color: pc.color })
+        }
+      })
+      states[targetKey] = { ...cur, conditions: newConds }
+      return { ...s, actorStates: states }
+    })
+  }
+
   const actorList = useMemo(() =>
-    allActors.map(a => {
+    [...stage.sides.allies, ...stage.sides.enemies].map(a => {
       const r = resolveActor(state, a, rt.tokenMeta)
       const tamerName = a.kind === 'pair'
         ? findTamer(state, a.tamerId)?.name
@@ -2217,7 +2431,7 @@ function PalcoView({ stage, state, onUpdate, onBack, isGM = false }: {
       const label = tamerName ? `${r.title} (${tamerName})` : r.title
       return { key: actorKey(a), title: label }
     }),
-    [allActors, state]
+    [stage.sides, state, rt.tokenMeta]
   )
 
   const exportStage = () => {
@@ -2285,32 +2499,12 @@ function PalcoView({ stage, state, onUpdate, onBack, isGM = false }: {
             <div style={{ fontSize:10, letterSpacing:'0.14em', textTransform:'uppercase', color:'var(--ink-mute)' }}>Round</div>
             <div style={{ fontSize:22, fontWeight:700, lineHeight:1 }}>{rt.roundCurrent}</div>
           </div>
-          <button onClick={() => mutateStage(s => {
-            const newRound = ((s as any).roundCurrent ?? 0) + 1
-            const states = (s as any).actorStates ?? {}
-            const newActorStates: Record<string, ActorState> = {}
-            Object.entries(states).forEach(([k, v]) => {
-              const a = v as ActorState
-              newActorStates[k] = { ...a, defesa: a.defesa_base ?? 0 }
-            })
-            // Auto-log
-            const logEntry: PalcoLogEntry = {
-              id:        `log-${Date.now().toString(36)}`,
-              timestamp: Date.now(),
-              kind:      'auto',
-              text:      `Round ${newRound} iniciado. Defesa de todos os atores restaurada.`,
-              round:     newRound,
-            }
-            return {
-              ...s,
-              roundCurrent: newRound,
-              actorStates: newActorStates,
-              log: [...((s as any).log ?? []), logEntry],
-            } as Stage
-          })}
+          <button onClick={() => mutateStage(s => applyRoundAdvance(s))}
             style={{ ...btnStyle, borderColor:'var(--ink)', color:'var(--ink)' }}>+</button>
         </div>
         <div style={{ display:'flex', gap:8, flexShrink:0, flexWrap:'wrap' }}>
+          <button className={styles.btnGhost} onClick={undo} disabled={undoDepth === 0}
+            title="Desfazer a última alteração no palco">↩ Desfazer{undoDepth > 0 ? ` (${undoDepth})` : ''}</button>
           <button className={styles.btnGhost} onClick={addAllPCs}>+ Adicionar PCs</button>
           <button className={styles.btnGhost} onClick={exportStage}>↓ Exportar</button>
           <button className={styles.btnGhost} onClick={importStage}>↑ Importar</button>
@@ -2318,6 +2512,15 @@ function PalcoView({ stage, state, onUpdate, onBack, isGM = false }: {
       </div>
 
       <DomainPanel domainTamers={domainTamers} jogressConfigs={state.jogressConfigs ?? []} />
+
+      <TurnOrderPanel
+        order={turnOrder}
+        activeKey={stage.activeActorKey}
+        round={rt.roundCurrent}
+        onSetActive={setActiveActor}
+        onNext={nextTurn}
+        onReset={resetTurns}
+      />
 
       <ClimaPanel
         climaId={rt.clima}
@@ -2349,6 +2552,8 @@ function PalcoView({ stage, state, onUpdate, onBack, isGM = false }: {
                   onChange={newSt => updateActorState(actorKey(a), newSt)}
                   onEvolve={a.kind === 'pair' ? (newIdx) => evolveActor(side, i, newIdx) : undefined}
                   onSpawnToken={spawnToken}
+                  targets={actorList}
+                  onApplyTarget={applyConditionsToTarget}
                   isGM={isGM} />
               ))}
               <div className={styles.addActor} onClick={() => setPickerSide(side)}>+ adicionar ator</div>
@@ -2399,7 +2604,61 @@ export default function TeatroPage({ state, onUpdate, isGM = false }: Props) {
     onUpdate({ ...state, stages: state.stages.filter(s => s.id !== id) })
   }
 
+  // Alterna marcação de template
+  const toggleTemplate = (id: string, e: React.MouseEvent) => {
+    e.stopPropagation()
+    onUpdate({ ...state, stages: state.stages.map(s => s.id === id ? { ...s, isTemplate: !s.isTemplate } : s) })
+  }
+
+  // Cria um palco novo a partir de um template (runtime zerado)
+  const instantiate = (tmpl: Stage, e: React.MouseEvent) => {
+    e.stopPropagation()
+    const fresh: Stage = {
+      ...makeStage(`stage-${Date.now().toString(36)}`),
+      title:    tmpl.title.replace(/\s*\(modelo\)\s*$/i, ''),
+      subtitle: tmpl.subtitle,
+      sides:    { allies: tmpl.sides.allies.map(a => ({ ...a })), enemies: tmpl.sides.enemies.map(a => ({ ...a })) },
+      notes:    tmpl.notes,
+      isTemplate: false,
+    }
+    // Copia o clima do template, se houver
+    const clima = tmpl.clima ?? null
+    onUpdate({ ...state, stages: [...state.stages, { ...fresh, clima } as Stage] })
+    setOpenStage(fresh.id)
+  }
+
   if (stage) return <PalcoView stage={stage} state={state} onUpdate={onUpdate} onBack={() => setOpenStage(null)} isGM={isGM} />
+
+  const templates = [...state.stages].reverse().filter(s => s.isTemplate)
+  const liveStages = [...state.stages].reverse().filter(s => !s.isTemplate)
+
+  const renderCard = (s: Stage, isTmpl: boolean) => {
+    const rt = getRuntime(s)
+    return (
+      <div key={s.id} className={styles.stageCard} onClick={() => setOpenStage(s.id)}>
+        {isGM && <button className={styles.delCard} onClick={e => deleteStage(s.id, e)}>×</button>}
+        <h3 className={styles.stageTitle}>{s.title}</h3>
+        <div className={styles.stageSub}>~ {s.subtitle || 'sem subtítulo'} ~</div>
+        <div className={styles.stageCounts}>
+          <span>Aliados: {s.sides.allies.length}</span>
+          <span>Inimigos: {s.sides.enemies.length}</span>
+          {!isTmpl && rt.roundCurrent > 0 && <span>Round {rt.roundCurrent}</span>}
+        </div>
+        {isGM && (
+          <div style={{ display: 'flex', gap: 8, marginTop: 10 }}>
+            {isTmpl && (
+              <button className={styles.btnGhost} style={{ fontSize: 11, padding: '4px 12px' }}
+                onClick={e => instantiate(s, e)}>▶ Instanciar</button>
+            )}
+            <button className={styles.btnGhost} style={{ fontSize: 11, padding: '4px 12px' }}
+              onClick={e => toggleTemplate(s.id, e)}>
+              {isTmpl ? '☆ Desmarcar' : '★ Salvar como modelo'}
+            </button>
+          </div>
+        )}
+      </div>
+    )
+  }
 
   return (
     <div>
@@ -2410,22 +2669,20 @@ export default function TeatroPage({ state, onUpdate, isGM = false }: Props) {
             <span className={styles.plus}>Abrir novo palco</span>
           </div>
         )}
-        {[...state.stages].reverse().map(s => {
-          const rt = getRuntime(s)
-          return (
-            <div key={s.id} className={styles.stageCard} onClick={() => setOpenStage(s.id)}>
-              {isGM && <button className={styles.delCard} onClick={e => deleteStage(s.id,e)}>×</button>}
-              <h3 className={styles.stageTitle}>{s.title}</h3>
-              <div className={styles.stageSub}>~ {s.subtitle || 'sem subtítulo'} ~</div>
-              <div className={styles.stageCounts}>
-                <span>Aliados: {s.sides.allies.length}</span>
-                <span>Inimigos: {s.sides.enemies.length}</span>
-                {rt.roundCurrent > 0 && <span>Round {rt.roundCurrent}</span>}
-              </div>
-            </div>
-          )
-        })}
+        {liveStages.map(s => renderCard(s, false))}
       </div>
+
+      {templates.length > 0 && (
+        <>
+          <div style={{ padding: '24px 24px 8px', fontFamily: 'var(--font-mono)', fontSize: 10,
+            letterSpacing: '0.16em', textTransform: 'uppercase', color: 'var(--ink-mute)' }}>
+            Modelos de Encontro
+          </div>
+          <div className={styles.index}>
+            {templates.map(s => renderCard(s, true))}
+          </div>
+        </>
+      )}
     </div>
   )
 }

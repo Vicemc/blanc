@@ -7,7 +7,6 @@ import type { AppState } from '../types'
 import type { UserProfile } from '../lib/auth'
 import { supabase } from '../lib/supabase'
 import { SheetModal } from '../components/Sheet'
-import type { SheetSubject } from '../components/Sheet'
 import { GrainFill } from '../components/GrainFill'
 
 interface Props {
@@ -376,12 +375,22 @@ function RecordsTab({ records, isGM, onSave, state }: {
   const [adding, setAdding]           = useState(false)
   const [viewing, setViewing]         = useState<DigiRecord | null>(null)
   const [viewingChat, setViewingChat] = useState<DigiRecord | null>(null)
+  const [filter, setFilter]           = useState<'all' | 'document' | 'photo' | 'chat'>('all')
+  const [sortDesc, setSortDesc]       = useState(true)
   const [draft, setDraft]             = useState<Partial<DigiRecord>>({
     type: 'document', title: '', content: '', session: null, image_path: null,
   })
 
-  const chatRecords  = records.filter(r => r.type === 'chat')
-  const otherRecords = records.filter(r => r.type !== 'chat')
+  const bySession = (a: DigiRecord, b: DigiRecord) => {
+    const sa = a.session ?? -Infinity, sb = b.session ?? -Infinity
+    return sortDesc ? sb - sa : sa - sb
+  }
+  const chatRecords  = records.filter(r => r.type === 'chat').sort(bySession)
+  const otherRecords = records
+    .filter(r => r.type !== 'chat' && (filter === 'all' || r.type === filter))
+    .sort(bySession)
+  const showChat  = filter === 'all' || filter === 'chat'
+  const showOther = filter === 'all' || filter === 'document' || filter === 'photo'
 
   const addRecord = () => {
     if (!draft.title?.trim()) return
@@ -400,8 +409,34 @@ function RecordsTab({ records, isGM, onSave, state }: {
 
   return (
     <div>
+      {/* Toolbar: filtro por tipo + ordenação por sessão */}
+      {records.length > 0 && (
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', marginBottom: 16 }}>
+          {([
+            ['all', 'Todos'], ['document', 'Documentos'], ['photo', 'Fotos'], ['chat', 'Conversas'],
+          ] as const).map(([id, label]) => (
+            <button key={id} onClick={() => setFilter(id)}
+              style={{ padding: '4px 12px', borderRadius: 999, cursor: 'pointer',
+                fontFamily: 'var(--font-mono)', fontSize: 10, letterSpacing: '0.08em',
+                textTransform: 'uppercase',
+                border: `1px solid ${filter === id ? 'var(--ink)' : 'var(--line)'}`,
+                background: filter === id ? 'var(--ink)' : 'transparent',
+                color: filter === id ? 'var(--paper)' : 'var(--ink-mute)' }}>
+              {label}
+            </button>
+          ))}
+          <button onClick={() => setSortDesc(d => !d)} title="Ordenar por sessão"
+            style={{ marginLeft: 'auto', padding: '4px 12px', borderRadius: 999, cursor: 'pointer',
+              fontFamily: 'var(--font-mono)', fontSize: 10, letterSpacing: '0.08em',
+              textTransform: 'uppercase', border: '1px solid var(--line)',
+              background: 'transparent', color: 'var(--ink-soft)' }}>
+            Sessão {sortDesc ? '↓' : '↑'}
+          </button>
+        </div>
+      )}
+
       {/* Conversas Arquivadas */}
-      {chatRecords.length > 0 && (
+      {showChat && chatRecords.length > 0 && (
         <div style={{ marginBottom: 24 }}>
           <div style={{ fontFamily: 'var(--font-mono)', fontSize: 9, letterSpacing: '0.14em',
             textTransform: 'uppercase', color: 'var(--ink-mute)', marginBottom: 10,
@@ -445,7 +480,7 @@ function RecordsTab({ records, isGM, onSave, state }: {
         </div>
       )}
 
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(200px,1fr))',
+      <div style={{ display: showOther ? 'grid' : 'none', gridTemplateColumns: 'repeat(auto-fill, minmax(200px,1fr))',
         gap: 10, marginBottom: 16 }}>
         {otherRecords.map(rec => (
           <div key={rec.id} onClick={() => setViewing(rec)}

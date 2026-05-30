@@ -1,10 +1,15 @@
 import { supabase, isSupabaseReady } from '../supabase'
-import { loadState as localLoad, saveState as localSave, idbSaveImage, idbLoadImage, idbListImageKeys, loadStateAsync, TAMER_DEFAULT_IMAGES, DIGIMON_DEFAULT_IMAGES } from '../../data/store'
+import { loadState as localLoad, saveState as localSave, TAMER_DEFAULT_IMAGES, DIGIMON_DEFAULT_IMAGES } from '../../data/store'
 import { DEFAULT_SURVIVORS } from '../../data/domain'
 import type { AppState } from '../../types'
 
 const CAMPAIGN = 'midnight-summer'
 let _stateRowId: string | null = null
+let _lastKnownUpdatedAt: string | null = null
+
+export function setLastKnownUpdatedAt(ts: string | null): void {
+  _lastKnownUpdatedAt = ts
+}
 
 export async function loadStateFromDB(): Promise<AppState> {
   if (!isSupabaseReady || !supabase) return localLoad()
@@ -12,7 +17,7 @@ export async function loadStateFromDB(): Promise<AppState> {
   try {
     const { data, error } = await supabase
       .from('app_state')
-      .select('id, state')
+      .select('id, state, updated_at')
       .eq('campaign', CAMPAIGN)
       .order('updated_at', { ascending: false })
       .limit(1)
@@ -21,6 +26,7 @@ export async function loadStateFromDB(): Promise<AppState> {
     if (error || !data) return localLoad()
 
     _stateRowId = data.id
+    _lastKnownUpdatedAt = data.updated_at
     let remoteState = data.state as AppState
 
     // Injetar survivors default que ainda não existam no estado remoto
@@ -97,17 +103,40 @@ export async function saveStateToDB(s: AppState): Promise<void> {
     const slim = stripImages(s)
 
     if (_stateRowId) {
-      await supabase
+      // Optimistic concurrency: só atualiza se updated_at não mudou desde o último load.
+      let q = supabase
         .from('app_state')
         .update({ state: slim, updated_at: new Date().toISOString() })
         .eq('id', _stateRowId)
+      if (_lastKnownUpdatedAt) q = q.eq('updated_at', _lastKnownUpdatedAt)
+      const { data, error } = await q.select('updated_at').single()
+
+      if (error || !data) {
+        // Conflito detectado: outro cliente atualizou primeiro.
+        if (typeof window !== 'undefined') {
+          window.dispatchEvent(new CustomEvent('app:save-conflict'))
+        }
+        // Força salvamento para não perder dados (sobrescreve), atualizando a marca temporal.
+        const forced = await supabase
+          .from('app_state')
+          .update({ state: slim, updated_at: new Date().toISOString() })
+          .eq('id', _stateRowId)
+          .select('updated_at')
+          .single()
+        if (forced.data) _lastKnownUpdatedAt = forced.data.updated_at
+      } else {
+        _lastKnownUpdatedAt = data.updated_at
+      }
     } else {
       const { data } = await supabase
         .from('app_state')
         .insert({ campaign: CAMPAIGN, state: slim })
-        .select('id')
+        .select('id, updated_at')
         .single()
-      if (data) _stateRowId = data.id
+      if (data) {
+        _stateRowId = data.id
+        _lastKnownUpdatedAt = data.updated_at
+      }
     }
   } catch (e) {
     console.warn('[db] saveStateToDB falhou, usando localStorage como fallback', e)
@@ -144,12 +173,24 @@ export async function deleteStage(id: string) {
   await supabase.from('stages').delete().eq('id', id)
 }
 
+// Atualiza atomicamente apenas o tamer do player no JSONB do app_state
+// via RPC (sem sobrescrever o estado inteiro). Requer a função SQL
+// `update_my_tamer` (ver supabase_player_writes.sql).
+export async function updateMyTamer(tamer: import('../../types').Tamer): Promise<{ ok: boolean; error?: string }> {
+  if (!isSupabaseReady || !supabase) return { ok: false, error: 'Supabase não configurado' }
+  // Não envia data URLs inline
+  const slim = { ...tamer, image: null }
+  const { data, error } = await supabase.rpc('update_my_tamer', { p_tamer: slim })
+  if (error) return { ok: false, error: error.message }
+  const res = data as { ok: boolean; reason?: string }
+  return res?.ok ? { ok: true } : { ok: false, error: res?.reason }
+}
+
 // ÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇ
 // Imagens ÔÇö Supabase Storage
 // ÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇ
 
 const BUCKET_PORTRAITS = 'portraits'
-const BUCKET_ASSETS    = 'assets'
 
 const _urlCache = new Map<string, string>()
 function storageUrl(bucket: string, key: string): string | null {

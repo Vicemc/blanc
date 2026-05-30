@@ -1,7 +1,8 @@
-import React, { useState } from 'react'
+import React, { useState, useEffect } from 'react'
+import { useSearchParams } from 'react-router-dom'
 import type { AppState, ClimaEntry, KeywordEntry, ConditionEntry } from '../types'
 import { PageHead } from '../components/PageHead'
-import { BASE_CLIMAS, BASE_KEYWORDS, BASE_CONDITIONS, getEffectiveClimas, groupBy } from '../data/rulesData'
+import { BASE_KEYWORDS, BASE_CONDITIONS, getEffectiveClimas, groupBy, ruleSlug, ruleTabFor } from '../data/rulesData'
 import { useSettings } from '../lib/settings'
 import styles from './SistemaPage.module.css'
 
@@ -30,10 +31,11 @@ function RichText({ text }: { text: string }) {
 }
 
 // ── Kw card ──────────────────────────────────────────────────────────────────
-interface KwProps { tag: string; tagVariant?: string; title: string; resist?: string; children: React.ReactNode }
-function Kw({ tag, tagVariant, title, resist, children }: KwProps) {
+interface KwProps { tag: string; tagVariant?: string; title: string; resist?: string; children: React.ReactNode; anchorId?: string; highlight?: boolean }
+function Kw({ tag, tagVariant, title, resist, children, anchorId, highlight }: KwProps) {
   return (
-    <div className={styles.kw}>
+    <div id={anchorId} className={styles.kw}
+      style={highlight ? { outline: '2px solid var(--coral)', outlineOffset: 2, scrollMarginTop: 80 } : { scrollMarginTop: 80 }}>
       <span className={`${styles.kwTag} ${tagVariant ? styles['tag_' + tagVariant] : ''}`}>{tag}</span>
       <h4 className={styles.kwTitle}>{title}</h4>
       <p className={styles.kwText}>{children}</p>
@@ -98,13 +100,14 @@ const COND_CAT_NOTE: Record<string, string> = {
 }
 
 // ── Clima card ────────────────────────────────────────────────────────────────
-function WeatherCard({ icon, title, color, effects, extra }: {
+function WeatherCard({ icon, title, color, effects, extra, anchorId, highlight }: {
   icon: string; title: string; color?: string
-  effects: ClimaEntry['effects']; extra?: React.ReactNode
+  effects: ClimaEntry['effects']; extra?: React.ReactNode; anchorId?: string; highlight?: boolean
 }) {
   return (
-    <div className={styles.kw}
-      style={{ borderLeft: `3px solid var(--${color || 'line'})` }}>
+    <div id={anchorId} className={styles.kw}
+      style={{ borderLeft: `3px solid var(--${color || 'line'})`, scrollMarginTop: 80,
+        ...(highlight ? { outline: '2px solid var(--coral)', outlineOffset: 2 } : {}) }}>
       <div style={{ display:'flex', alignItems:'center', gap:8, marginBottom:6 }}>
         <span style={{ fontSize:22 }}>{icon}</span>
         <h4 className={styles.kwTitle} style={{ margin:0 }}>{title}</h4>
@@ -132,12 +135,18 @@ const TOC = [
 ]
 
 // ── Aba Regras ────────────────────────────────────────────────────────────────
-function RegraTab({ state }: { state?: AppState }) {
+function RegraTab({ state, focusSlug }: { state?: AppState; focusSlug?: string | null }) {
   const mergedKeywords   = (state?.customKeywords   ?? []).length > 0 ? state!.customKeywords   : BASE_KEYWORDS
   const mergedConditions = (state?.customConditions ?? []).length > 0 ? state!.customConditions : BASE_CONDITIONS
 
   const kwGroups   = groupBy(mergedKeywords,   k => k.category ?? 'Outros')
   const condGroups = groupBy(mergedConditions, c => c.category)
+
+  useEffect(() => {
+    if (!focusSlug) return
+    const el = document.getElementById(`kw-${focusSlug}`)
+    if (el) el.scrollIntoView({ behavior: 'smooth', block: 'center' })
+  }, [focusSlug])
 
   return (
     <div className={styles.page}>
@@ -201,11 +210,15 @@ function RegraTab({ state }: { state?: AppState }) {
           <div key={cat}>
             <h3 className={styles.ruleH3}>{KW_CAT_HEADER[cat] ?? cat}</h3>
             <div className={styles.kwGrid}>
-              {entries.map(kw => (
-                <Kw key={kw.id} tag={kwTagLabel(kw)} tagVariant={kwTagVariant(kw)} title={kw.keyword} resist={kw.resist}>
-                  <RichText text={kw.desc} />
-                </Kw>
-              ))}
+              {entries.map(kw => {
+                const slug = ruleSlug(kw.keyword)
+                return (
+                  <Kw key={kw.id} tag={kwTagLabel(kw)} tagVariant={kwTagVariant(kw)} title={kw.keyword} resist={kw.resist}
+                    anchorId={`kw-${slug}`} highlight={focusSlug === slug}>
+                    <RichText text={kw.desc} />
+                  </Kw>
+                )
+              })}
             </div>
           </div>
         ))}
@@ -222,11 +235,15 @@ function RegraTab({ state }: { state?: AppState }) {
               ) : null}
             </h3>
             <div className={styles.kwGrid}>
-              {entries.map(c => (
-                <Kw key={c.id} tag={condTagLabel(c)} tagVariant={c.type} title={c.name} resist={c.resist}>
-                  <RichText text={c.desc} />
-                </Kw>
-              ))}
+              {entries.map(c => {
+                const slug = ruleSlug(c.name)
+                return (
+                  <Kw key={c.id} tag={condTagLabel(c)} tagVariant={c.type} title={c.name} resist={c.resist}
+                    anchorId={`kw-${slug}`} highlight={focusSlug === slug}>
+                    <RichText text={c.desc} />
+                  </Kw>
+                )
+              })}
             </div>
           </div>
         ))}
@@ -242,12 +259,18 @@ const fldStyle: React.CSSProperties = {
 }
 
 // ── Aba Climas ────────────────────────────────────────────────────────────────
-function ClimasTab({ state, onUpdate, isGM }: { state?: AppState; onUpdate?: (s: AppState) => void; isGM: boolean }) {
+function ClimasTab({ state, onUpdate, isGM, focusSlug }: { state?: AppState; onUpdate?: (s: AppState) => void; isGM: boolean; focusSlug?: string | null }) {
   const [addingClima, setAddingClima] = useState(false)
-  const [draft, setDraft] = useState({ name: '', type: 'Natural' as 'Natural'|'Especial', color: 'teal', icon: '🌀', effects: '' })
+  const [draft, setDraft] = useState({ name: '', type: 'Natural' as 'Natural'|'Não Natural', color: 'teal', icon: '🌀', effects: '' })
 
   const effectiveClimas = getEffectiveClimas(state?.customClimas ?? [])
   const isCustomized = (state?.customClimas ?? []).length > 0
+
+  useEffect(() => {
+    if (!focusSlug) return
+    const el = document.getElementById(`kw-${focusSlug}`)
+    if (el) el.scrollIntoView({ behavior: 'smooth', block: 'center' })
+  }, [focusSlug])
 
   const saveClima = () => {
     if (!draft.name.trim() || !state || !onUpdate) return
@@ -266,7 +289,7 @@ function ClimasTab({ state, onUpdate, isGM }: { state?: AppState; onUpdate?: (s:
       gm_only: false,
     }
     onUpdate({ ...state, customClimas: [...effectiveClimas, c] })
-    setDraft({ name: '', type: 'Natural', color: 'teal', icon: '🌀', effects: '' })
+    setDraft({ name: '', type: draft.type, color: 'teal', icon: '🌀', effects: '' })
     setAddingClima(false)
   }
 
@@ -285,9 +308,13 @@ function ClimasTab({ state, onUpdate, isGM }: { state?: AppState; onUpdate?: (s:
           Climas alteram o ambiente de batalha — ativam skills, modificam ataques e efeitos, podendo causar dano ou afetar atributos. Um novo clima <b>remove o anterior</b>.
         </div>
 
-        <div className={styles.kwGrid}>
-          {effectiveClimas.map(c => (
+        <div className={styles.callout}>
+          <b>Climas Naturais</b> podem surgir espontaneamente durante os dias de sobrevivência no Mundo Digital, sem depender de habilidades ou ações específicas.
+        </div>
+        <div className={styles.kwGrid} style={{ marginTop: 12 }}>
+          {effectiveClimas.filter(c => c.type === 'Natural').map(c => (
             <WeatherCard key={c.id} icon={c.icon} title={c.name} color={c.color} effects={c.effects}
+              anchorId={`kw-${ruleSlug(c.name)}`} highlight={focusSlug === ruleSlug(c.name)}
               extra={isGM && isCustomized ? (
                 <button onClick={() => removeClima(c.id)}
                   style={{ display:'block', marginTop:8, fontFamily:'var(--font-mono)', fontSize:9,
@@ -299,8 +326,23 @@ function ClimasTab({ state, onUpdate, isGM }: { state?: AppState; onUpdate?: (s:
         </div>
 
         <div className={styles.callout} style={{ marginTop: 24 }}>
-          <b>Climas Naturais</b> podem surgir espontaneamente durante os dias de sobrevivência no Mundo Digital, sem depender de habilidades ou ações específicas.
+          <b>Climas Não Naturais</b> não surgem espontaneamente no Mundo Digital — são provocados por habilidades, fenômenos anômalos, Domains, Digimons específicos, programas corrompidos ou efeitos sobrenaturais. Diferente dos Climas Naturais, geralmente manifestam-se através de interferências artificiais, distorções de dados ou poderes capazes de alterar temporariamente a realidade ao redor.
         </div>
+        {effectiveClimas.some(c => c.type === 'Não Natural') && (
+          <div className={styles.kwGrid} style={{ marginTop: 12 }}>
+            {effectiveClimas.filter(c => c.type === 'Não Natural').map(c => (
+              <WeatherCard key={c.id} icon={c.icon} title={c.name} color={c.color} effects={c.effects}
+                anchorId={`kw-${ruleSlug(c.name)}`} highlight={focusSlug === ruleSlug(c.name)}
+                extra={isGM && isCustomized ? (
+                  <button onClick={() => removeClima(c.id)}
+                    style={{ display:'block', marginTop:8, fontFamily:'var(--font-mono)', fontSize:9,
+                      letterSpacing:'0.08em', textTransform:'uppercase', background:'transparent',
+                      border:'1px solid var(--coral)', borderRadius:999, padding:'2px 8px',
+                      cursor:'pointer', color:'var(--coral)' }}>× remover</button>
+                ) : undefined} />
+            ))}
+          </div>
+        )}
 
         {isGM && !addingClima && (
           <div style={{ display:'flex', gap:8, marginTop:16 }}>
@@ -327,7 +369,7 @@ function ClimasTab({ state, onUpdate, isGM }: { state?: AppState; onUpdate?: (s:
               <input value={draft.name} onChange={e => setDraft(p=>({...p,name:e.target.value}))}
                 placeholder="Nome do clima *" style={fldStyle} />
               <select value={draft.type} onChange={e => setDraft(p=>({...p,type:e.target.value as any}))} style={fldStyle}>
-                <option value="Natural">Natural</option><option value="Especial">Especial</option>
+                <option value="Natural">Natural</option><option value="Não Natural">Não Natural</option>
               </select>
               <input value={draft.icon} onChange={e => setDraft(p=>({...p,icon:e.target.value}))}
                 placeholder="🌀" style={fldStyle} />
@@ -402,6 +444,23 @@ interface SistemaProps {
 
 export default function SistemaPage({ state, onUpdate, isGM = false }: SistemaProps) {
   const [tab, setTab] = useState<'regras'|'climas'|'digivice'>('regras')
+  const [focusSlug, setFocusSlug] = useState<string | null>(null)
+  const [searchParams, setSearchParams] = useSearchParams()
+
+  // Link cruzado vindo de uma ficha: /sistema?kw=<keyword>
+  useEffect(() => {
+    const kw = searchParams.get('kw')
+    if (!kw) return
+    const slug = ruleSlug(kw)
+    setTab(ruleTabFor(kw, state?.customClimas ?? []))
+    setFocusSlug(slug)
+    // Remove o param da URL para não re-focar em navegações futuras
+    searchParams.delete('kw')
+    setSearchParams(searchParams, { replace: true })
+    const t = setTimeout(() => setFocusSlug(null), 2600)
+    return () => clearTimeout(t)
+  }, [searchParams, setSearchParams, state?.customClimas])
+
   return (
     <div>
       <PageHead title="Sistema" tag="o vocabulário escondido das fichas" pageId="sistema" />
@@ -413,8 +472,8 @@ export default function SistemaPage({ state, onUpdate, isGM = false }: SistemaPr
           </button>
         ))}
       </div>
-      {tab === 'regras'   && <RegraTab state={state} />}
-      {tab === 'climas'   && <ClimasTab state={state} onUpdate={onUpdate} isGM={isGM} />}
+      {tab === 'regras'   && <RegraTab state={state} focusSlug={focusSlug} />}
+      {tab === 'climas'   && <ClimasTab state={state} onUpdate={onUpdate} isGM={isGM} focusSlug={focusSlug} />}
       {tab === 'digivice' && <DigiviceTab />}
     </div>
   )

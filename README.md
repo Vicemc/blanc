@@ -1,9 +1,9 @@
 # Digimon Survive — Companion App
-## Documentação Técnica e de Design
+## Documentação Técnica e Funcional
 
-> **Versão:** 1.0.0 (definitiva)
 > **Campanha:** *A Midnight Summer's Dream*
-> **Base:** [Comp/Con](https://github.com/massif-press/compcon) — companion app open-source para LANCER TTRPG
+> **Sistema de mesa:** World of Darkness (WoD) adaptado ao universo *Digimon Survive*
+> **Inspiração arquitetural:** [Comp/Con](https://github.com/massif-press/compcon)
 
 ---
 
@@ -11,38 +11,45 @@
 
 1. [Visão Geral](#1-visão-geral)
 2. [Stack Técnica](#2-stack-técnica)
-3. [Estrutura de Arquivos](#3-estrutura-de-arquivos)
-4. [Modelo de Dados](#4-modelo-de-dados)
-5. [Camada de Dados — store.ts](#5-camada-de-dados--storets)
-6. [Componentes](#6-componentes)
-7. [Páginas](#7-páginas)
-8. [Design System](#8-design-system)
-9. [Assets Estáticos](#9-assets-estáticos)
-10. [Sistema de Regras Implementado](#10-sistema-de-regras-implementado)
-11. [Elenco — Dados Pré-Carregados](#11-elenco--dados-pré-carregados)
-12. [Fluxos de Interação](#12-fluxos-de-interação)
-13. [Como Rodar](#13-como-rodar)
-14. [Como Editar a Base de Dados](#14-como-editar-a-base-de-dados)
-15. [Persistência e Backup](#15-persistência-e-backup)
-16. [Migração Futura — Supabase](#16-migração-futura--supabase)
-17. [Decisões de Design e Arquitetura](#17-decisões-de-design-e-arquitetura)
+3. [Os Dois Modos de Execução](#3-os-dois-modos-de-execução)
+4. [Estrutura de Arquivos](#4-estrutura-de-arquivos)
+5. [Inicialização — Passo a Passo](#5-inicialização--passo-a-passo)
+6. [Autenticação e Papéis](#6-autenticação-e-papéis)
+7. [Camada de Dados e Persistência](#7-camada-de-dados-e-persistência)
+8. [Modelo de Dados (AppState)](#8-modelo-de-dados-appstate)
+9. [Sistema de Imagens](#9-sistema-de-imagens)
+10. [Sistema de Visibilidade (3 estados)](#10-sistema-de-visibilidade-3-estados)
+11. [Cálculos de Regras (XP, Status, HP)](#11-cálculos-de-regras-xp-status-hp)
+12. [Páginas — Funcionamento Detalhado](#12-páginas--funcionamento-detalhado)
+13. [Componente Sheet (Ficha)](#13-componente-sheet-ficha)
+14. [Backend Supabase (Schema, RLS, Realtime)](#14-backend-supabase-schema-rls-realtime)
+15. [Design System](#15-design-system)
+16. [Assets Estáticos](#16-assets-estáticos)
+17. [Elenco Pré-Carregado](#17-elenco-pré-carregado)
+18. [Como Rodar e Fazer Deploy](#18-como-rodar-e-fazer-deploy)
+19. [Como Editar a Base de Dados](#19-como-editar-a-base-de-dados)
+20. [Decisões de Arquitetura](#20-decisões-de-arquitetura)
 
 ---
 
 ## 1. Visão Geral
 
-O **Digimon Survive Companion App** é uma ferramenta de mesa (*TTRPG companion*) desenvolvida para a campanha *A Midnight Summer's Dream*, usando o sistema **World of Darkness (WoD) adaptado** para o universo Digimon Survive.
+O **Digimon Survive Companion App** é uma ferramenta de mesa (*TTRPG companion*) para a campanha *A Midnight Summer's Dream*. Ele organiza fichas, bestiário, regras, combate e comunicação narrativa entre o Mestre (GM) e os jogadores.
 
-O app é **offline-first** e **local-first**: não há backend, não há conta de usuário, não há conexão de rede necessária. Tudo vive no `localStorage` e `IndexedDB` do navegador.
+### Módulos
 
-### O que o app faz
-
-| Módulo | Função |
-|--------|--------|
-| **Party** | Fichas completas de tamers e digimons, com atributos, skills, tamer skills, status derivados, XP, upload de foto e modo livre de edição |
-| **Goggle Girl** | Bestiário por Setor e catálogo de BUGs por classe/cor, com CRUD completo de pastas e entradas |
-| **Teatro** | Gerenciador de palcos de combate com painel de Domains, suporte a Jogress e adição automática de PCs |
-| **Sistema** | Referência completa das regras em 3 sub-abas: Regras, Climas e Digivice |
+| Módulo | Rota | Função |
+|--------|------|--------|
+| **Início** | `/` | Tela inicial com cards de navegação e arte SVG. |
+| **Party** | `/party` | Fichas de Tamers, Survivors e seus Digimons. XP, foto, distribuição em massa. |
+| **Goggle Girl** | `/goggle` | Bestiário (Setores), BUGs, SIGNs e Tokens — tudo com CRUD por pasta. |
+| **Teatro** | `/teatro` | Rastreador de combate em tempo real: rounds, HP/Defesa/Armadura, condições, relógios, Domains, Jogress, clima, log. |
+| **Sistema** | `/sistema` | Referência completa das regras: Regras, Climas e Digivice. |
+| **Digivice** | `/digivice` | Dispositivo pessoal de cada personagem: ficha resumida, inventário, records, mapas. |
+| **Digi-Zap** | `/digizap` | Chat em tempo real entre personagens (grupos e conversas bilaterais). |
+| **Config** | `/configuracoes` | Preferências locais de exibição. |
+| **Backstage** | `/backstage` | Painel exclusivo do GM: usuários, fichas, skill tree, regras (CRUD), visibilidade. |
+| **Modo Visitante** | `/view` | Visualização somente-leitura de Party, Bestiário e Palco ativo. |
 
 ---
 
@@ -50,845 +57,563 @@ O app é **offline-first** e **local-first**: não há backend, não há conta d
 
 | Camada | Tecnologia | Versão |
 |--------|-----------|--------|
-| Framework | React | 18.x |
-| Linguagem | TypeScript | 5.x |
-| Build | Vite | 5.x |
-| Roteamento | React Router | v6 |
-| Estilo | CSS Modules + global.css | — |
-| Estado | `useState` + `useMemo` + `useCallback` + `createContext` | React nativo |
-| Persistência primária | `localStorage` | Browser nativo |
-| Persistência secundária | `IndexedDB` (fallback + imagens) | Browser nativo |
-| Backend | **Nenhum** | — |
-| Porta padrão | **5174** | — |
+| Framework | React | 18.3 |
+| Linguagem | TypeScript | 5.5 |
+| Build | Vite | 5.4 |
+| Roteamento | React Router | 6.26 |
+| Backend (opcional) | Supabase (Auth + Postgres + Storage + Realtime) | `@supabase/supabase-js` 2.106 |
+| Estilo | CSS Modules + `global.css` + estilos inline | — |
+| Estado | `useState` / `useMemo` / `useCallback` / `createContext` | React nativo |
+| Persistência local | `localStorage` + `IndexedDB` | Browser nativo |
+| Hosting | Vercel (SPA com rewrites) | — |
+| Porta de dev | **5174** | — |
 
-**Dependências de produção:**
-```json
-{
-  "react": "^18.3.1",
-  "react-dom": "^18.3.1",
-  "react-router-dom": "^6.26.1"
-}
-```
+**Dependências de produção:** `react`, `react-dom`, `react-router-dom`, `@supabase/supabase-js`.
+
+Code-splitting: todas as páginas são carregadas via `lazy()` com auto-reload em caso de chunk obsoleto (deploy novo). O Vite agrupa `node_modules` num único chunk `vendor`.
 
 ---
 
-## 3. Estrutura de Arquivos
+## 3. Os Dois Modos de Execução
+
+A presença das variáveis de ambiente `VITE_SUPABASE_URL` e `VITE_SUPABASE_ANON_KEY` decide o modo. Isso é resolvido em [src/lib/supabase.ts](src/lib/supabase.ts) através de `isSupabaseReady`.
+
+### Modo Local (`localMode`)
+- Sem variáveis de ambiente → `supabase = null`.
+- **Sem login.** Todo usuário é tratado como GM (`isGM = true`), com acesso total.
+- Persistência apenas em `localStorage` + `IndexedDB`.
+- Digivice e Digi-Zap exibem aviso "requer Supabase configurado".
+
+### Modo Conectado (Supabase)
+- Variáveis presentes → exige login ([LoginPage](src/pages/LoginPage.tsx)).
+- Papéis reais: `gm`, `player`, `guest`.
+- Estado salvo na tabela `app_state` (JSONB) + Storage para imagens.
+- Sincronização em tempo real entre todos os clientes via `postgres_changes`.
+- `localStorage` passa a funcionar como **cache offline**.
+
+> Toda função de backend degrada graciosamente: se o Supabase não estiver pronto, ela cai para o equivalente local. Isso permite desenvolver e jogar offline.
+
+---
+
+## 4. Estrutura de Arquivos
 
 ```
 survive/
-├── index.html
+├── index.html                  # fontes Google, root, favicon
 ├── package.json
-├── vite.config.ts               # porta 5174
-├── tsconfig.json
-├── DOCUMENTACAO.md              # este arquivo
-├── MIGRACAO.md                  # roteiro de migração para Supabase
-├── supabase_schema.sql          # schema SQL pronto para o Supabase
+├── vite.config.ts              # porta 5174, chunk vendor
+├── vercel.json                 # rewrites SPA + cache headers
+├── supabase_schema.sql         # schema completo do backend
+├── supabase_guests.sql         # extensão para contas guest
+├── supabase_digizap_groups.sql # seed de grupos do Digi-Zap
+├── MIGRACAO.md / MIGRACAO_v2.md # roteiros de migração
 │
 ├── public/
-│   ├── affinity/                # 14 ícones PNG das afinidades elementais
-│   ├── tamers/                  # 19 retratos PNG dos personagens humanos
-│   ├── lvl 3/                   # 13 imagens PNG de digimons Child (Lvl 3)
-│   └── lvl 4/                   # 19 imagens PNG de digimons Adult/Armor (Lvl 4)
+│   ├── Blanc_Icon.png
+│   ├── affinity/   # 14 ícones PNG de afinidade elemental
+│   ├── avatar/     # avatares pixel-art dos PCs (navbar)
+│   ├── tamers/     # 19 retratos de personagens
+│   ├── lvl 3/      # 13 sprites de Digimon Child
+│   └── lvl 4/      # 19 sprites de Digimon Adult/Armor
 │
 └── src/
-    ├── main.tsx
-    ├── App.tsx                  # roteamento, AuthProvider, botões Backup/Importar
+    ├── main.tsx                # bootstrap React
+    ├── App.tsx                 # roteamento, nav, auth, save/realtime
     ├── App.module.css
     │
-    ├── types/
-    │   └── index.ts             # todos os tipos TypeScript do domínio
+    ├── types/index.ts          # TODOS os tipos do domínio
     │
     ├── data/
-    │   └── store.ts             # estado, persistência, cálculos, factories, assets
+    │   ├── store.ts            # estado canônico, cálculos, factories, persistência local
+    │   ├── domain.ts           # survivors default, buildDefaultState mínimo, visibilidade
+    │   ├── images.ts           # mapas de imagens default estáticas
+    │   ├── persistence.ts      # wrapper de IndexedDB
+    │   └── rulesData.ts        # climas/keywords/condições base + helpers
     │
-    ├── styles/
-    │   └── global.css           # design tokens, grain, fills, tooltips kwTip
+    ├── lib/
+    │   ├── supabase.ts         # cliente Supabase + isSupabaseReady
+    │   ├── auth.ts             # login, perfis, roles
+    │   ├── settings.tsx        # preferências locais (Context)
+    │   ├── db.ts               # fachada que re-exporta lib/db/*
+    │   └── db/
+    │       ├── state.ts        # load/save AppState + hidratação de imagens
+    │       ├── storage.ts      # upload/URL de imagens no Storage
+    │       ├── realtime.ts     # subscrições postgres_changes
+    │       ├── skillTree.ts    # CRUD de fases da skill tree
+    │       └── migration.ts    # migração local → Supabase
     │
     ├── components/
-    │   ├── Sheet.tsx            # ficha completa (~1537 linhas)
-    │   ├── Sheet.module.css
-    │   ├── GrainFill.tsx
-    │   ├── GrainFill.module.css
-    │   ├── Toast.tsx
-    │   ├── PageHead.tsx
-    │   └── PageHead.module.css
+    │   ├── Sheet.tsx           # ficha completa (~3600 linhas) — núcleo da UI
+    │   ├── AuthProvider.tsx    # Context de sessão/perfil
+    │   ├── GrainFill.tsx       # preenchimento de cor + textura grain
+    │   ├── PageHead.tsx        # cabeçalho de página
+    │   └── Toast.tsx
     │
-    └── pages/
-        ├── HomePage.tsx / .module.css
-        ├── PartyPage.tsx / .module.css
-        ├── GogglePage.tsx / .module.css
-        ├── TeatroPage.tsx / .module.css
-        ├── SistemaPage.tsx / .module.css
+    ├── pages/                  # uma página por rota (ver seção 12)
+    └── styles/global.css       # design tokens, fills, grain, tooltips
 ```
 
 ---
 
-## 4. Modelo de Dados
+## 5. Inicialização — Passo a Passo
 
-Todos os tipos vivem em `src/types/index.ts`.
+O fluxo de boot vive em [src/App.tsx](src/App.tsx) (`AppInner`):
 
-### 4.1 AppState
+1. **`SettingsProvider`** carrega preferências locais de `localStorage` (`survive_settings`).
+2. **`AuthProvider`** verifica `isSupabaseReady`:
+   - Local → `loading = false`, `isGM = true`, `localMode = true`.
+   - Supabase → busca sessão (`getSession`) e perfil (`getProfile`), e assina mudanças de auth.
+3. **Estado inicial:** `useState(() => loadState())` carrega imediatamente do `localStorage` (síncrono, zero flicker).
+4. **`useEffect` de carga remota:** quando `loading` termina:
+   - Se há Supabase mas sem sessão → mostra `LoginPage`.
+   - Caso contrário → `loadStateFromDB()` traz o estado da nuvem (ou cai para local), e marca `appReady`.
+5. **Realtime:** com sessão ativa, assina `subscribeToState`. Updates remotos chamam `setState`, exceto se chegarem em menos de 3s do próprio save (anti-eco — ver [App.tsx:118-126](src/App.tsx#L118-L126)).
+6. **Render:** navbar + `<Routes>` com todas as páginas em `<Suspense>`.
+
+### Estratégia de salvamento (dois callbacks)
+
+| Callback | Usado por | Comportamento |
+|----------|-----------|---------------|
+| `onUpdate` | **Teatro** | Salva imediatamente (`saveStateToDB`) — combate é tempo real. Marca `lastSaveRef`. |
+| `onUpdateLocal` | demais páginas | Marca `isDirty`, faz **debounce de 1,5s** e então salva. Mostra botão "● Salvar" e aviso `beforeunload`. |
+
+---
+
+## 6. Autenticação e Papéis
+
+Definido em [src/lib/auth.ts](src/lib/auth.ts) e [src/components/AuthProvider.tsx](src/components/AuthProvider.tsx).
+
+### Papéis
+
+| Papel | Pode | Não pode |
+|-------|------|----------|
+| **gm** | tudo: editar qualquer ficha, ver Backstage, controlar visibilidade, assumir NPCs | — |
+| **player** | editar **apenas o próprio tamer** (`profile.tamer_id`), ver Digivice/Digi-Zap próprios | editar outros, ver Backstage |
+| **guest** | só leitura de Party, Goggle e Sistema | Teatro, Digivice, Digi-Zap, edição, backup |
+
+### Helpers de permissão
+- `isGM(profile)` → `true` em modo local; senão `role === 'gm'`.
+- `canEditTamer(profile, tamerId)` → GM sempre; player só o seu.
+- O `canEdit(tamerId?)` do `App.tsx` compõe essas regras e é passado às páginas.
+
+### Visibilidade da navbar
+- Teatro: oculto para guests.
+- Digivice / Digi-Zap: visíveis para GM ou players com `tamer_id` (nunca guests).
+- Backstage: só GM.
+- Login: conta criada pelo GM, **sem cadastro público** (trigger `handle_new_user` cria o profile automaticamente).
+
+---
+
+## 7. Camada de Dados e Persistência
+
+### 7.1 Persistência local — [src/data/store.ts](src/data/store.ts) + [src/data/persistence.ts](src/data/persistence.ts)
+
+- **Chave:** `localStorage['digimon_survive']`.
+- **IndexedDB** (`digimon_survive_db`, v2): stores `state` (AppState serializado) e `images` (data URLs por chave).
+- `saveState(s)` grava uma versão **slim** (sem data URLs inline de imagens) em ambos.
+- `loadState()` (síncrono) lê do `localStorage`, aplica `mergeWithDefaults` e `applyDefaultImages`.
+- `loadStateAsync()` tenta `localStorage`, depois IDB, e hidrata as imagens do IDB.
+
+### 7.2 `mergeWithDefaults` — o coração da atualização de conteúdo
+
+Ao carregar um estado salvo, ele mescla com `buildDefaultState()`:
+- **Tamers:** preserva runtime (XP, status, atributos) mas **sempre reinjeta `tamerSkills` do código** (correções de texto refletem sem reset).
+- **Bestiário:** preserva linhas salvas, reinjeta `skills` de cada estágio do código, e **adiciona linhas novas** do código.
+- **Bugs:** preserva os salvos, injeta bugs novos do código.
+- **Survivors:** preserva integralmente, injeta defaults faltantes. Inclui **migração**: um "Yahiro" que existisse como Tamer antigo é convertido para Survivor.
+- `sectors`, `bugFolders`, `signs`, `skillTree`, `customClimas/Keywords/Conditions`, `jogressConfigs`, `tokenDefs`, `visibility` preservam edições do usuário.
+
+### 7.3 Persistência remota — [src/lib/db/state.ts](src/lib/db/state.ts)
+
+- `loadStateFromDB()`: busca o registro mais recente de `app_state` (campaign `midnight-summer`), injeta survivors default faltantes, **hidrata imagens via Storage** e sincroniza o `localStorage` como cache.
+- `saveStateToDB(s)`: salva local primeiro (latência zero na UI), depois envia versão **slim** (`stripImages`) para o Supabase — update se já existe linha, insert caso contrário.
+- `loadStagesFromDB` / `saveStage` / `deleteStage`: os palcos têm acesso independente (tabela `stages`).
+
+### 7.4 Export / Import (backup manual)
+- `exportStateToFile(s)` → baixa `midnight-summer-backup-AAAA-MM-DD.json` (um `ExportPackage` com estado slim + array de imagens em data URL).
+- `importStateFromFile()` → detecta `ExportPackage` (com imagens) vs estado simples, regrava imagens no IDB e hidrata. Disponível na navbar (exceto guests).
+
+---
+
+## 8. Modelo de Dados (AppState)
+
+Todos os tipos vivem em [src/types/index.ts](src/types/index.ts). O `AppState` é o objeto único persistido (como JSONB no Supabase).
 
 ```typescript
 interface AppState {
-  tamers:      Tamer[];
-  bestiary:    DigimonLine[];
-  bugs:        Bug[];
-  stages:      Stage[];
-  sectors:     SectorFolder[];   // pastas de setor — dinâmicas, editáveis via CRUD
-  bugFolders:  BugFolder[];      // pastas de BUG — dinâmicas, editáveis via CRUD
+  tamers:      Tamer[];        // PCs e NPCs Fechadura
+  survivors:   Survivor[];     // personagens sem digimon (ex: Yahiro)
+  bestiary:    DigimonLine[];  // digimons parceiros + selvagens (cada um tem stages[])
+  bugs:        Bug[];          // BUGs (status absoluto)
+  signs:       Sign[];         // SIGNs (entidades especiais)
+  stages:      Stage[];        // palcos do Teatro (com runtime de combate)
+  sectors:     SectorFolder[]; // pastas de setor (CRUD)
+  bugFolders:  BugFolder[];    // pastas de BUG (CRUD)
+  skillTree:   SkillTreePhase[];
+
+  // Extensões do GM
+  customClimas:     ClimaEntry[];
+  customKeywords:   KeywordEntry[];
+  customConditions: ConditionEntry[];
+  jogressConfigs:   JogressConfig[];
+  jogressPassword?: string;
+  tokenDefs:        TokenDef[];
+
+  // Controle de visibilidade (GM)
+  visibility:  VisibilityMap;  // 'tipo:id' → 'hidden' | 'name' | 'full'
 }
 ```
 
-**Chave no localStorage/IndexedDB:** `digimon_survive`
+### Entidades principais
 
-### 4.2 Tamer
-
-```typescript
-interface Tamer {
-  id:          string;
-  name:        string;
-  surname:     string;
-  portrait:    Portrait;
-  image:       string | null;    // dataURL (em memória após hidratar do IDB)
-  imageKey?:   string | null;    // chave no IDB para a imagem personalizada
-  age:         number;
-  height:      number;
-  sign:        string;
-  birthday:    string;
-  voice:       string;
-  tagline:     string;
-  xp:          number;
-  xpSpent:     number;
-  status:      TamerStatus;
-  attributes:  Attributes;
-  skills:      SkillSet;
-  tamerSkills: TamerSkill[];
-  digimonId:   string | null;
-}
-```
-
-### 4.3 TamerSkill e PassiveToggleBonus
-
-```typescript
-interface PassiveToggleBonus {
-  statusBonus?: Partial<Record<
-    'Defesa' | 'Deslocamento' | 'Iniciativa' | 'Armadura' | 'HP' | 'SecurityAttack',
-    number
-  >>;
-  xBonus?: { xMax: number; label: string };  // bônus variável (ex: Shiki com X = 0..2)
-}
-
-interface TamerSkill {
-  type:         SkillCardType;   // 'action' | 'reaction' | 'passive'
-  keyword:      string;
-  title:        string;
-  target?:      string;
-  custo?:       string;
-  dados?:       string;
-  effect:       string;
-  toggleBonus?: PassiveToggleBonus;  // presente em passivas com condição + bônus numérico
-}
-```
-
-**Passivas com toggle implementadas:**
-- **Dance in the Forest** (Reppamon) → Deslocamento +5, Defesa +3 (condição: floresta)
-- **Before My Body Submits** (Eisuke) → Defesa +1 (condição: My Body as Shield ativo)
-- **Shiki** (Mori/Kudamon) → Defesa +X, Security Attack +X, X ∈ {0,1,2}
-
-### 4.4 DigimonLine e DigimonStage
-
-```typescript
-interface DigimonLine {
-  id:           string;
-  tamerId:      string | null;   // null = selvagem
-  name:         string;
-  sectors:      number[];
-  lore?:        string;
-  currentStage: number;
-  image:        string | null;
-  imageKey?:    string | null;
-  stages:       DigimonStage[];
-  line:         string;          // ex: '??? ↔ Tinkermon (Child) / Armor ↔ Witchmon ↔ ...'
-}
-
-interface DigimonStage {
-  stageName:  string;
-  level:      string;            // ex: 'Child (Lvl 3)', 'Armor (Lvl 4)', 'Adult (Lvl 4)'
-  type:       string;
-  cost:       string;
-  portrait:   Portrait;
-  size:       number;
-  speed:      number;
-  status:     DigimonStageStatus;  // HP, Deslocamento, Iniciativa, Defesa, Armadura
-  attributes: Attributes;
-  weakness:   Record<string, string>;
-  affinity:   Partial<Affinity>;
-  skills:     DigimonSkill[];
-  locked:     boolean;           // true = estágio não revelado
-}
-```
-
-### 4.5 Bug
-
-```typescript
-interface Bug {
-  id:         string;
-  name:       string;
-  class:      string;     // ex: 'ledo', 'chi'
-  color:      BugColor;
-  sectors:    number[];
-  lore:       string;
-  image:      string | null;
-  imageKey?:  string | null;
-  status:     DigimonStageStatus;  // valores absolutos (não calculados)
-  attributes: Attributes;
-  weakness:   Record<string, string>;
-  affinity:   Partial<Affinity>;
-  skills:     DigimonSkill[];
-}
-```
-
-> **Importante:** Bugs e digimons selvagens usam `status` como **valores absolutos** — não são recalculados a partir dos atributos. Digimons parceiros têm HP calculado a partir do tamer.
-
-### 4.6 SectorFolder e BugFolder
-
-```typescript
-interface SectorFolder {
-  n:     number;
-  name:  string;
-  bioma: string;
-  color: Portrait;
-}
-
-interface BugFolder {
-  cls:   string;
-  color: BugColor;
-}
-```
-
-Essas pastas são armazenadas no `AppState` e editáveis pelo usuário via CRUD na GogglePage.
-
-### 4.7 ExportPackage
-
-```typescript
-interface ExportedImage {
-  key:     string;
-  type:    string;
-  dataUrl: string;
-}
-
-interface ExportPackage {
-  version: number;
-  state:   AppState;    // sem data URLs inline (imagens separadas)
-  images:  ExportedImage[];
-}
-```
+- **Tamer** — humano com `attributes` (9), `skills` (21), `tamerSkills`, `status` (HP/Memory/Digisoul/Deslocamento/Autoridade/Iniciativa), XP, `inventory`, `digimonId`.
+- **DigimonLine** — linha evolutiva com `stages: DigimonStage[]` e `currentStage`. Cada estágio tem status, atributos, afinidade, fraquezas, skills, `locked`/`hidden` e imagem própria.
+- **Survivor** — humano sem digimon: atributos simplificados (Poder/Refinamento/Resistência), `survivorSkills`, `merits`, `mindLink`, `inventory`, blocos de `lore` com visibilidade.
+- **Bug / Sign** — entidades de status **absoluto** (não calculado).
+- **TamerSkill / DigimonSkill** — cartões de ação/reação/passiva. Podem ter `toggleBonus` (bônus condicional ativável no Palco) ou `alwaysOn` (bônus permanente, herdável por evoluções).
+- **Stage** — `sides.allies/enemies: ActorRef[]` + campos de runtime (round, actorStates, clocks, clima, log, tokenMeta) anexados dinamicamente.
+- **JogressConfig** — fusão de dois Domains (Fechaduras), com skills por lock, grupos de memória selecionáveis e passivas próprias.
+- **TokenDef** — definição de token invocável (ex: Silhouette/Puppet Token).
 
 ---
 
-## 5. Camada de Dados — store.ts
+## 9. Sistema de Imagens
 
-`src/data/store.ts` (~2618 linhas) é o único arquivo que acessa `localStorage` e `IndexedDB`.
+A prioridade de imagem é sempre: **upload do usuário → imagem default estática**.
 
-### 5.1 Chave de Storage
+### Imagens default ([src/data/images.ts](src/data/images.ts))
+- `TAMER_DEFAULT_IMAGES`: `t-naoki` → `/tamers/Naoki.png` (12 PCs/NPCs).
+- `DIGIMON_DEFAULT_IMAGES`: chave `"lineId:stageIndex"` → caminho em `/lvl 3/` ou `/lvl 4/`.
 
-```typescript
-const STORAGE_KEY = 'digimon_survive';
-```
-
-> **Atenção:** Se o app anterior usava `'cheshire_characters'`, limpar o localStorage antes de usar. Ver seção 15.
-
-### 5.2 IndexedDB — Stores
-
-| Store | Conteúdo |
-|-------|---------|
-| `state` | AppState serializado (sem imagens inline) |
-| `images` | Imagens em dataURL, indexadas por `imageKey` |
-
-```typescript
-// Funções disponíveis
-idbSave(s: AppState)
-idbLoad(): Promise<AppState | null>
-idbSaveImage(key: string, dataUrl: string)
-idbLoadImage(key: string): Promise<string | null>
-idbListImageKeys(): Promise<string[]>
-```
-
-### 5.3 Persistência dupla
-
-`saveState` salva em **ambos** simultaneamente:
-```typescript
-export function saveState(s: AppState): void {
-  // Estado leve (sem data URLs) → localStorage + IDB
-  // Imagens já estão no IDB separadamente
-}
-```
-
-`loadStateAsync` tenta localStorage primeiro, IDB como fallback, e hidrata imagens:
-```typescript
-export async function loadStateAsync(): Promise<AppState> {
-  // 1. Tenta localStorage
-  // 2. Fallback: IDB
-  // 3. hydrateImages: reconecta imagens do IDB ao estado
-  // 4. applyDefaultImages: aplica imagens estáticas de /public onde não houver personalizada
-}
-```
-
-### 5.4 Imagens Default Estáticas
-
-```typescript
-// Tamers — /public/tamers/Nome.png
-export const TAMER_DEFAULT_IMAGES: Record<string, string> = {
-  't-naoki':  '/tamers/Naoki.png',
-  // ... 12 entradas
-}
-
-// Digimons — /public/lvl 3/ e /public/lvl 4/
-// Chave: "lineId:stageIndex"
-export const DIGIMON_DEFAULT_IMAGES: Record<string, string> = {
-  'd-tinkermon-line:1': '/lvl 3/Tinkermon.png',
-  'd-tinkermon-line:2': '/lvl 4/Witchmon.png',
-  'd-tinkermon-line:3': '/lvl 4/Witchmon.png',  // Armor (placeholder)
-  // ... ~40 entradas
-}
-```
-
-**Prioridade de imagem:** imagem do usuário (IDB) > imagem default estática (`/public/`).
-
-### 5.5 Cálculo de HP — Digimons Parceiros
-
-HP dos digimons **parceiros** é calculado a partir do tamer:
-
-```
-Child         = HP_tamer + 5
-Armor         = HP_child + 8
-Adult         = HP_child + 10
-Perfect       = HP_child + 15
-Ultimate      = HP_child + 20
-```
-
-Digimons **selvagens** e **Bugs** usam `status.HP` como valor absoluto.
-
-### 5.6 mergeWithDefaults
-
-Ao carregar estado salvo, `mergeWithDefaults` garante que:
-- Novas tamerSkills do código substituem as salvas (conteúdo sempre atualizado)
-- Novas skills de digimons do código substituem as salvas
-- Novos bugs do código são injetados automaticamente (não duplica existentes)
-- Novos bestiários do código são injetados automaticamente
-- `sectors` e `bugFolders` preservam as edições do usuário
-
-### 5.7 Export/Import com Imagens
-
-```typescript
-// Export: estado leve + imagens coletadas do IDB
-exportStateToFile(s: AppState): Promise<void>
-// → baixa midnight-summer-backup-YYYY-MM-DD.json
-
-// Import: detecta ExportPackage vs estado simples
-importStateFromFile(): Promise<AppState | null>
-// → grava imagens no IDB, hidrata estado
-```
+### Upload e armazenamento
+- **Modo local:** upload salva data URL no IndexedDB com chave igual ao id.
+- **Modo Supabase:** [storage.ts](src/lib/db/storage.ts) `uploadImage` converte data URL → Blob → bucket `portraits` (path `{id}.{ext}`) e guarda `imageKey` na entidade.
+- **Hidratação:** ao carregar, `hydrateImagesFromStorage` (remoto) ou `hydrateImages` (local) resolve `imageKey` → URL pública/data URL, ou cai para a imagem default.
+- **Cache de URLs:** `_urlCache` (Map de módulo em `state.ts`) evita recomputar `getPublicUrl` repetidamente nos eventos de realtime.
+- Estados salvos (`stripImages`/`saveState` slim) **nunca** carregam data URLs inline — imagens ficam separadas (Storage ou IDB), mantendo o JSONB leve.
 
 ---
 
-## 6. Componentes
+## 10. Sistema de Visibilidade (3 estados)
 
-### 6.1 Sheet.tsx (~1537 linhas)
-
-O componente central. Exporta `FullSheet` e `SheetModal`.
-
-**Contextos internos:**
+O GM controla o que os players enxergam. Implementado em [store.ts](src/data/store.ts) (`getVisLevel`, `isVisible`, `setVisibility`, `visKey`).
 
 ```typescript
-// Modo de visualização de atributos/skills/afinidades
-type DisplayMode = 'number' | 'dots'
-const DisplayModeCtx = createContext<DisplayMode>('number')
+type VisibilityLevel = 'hidden' | 'name' | 'full'
+type VisibilityMap = Record<string, VisibilityLevel>  // chave: 'tipo:id'
 ```
 
-O toggle `◌◌◌ / 1 2 3` na barra de abas alterna entre os modos. Ambos os modos são sincronizados entre AttributeGrid, SkillGrid e AffinityGrid via `DisplayModeCtx`.
-
-**Sub-componentes principais:**
-
-| Componente | Função |
-|-----------|--------|
-| `ValueDisplay` | Renderiza valor como número ou bolinhas (●◌) dependendo do DisplayMode |
-| `KwTooltip` | Tooltip posicionado via JS — nunca corta nas bordas da tela |
-| `EffectText` | Parser de texto: converte `[Keyword]` em `KwTooltip` automaticamente |
-| `AttributeGrid` | Grade de 9 atributos com staging XP, modo livre e prop `freeMode` controlada |
-| `SkillGrid` | Grade de skills com staging XP e modo livre (sincronizado com AttributeGrid) |
-| `AffinityGrid` | Grid 4×4 de 14 afinidades com ícones PNG e tooltips; layout especial última linha |
-| `TamerSkillsWithDomainTabs` | Agrupa tamerSkills em sub-abas por Domain quando há múltiplos |
-| `SkillCard` | Card de skill com toggle de passiva bônus para passivas elegíveis |
-| `StatRow` | Linha de status com botões +/− para HP, Digisoul e Autoridade |
-| `ImageUploadZone` | Upload de foto com preview |
-
-**Modo livre de atributos:**
-
-O `freeMode` é declarado no `TamerView` e passado como prop controlada para `AttributeGrid` (via `freeMode` + `onFreeModeChange`) e `SkillGrid`. Assim os três componentes compartilham o mesmo estado de modo livre.
-
-**Toggle de passivas com bônus:**
-
-`SkillCard` detecta `s.toggleBonus` e renderiza o painel de toggle abaixo do efeito. Quando ativo, os bônus são somados nos `statusEntries` do `TamerView` ou `DigimonStageView` e refletidos no `StatRow`.
-
-**Portrait do estágio:**
-
-O portrait colorido dentro do `DigimonStageView` exibe a imagem default do estágio específico (`DIGIMON_DEFAULT_IMAGES[lineId:stageIdx]`) com prioridade sobre `line.image`.
-
-### 6.2 GrainFill.tsx
-
-Preenche um container com cor sólida + textura grain SVG. Aceita `image` para sobrepor foto.
-
-### 6.3 Tooltips de Keywords
-
-**Dicionário `KEYWORD_TIPS`** em `Sheet.tsx` cobre ~50 entradas: todas as keywords de ação/ataque/reação, condições de ferimento/acumulação/permanentes, e climas.
-
-**`KwTooltip`** usa `onMouseEnter` para calcular a posição do tooltip via `getBoundingClientRect` + `Math.max/min` contra `window.innerWidth`, garantindo que nunca saia da tela.
-
-**`EffectText`** parseia qualquer string de efeito com regex `(\[[^\]]+\])` e converte matches reconhecidos em `KwTooltip`.
-
----
-
-## 7. Páginas
-
-### 7.1 HomePage
-
-Tela inicial com três cards de navegação e visuais SVG (digivice aleatório, óculos, cortinas).
-
-### 7.2 PartyPage
-
-- Grid de cards de tamer (modo normal: `auto-fill minmax(220px)` / modo compacto: 6 colunas)
-- Cada card mostra: foto do tamer, mini portrait do digimon com sua imagem, XP livre
-- Botão **⊟ Normal / ⊞ Compacto** para alternar layout
-- Painel "✦ Distribuir XP" com valores customizáveis por membro
-- Botões ↓↑ (export/import JSON) em cada card, visíveis no hover
-- Upload de foto no hover sobre o retrato (salva no IDB)
-
-### 7.3 GogglePage
-
-Duas abas — **Setores** e **BUGs** — com sistema de pastas colapsáveis.
-
-**CRUD de pastas:**
-- **+ Pasta de Setor** → cria setor com número automático, nome, bioma, cor
-- **+ Pasta de BUG** → cria pasta com classe e cor
-- **× Pasta** (dentro de cada pasta) → remove sem apagar entradas
-
-**CRUD de entradas dentro de cada pasta:**
-- **+ Digimon / + BUG** → modal pré-preenchido com setor/classe da pasta
-- **↑ Importar** → importa JSON direto para a pasta
-- **↓ Exportar / ↑ Importar** em cada card (hover)
-
-### 7.4 TeatroPage
-
-**Palco:**
-- Título e subtítulo editáveis inline
-- Painel **Aliados** (verde) e **Inimigos** (coral)
-- Botão **+ Adicionar PCs** — adiciona todos os 6 PCs como duplas tamer+digimon
-- Botões **↓ Exportar** e **↑ Importar** para o palco inteiro (JSON)
-
-**Painel de Domain** (aparece quando há tamers com Domain na cena):
-- Abas coloridas (cor do retrato) por Domain ativo
-- Mostra todas as passivas de Memory daquele Domain
-
-**Jogress / Domain of Time:**
-- Só aparece quando **tanto Hare quanto Hibito** estão na cena simultaneamente
-- Se apenas um estiver, mostra mensagem "Jogress — aguardando [outro]"
-- Seleção de até 2 passivas de Memory dos Domains originais (qualquer combinação)
-- Após selecionar as 2, exibe todas as passivas do Domain of Time
-- Botão **↺ Refazer seleção** para desfazer
-- Aba Jogress tem gradiente bicolor: metade Hare (orange), metade Hibito (indigo)
-
-### 7.5 SistemaPage
-
-Três sub-abas com TOC e cards de keywords:
-
-| Sub-aba | Conteúdo |
-|---------|---------|
-| **Regras** | Turnos, Rolagens, Defesa, Dano, Digievolução, Grid, Domains, Keywords, Condições |
-| **Climas** | Clear Skies, Intense Sunlight, Dense Fog, Heavy Rain — com efeitos completos |
-| **Digivice** | Regras do Digivice Chave e Fechadura, Digitize, Runaway Trailmon, Charge, Domains |
-
----
-
-## 8. Design System
-
-### 8.1 Tokens CSS
-
-```css
---paper:       #f6f2e9   /* fundo principal */
---paper-deep:  #efe9dc   /* fundo de seções */
---ink:         #1a1814   /* texto principal */
---ink-soft:    #4a463e   /* texto secundário */
---ink-mute:    #8a8377   /* labels */
---line:        #c8c0ad   /* bordas */
---line-soft:   #ddd5c1   /* bordas suaves */
---radius:      14px
---shadow:      0 12px 32px -18px rgba(40,30,12,0.35)
-```
-
-### 8.2 Tipografia
-
-| Variável | Fonte | Uso |
-|---------|-------|-----|
-| `--font-display` | Archivo Black | Títulos, nomes |
-| `--font-body` | DM Sans | Corpo de texto |
-| `--font-serif` | Instrument Serif italic | Taglines |
-| `--font-mono` | JetBrains Mono | Labels, stats |
-
-### 8.3 Palette de Cores
-
-| Var | Hex | Uso principal |
-|-----|-----|---------------|
-| `--coral` | `#e25845` | Naoki / XP / passivas |
-| `--teal` | `#4a9b9b` | Mori / toggles ativos |
-| `--purple` | `#8a6ea0` | Miki |
-| `--black` | `#1a1814` | Yuri |
-| `--gold` | `#e7d4a3` | Eisuke / Setor 5 |
-| `--rose` | `#d99fae` | Sachi/Emi / Setor 3 |
-| `--orange` | `#e87a2c` | Hare |
-| `--blue` | `#6e8bb5` | Kanade |
-| `--green` | `#6e9d70` | Shinra |
-| `--indigo` | `#3b3a5e` | Kumo/Hibito / Setor 4 |
-| `--sage` | `#9bb89c` | Setor 1 — Kuwaga |
-| `--wheat` | `#d9b974` | Setor 2 — Sisters |
-
----
-
-## 9. Assets Estáticos
-
-Todos os assets são servidos pelo Vite como arquivos estáticos de `/public/`.
-
-### 9.1 Retratos de Tamers — `/public/tamers/`
-
-19 arquivos PNG com fundo transparente:
-
-| Arquivo | Personagem |
-|---------|-----------|
-| Naoki.png | NAOKI Mochizuki |
-| Eisuke.png | EISUKE Morikawa |
-| Miki.png | MIKI Sawatari |
-| Yurieta.png | YURI Miyamoto |
-| Sachi.png | SACHI Fujimura |
-| Mori.png | MORI Utsurogi |
-| Hare.png | HARE Ouhara |
-| Kanade.png | KANADE Hankei |
-| Shinra.png | SHINRA Sorakado |
-| Kumo.png | KUMO Sumeragi |
-| Emi.png | EMI Chouhou'in |
-| Hibito.png | HIBITO Akugetsu |
-| Yahiro.png | Yahiro Akugetsu (futuro) |
-| Mei.png | Mei Takamiya (futuro) |
-| Hino.png | Hino Ogami (futuro) |
-| Makoto.png | Makoto Daidouji (futuro) |
-| Kimimaro.png | Kimimaro Oikawa (futuro) |
-| Shiro.png | Shiro (futuro) |
-| Yui.png | Yui (futuro) |
-
-### 9.2 Retratos de Digimons — `/public/lvl 3/` e `/public/lvl 4/`
-
-Mapeados em `DIGIMON_DEFAULT_IMAGES` por chave `"lineId:stageIndex"`.
-
-**Lvl 3 (13 arquivos):** Tinkermon, Kudamon, Blucomon, Wormmon, Solarmon, ToyAgumon, Penmon, Floramon, Hyokomon, Ghostmon, Betamon, Sistermon Blanc, PicoDevimon
-
-**Lvl 4 (19 arquivos):** Witchmon, Reppamon, Paledramon, Guardromon, Omekamon, Swanmon, Coatlmon, FlaWizarmon, Coelamon, Sistermon Noir, Sistermon Ciel, Greymon, Yoyomon, BlackTailmon, Buraimon, Garurumon, Hudiemon, Lekismon, Machmon
-
-### 9.3 Ícones de Afinidade — `/public/affinity/`
-
-14 arquivos PNG (com transparência):
-`Agua, Cura, Enfraquecer, Fisico, Fogo, Gelo, Luz, Madeira, Metal, Resistencia, Terra, Trevas, Trovao, Vento`
-
-**Layout das afinidades na ficha** (grid 4×4):
-```
-Fogo    · Água       · Terra      · Vento
-Trovão  · Gelo       · Metal      · Madeira
-Luz     · Trevas     · (vazio)    · (vazio)
-Físico  · Enfraquecer· Resistência· Cura
-```
-
----
-
-## 10. Sistema de Regras Implementado
-
-### 10.1 Atributos
-
-9 atributos em 3 grupos, limite 5 por atributo:
-
-| Grupo | Atributos |
+| Nível | Player vê |
 |-------|-----------|
-| Poder | Inteligência, Força, Presença |
-| Refinamento | Raciocínio, Destreza, Manipulação |
-| Resistência | Perseverança, Vigor, Autocontrole |
+| `hidden` | nada (entidade some das listas) |
+| `name` | apenas **foto + nome** (a ficha abre restrita) |
+| `full` | tudo |
 
-### 10.2 Skills
+- **Default por tipo:** `stage` é `full`; o resto é `hidden`.
+- **Migração de boolean:** valores antigos `true`/`false` viram `full`/`hidden` transparentemente.
+- **Toggles na UI:**
+  - `EyeToggle` (2 estados: hidden ↔ full) — usado em Party (tamers/survivors).
+  - `EyeToggle3` (3 estados, cicla hidden → name → full) — usado em Goggle (bestiário, BUGs, SIGNs).
+- **`nameOnly` na ficha:** o `SheetModal` calcula, para não-GMs, se a entidade está em `name` e, se sim, renderiza só retrato + nome + "~ informações restritas ~" ([Sheet.tsx:3576](src/components/Sheet.tsx#L3576)).
+- A página **Backstage → Visibilidade** lista todas as entidades para controle centralizado.
 
-21 skills em 3 categorias, limite 5 por skill:
+---
 
-- **Mental:** Investigação, Construção, E.G., P.S., Folclore, Ciência, Notívago
-- **Físico:** Briga, Atletismo, Sobrevivência, Furtividade, Culinária, Limpeza, Esquiva
-- **Social:** Intimidação, Persuasão, Socializar, Expressão, Empatia, Subterfúgio, Sorte
+## 11. Cálculos de Regras (XP, Status, HP)
 
-### 10.3 Status Derivados
+Definidos em [src/data/store.ts](src/data/store.ts).
 
-| Status | Fórmula (tamer) | Fórmula (digimon parceiro) |
-|--------|----------------|---------------------------|
-| HP | Vigor + 5 | HP_tamer + 5×(stageAboveChild+1) |
-| Digisoul | Perseverança + Autocontrole | — |
-| Defesa | min(Destreza, Raciocínio) | min(Destreza, Raciocínio) + evoBonus |
-| Iniciativa | Destreza + Autocontrole + 1 | Destreza + Autocontrole + 1 |
-| Deslocamento | Força + Destreza + speed | Força + Destreza + speed |
+### Atributos e Skills
+- 9 atributos em 3 grupos (Poder/Refinamento/Resistência), limite 5.
+- 21 skills em 3 categorias (Mental/Físico/Social), limite 5.
 
-### 10.4 Custos de XP
+### Custos de XP
+```
+xpCostAttribute(novoNível) = novoNível × 5
+xpCostSkill(novoNível)     = novoNível × 3
+```
+Compras passam por **staging** (acumuladas e confirmadas em bloco) ou **modo livre** (edição direta sem custo). A skill tree custa 3 XP por skill liberada.
+
+### Status derivados (Tamer)
+| Status | Fórmula |
+|--------|---------|
+| HP | Vigor + size |
+| Digisoul | Perseverança + Autocontrole |
+| Iniciativa | Destreza + Autocontrole + 1 |
+| Deslocamento | Força + Destreza + speed |
+
+### HP de Digimon parceiro (`calcDigimonDerived`)
+Relativo ao HP do tamer, por nível do estágio:
+```
+Child   = HP_tamer + 5
+Armor   = HP_tamer + 8
+Adult   = HP_tamer + 10
+Perfect = HP_tamer + 15
+Ultimate= HP_tamer + 20
+```
+Digimons **selvagens** e **Bugs/SIGNs** usam `status.HP` como valor absoluto (Vigor + size se sem tamer).
+
+---
+
+## 12. Páginas — Funcionamento Detalhado
+
+### 12.1 HomePage — [src/pages/HomePage.tsx](src/pages/HomePage.tsx)
+Tela inicial com 3 cards (Party / Goggle Girl / Teatro) e arte SVG inline (digivice aleatório por sessão, óculos, palco). Link para Sistema no rodapé.
+
+### 12.2 PartyPage — [src/pages/PartyPage.tsx](src/pages/PartyPage.tsx)
+- Grid de cards de **Tamers** e **Survivors** (layout normal ou compacto — preferência persistida).
+- Cada card: foto (upload no hover), nome, meta, tagline, XP livre, mini-card do digimon.
+- **GM:** botão de olho (`EyeToggle`) por card, "+ Novo Tamer", "+ Survivor", e painel **"✦ Distribuir XP"** (valor base + override por membro).
+- Export/import de ficha individual (JSON) no hover.
+- Clique no card → `SheetModal` (editável conforme `canEdit`).
+
+### 12.3 GogglePage — [src/pages/GogglePage.tsx](src/pages/GogglePage.tsx)
+Quatro abas:
+- **Setores:** pastas por setor; digimons agrupados por `sectors`. CRUD de pasta e de digimon (selvagem). `EyeToggle3` por entrada.
+- **BUGs:** pastas por `classe.cor`; CRUD de pasta e bug.
+- **SIGNs:** lista plana; CRUD de SIGN com `EyeToggle3`.
+- **Tokens:** definições de token (`TokenDef`) — stats, dados, condições automáticas, visibilidade. São o que o Teatro invoca.
+- Toda entrada abre o `SheetModal` correspondente.
+
+### 12.4 TeatroPage — [src/pages/TeatroPage.tsx](src/pages/TeatroPage.tsx) (a mais complexa)
+Índice de palcos → `PalcoView` ao abrir um. O `PalcoView` é o rastreador de combate:
+
+- **Runtime do palco** (`getRuntime`): `roundCurrent`, `actorStates` (HP/Defesa/Armadura/condições por ator), `clocks`, `clima`, `log`, `tokenMeta` — campos anexados ao `Stage`.
+- **Atores** (`ActorRef`): human, pair (tamer+digimon), wild, bug, survivor, sign. Cada ator vira um `ActorChip` com HP/Defesa/Armadura editáveis e condições.
+- **Adicionar:** `Picker` paginado por tipo, "+ Adicionar PCs" (os 6 jogadores de uma vez), invocar Tokens.
+- **Evolução no palco:** `evolveActor` troca o estágio do pair e reinicializa o `ActorState`.
+- **Contador de Round:** o "+" restaura a Defesa de todos para `defesa_base` e gera log automático. Pop-up central + som configuráveis.
+- **Painéis:**
+  - `DomainPanel` — abas por Domain presente; lógica de **Jogress** (fusão de Fechaduras) com seleção de passivas de memória e Domain fusionado (ex: *Domain of Time* = Hare + Hibito). Lê `jogressConfigs` do GM.
+  - `ClimaPanel` — seletor de clima ativo (bases + custom).
+  - `ConditionShortcutsPanel` — aplica condições rapidamente nos atores.
+  - `ClocksPanel` — relógios de 10 seções por ator.
+  - `PalcoLogPanel` — log automático + entradas manuais do GM.
+- **Export/Import** do palco inteiro (JSON).
+
+### 12.5 SistemaPage — [src/pages/SistemaPage.tsx](src/pages/SistemaPage.tsx)
+Referência de regras em 3 sub-abas:
+- **Regras:** turnos, rolagens, defesa, dano, digievolução, grid, domains, keywords, condições. Texto com `**negrito**` e tooltips.
+- **Climas:** cards de cada clima (bases + custom do GM).
+- **Digivice:** regras do Digivice Chave/Fechadura, Digitize, Trailmon, Charge, Domains.
+
+### 12.6 DigivicePage — [src/pages/DigivicePage.tsx](src/pages/DigivicePage.tsx) (requer Supabase)
+Dispositivo pessoal, persistido na tabela `digivices`. GM escolhe o personagem; player vê o seu.
+- **Barra de status:** Memory (com botão ⚡ Charge → reseta para 3), Autoridade (só Chave), Tickets de Trailmon, status do dispositivo (Ativo/Carregando/Dormindo).
+- **Sub-abas:**
+  - **Ficha:** resumo + botão para abrir a ficha completa.
+  - **Inventário:** itens com tipo, quantidade, efeitos e flag `gm_only`.
+  - **Records:** documentos, fotos e **Conversas Arquivadas** (chats do Digi-Zap arquivados como `type: 'chat'`).
+  - **Mapas:** imagens + notas.
+
+### 12.7 DigiZapPage — [src/pages/DigiZapPage.tsx](src/pages/DigiZapPage.tsx) (requer Supabase)
+Chat em tempo real (`digi_zap_groups` + `digi_zap_messages`).
+- Sidebar com **Grupos**, **Conversas** (bilaterais) e "Nova conversa".
+- GM escolhe **enviar como** qual personagem (NPC ou PC) e pode criar grupos.
+- Mensagens com metadados narrativos opcionais: Dia de Sobrevivência, Horário, Sessão.
+- **Realtime** ouve inserts de todos os grupos; grupo inativo incrementa o badge de não-lidos e toca um **ping** (Web Audio). "Última vez visto" por grupo guardado em `localStorage`.
+- **Arquivamento:** ao abrir um grupo com > 100 mensagens (ou via botão "Arquivar conversa" do GM), as mensagens são gravadas como `record` nos Digivices dos participantes e removidas do banco (controle de memória). A lista em memória é limitada a 100.
+
+### 12.8 BackstagePage — [src/pages/BackstagePage.tsx](src/pages/BackstagePage.tsx) (só GM)
+Cinco abas:
+- **Usuários:** lista perfis, define role e `tamer_id`.
+- **Fichas:** edição direta de qualquer ficha.
+- **Skill Tree:** cria/desbloqueia fases por tamer; player compra as skills (3 XP).
+- **Regras:** CRUD de Climas, Keywords, Condições e **Jogress** (define Fechaduras, skills por lock e gera automaticamente a skill compartilhada `Jogress: [Natural] & [Metafísico]` nos dois tamers).
+- **Visibilidade:** controle centralizado de `hidden`/`name`/`full` de todas as entidades.
+
+### 12.9 SettingsPage — [src/pages/SettingsPage.tsx](src/pages/SettingsPage.tsx)
+Preferências locais (em `localStorage`, via `SettingsProvider`): esconder taglines (por página), pop-up de round, som do Digi-Zap, modo de ficha (vertical/horizontal), valores numéricos vs bolinhas, layout de atributos (Blanc/Clássica), grid compacto da Party.
+
+### 12.10 ViewerPage — [src/pages/ViewerPage.tsx](src/pages/ViewerPage.tsx)
+Modo visitante somente-leitura em `/view`: Party, Bestiário (respeitando visibilidade) e Palco ativo. Fichas abrem em modo não-editável.
+
+---
+
+## 13. Componente Sheet (Ficha)
+
+[src/components/Sheet.tsx](src/components/Sheet.tsx) (~3600 linhas) é o componente mais central. Exporta `FullSheet` e `SheetModal`, mais o tipo `SheetSubject`:
 
 ```typescript
-xpCostAttribute(newLevel) = newLevel × 5
-xpCostSkill(newLevel)     = newLevel × 3
+type SheetSubject =
+  | { kind: 'tamer';    id }
+  | { kind: 'pair';     tamerId; digimonId; stage }
+  | { kind: 'wild' | 'digimon'; id }
+  | { kind: 'bug';      id }
+  | { kind: 'sign';     id }
+  | { kind: 'survivor'; id }
 ```
 
-### 10.5 Staging de XP
+O `SheetModal` despacha para a *view* certa: `TamerView`, `DigimonStageView`, `BugView`, `SignView` ou `SurvivorView`.
 
-Compras são acumuladas antes de confirmar. O usuário pode montar um plano completo, ver o custo total e confirmar/cancelar tudo de uma vez. Em **modo livre**, edições são feitas diretamente sem custo e sem staging — funciona para atributos, skills **e** afinidades.
-
-### 10.6 Afinidades
-
-14 elementos com valor 0–10. Afinidades são somadas à pool de rolagem ao usar skills com aquele elemento. Layout especial na ficha (4×4 com 2 células vazias na linha 3) e ícones PNG com tooltip ao hover.
-
-### 10.7 Evolução e Armor
-
-- **Armor (Lvl 4)** é evolução alternativa ao Child (Lvl 3), não subsequente ao Adult
-- Todos os PCs e Hare têm slot Armor
-- Custo de Armor usa barra **Digimental** em vez de Memory
-- Representado na string `line` como: `Child / Armor ↔ Adult ↔ ...`
+### Recursos transversais
+- **DisplayMode** (`number` | `dots`) via Context — atributos/skills/afinidades como número ou bolinhas, sincronizados.
+- **`EffectText` + `KwTooltip`** — parser que converte `[Keyword]` em tooltip posicionado via JS (`getBoundingClientRect`, nunca corta na borda). Dicionário `KEYWORD_TIPS` cobre ~50 termos.
+- **Modo livre** — edição direta de atributos/skills/afinidades sem custo de XP, estado compartilhado entre as grades.
+- **Staging de XP** — `XpConfirmBar` mostra custo total antes de confirmar.
+- **Toggles de passiva** (`toggleBonus`) — somam bônus a status/condições; algumas com X variável (ex: Shiki 0–2).
+- **Skill Tree** integrada na ficha do tamer (compra via Supabase RPC `buy_skill`, ou local).
+- **Inventário, Merits, MindLink, Lore** para survivors; **Digivice inventory** embutido.
+- **`nameOnly`** restringe a ficha quando a visibilidade é `name` (ver seção 10).
+- Modo **horizontal** (preferência) amplia o modal e dispõe seções em colunas.
 
 ---
 
-## 11. Elenco — Dados Pré-Carregados
+## 14. Backend Supabase (Schema, RLS, Realtime)
 
-### 11.1 Player Characters (6)
+Schema completo em [supabase_schema.sql](supabase_schema.sql).
 
-| Tamer | Cor | Digimon | Linha |
-|-------|-----|---------|-------|
-| NAOKI Mochizuki | coral | Tinkermon / Witchmon | `??? ↔ Tinkermon (Child) / Armor ↔ Witchmon ↔ ??? ↔ ???` |
-| EISUKE Morikawa | gold | Solarmon / Guardromon Gold | `??? ↔ Solarmon (Child) / Armor ↔ Guardromon (Gold) ↔ ???` |
-| MIKI Sawatari | purple | Blucomon / Paledramon | `??? ↔ Blucomon (Child) / Armor ↔ Paledramon ↔ ??? ↔ ???` |
-| YURI Miyamoto | black | Wormmon (Leafmon↔Minomon↔Wormmon) | `Leafmon ↔ Minomon ↔ Wormmon (Child) / Armor ↔ ??? ↔ ???` |
-| SACHI Fujimura | rose | — (a revelar) | — |
-| MORI Utsurogi | teal | Kudamon / Reppamon | `??? ↔ Kudamon (Child) / Armor ↔ Reppamon ↔ ??? ↔ ???` |
+### Tabelas
+| Tabela | Conteúdo |
+|--------|----------|
+| `profiles` | estende `auth.users`: `display_name`, `role`, `tamer_id`, `npc_id`, `active_npc_view`. Trigger cria profile no signup. |
+| `app_state` | `AppState` inteiro como JSONB (campaign `midnight-summer`). |
+| `stages` | palcos de combate (round, actor_states, clocks, tokens) — sync independente. |
+| `signs` | SIGNs da Goggle Girl. |
+| `skill_tree_phases` | fases de skill por tamer (available/acquired). |
+| `digivices` | um por personagem: memory, authority, tickets, inventory, records, maps. |
+| `digi_zap_groups` / `digi_zap_messages` | grupos e mensagens do chat. |
+| `gm_notes` / `gm_items` | conteúdo exclusivo do GM (itens revelados sob demanda). |
 
-### 11.2 NPCs Fechadura (6)
+### Segurança (RLS)
+- Helpers: `is_gm()`, `my_character_id()`, `is_participant(group_id)`.
+- Players só leem/escrevem o que lhes pertence (próprio digivice, grupos que participam, fases desbloqueadas do próprio tamer). GM tem acesso amplo.
+- Mensagens são imutáveis (só GM deleta).
 
-| Tamer | Cor | Domain | Digimon |
-|-------|-----|--------|---------|
-| HARE Ouhara | orange | Domain of Sky / Time (Jogress) | Toy Agumon → Omekamon / **Yoyomon** (Armor) |
-| KANADE Hankei | blue | Domain of Suffocation | Penmon → Swanmon |
-| SHINRA Sorakado | green | Domain of Nature | Floramon → Coatlmon |
-| KUMO Sumeragi | indigo | Domain of Logic | Hyokomon → ??? |
-| EMI Chouhou'in | rose | Domain of Emotion | Betamon → Coelamon |
-| HIBITO Akugetsu | indigo | Domain of Oblivion / Time (Jogress) | Ghostmon → Fla Wizarmon |
+### Funções RPC de negócio
+- `buy_skill(phase_id, skill_index)` — compra atômica (move skill + debita 3 XP no JSONB).
+- `update_actor_state(...)`, `advance_round(stage_id)`, `reveal_item(item_id)`.
 
-### 11.3 Bestiário Selvagem — Setor 2: Sisters (7)
+### Realtime
+Publicação `supabase_realtime` inclui `app_state`, `stages`, `digi_zap_messages`, `digivices`, `skill_tree_phases`. `gm_notes`/`gm_items` ficam de fora por precaução.
 
-| ID | Nome | Nível | Tipo |
-|----|------|-------|------|
-| d-greymon | Greymon | Adult (Lvl 4) | Dinosaur |
-| d-pico-devimon | Pico Devimon | Child (Lvl 3) | Small Devil |
-| d-sistermon-blanc | Sistermon Blanc | Child (Lvl 3) | Puppet |
-| d-sistermon-noir | Sistermon Noir | Adult (Lvl 4) | Puppet |
-| d-sistermon-ciel | Sistermon Ciel | Adult (Lvl 4) | Puppet |
-| d-yahiro-saki | Yahiro Saki | N/A | Illusion, SIGN 02 |
-| d-sakura-fabrication | Sakura Fabrication | Adult (Lvl 4) | Token, Illusion, SIGN 02 |
-
-### 11.4 BUGs
-
-| ID | Nome | Classe | Cor | Nível |
-|----|------|--------|-----|-------|
-| b-ledo-trivial | red.trivial | ledo | red | Baby II (Lvl 2) |
-| b-ledo-low | red.low | ledo | red | Child (Lvl 3) |
-| b-ledo-high | red.high | ledo | red | Adult (Lvl 4) |
-| b-ledo-hood | red.hood | ledo | red | Adult (Lvl 4) |
-| b-chi-chevalier | green.chevalier | chi | green | Baby II (Lvl 2) |
-| b-chi-priestess | green.priestess | chi | green | Adult (Lvl 4) |
+### Storage
+Buckets públicos `portraits` (fotos de tamers/digimons, path `{id}.{ext}`) e `assets` (SIGNs, mapas, records). Policies de leitura pública + escrita autenticada.
 
 ---
 
-## 12. Fluxos de Interação
+## 15. Design System
 
-### 12.1 Abrir e editar uma ficha
+Tokens em [src/styles/global.css](src/styles/global.css). Estética "papel envelhecido" com textura grain.
 
-1. Clicar em card na Party → `SheetModal` com `{ kind: 'tamer', id }`
-2. Header sempre mostra o tamer (foto, nome, meta)
-3. Abas: [NAOKI] + [estágio 0: ???] + [estágio 1: Tinkermon] + [Witchmon] + ...
-4. Toggle `◌◌◌ / 1 2 3` na barra de abas → alterna entre bolinhas e números
-5. Clicar no estágio → portrait do estágio exibe imagem default correspondente
+| Token | Valor | Uso |
+|-------|-------|-----|
+| `--paper` / `--paper-deep` | `#f6f2e9` / `#efe9dc` | fundos |
+| `--ink` / `--ink-soft` / `--ink-mute` | `#1a1814` / `#4a463e` / `#8a8377` | texto |
+| `--line` / `--line-soft` | `#c8c0ad` / `#ddd5c1` | bordas |
+| `--radius` | `14px` | cantos |
 
-### 12.2 Modo livre
+**Fontes:** Archivo Black (display), DM Sans (corpo), Instrument Serif itálico (taglines), JetBrains Mono (labels/stats).
 
-1. Na ficha do tamer, clicar **"Modo livre (sem XP)"** na seção de atributos
-2. Atributos, Skills e Afinidades ganham botões +/− diretos sem custo
-3. O estado `freeMode` é compartilhado entre os três componentes via prop
-4. Clicar novamente desativa
+**Paleta de personagens:** coral, teal, purple, black, gold, rose, orange, blue, green, indigo, sage, wheat — cada `Portrait` mapeia para uma classe `fill-*` com grain.
 
-### 12.3 Toggle de passiva com bônus
+---
 
-1. Passivas elegíveis mostram painel de toggle no rodapé do card
-2. Clicar em `○ Inativa` → `● Ativa` (teal)
-3. Bônus aplicados instantaneamente no StatRow
-4. Shiki mostra selector de X (0/1/2) quando ativa
+## 16. Assets Estáticos
 
-### 12.4 Teatro — Domains e Jogress
+- **`/public/tamers/`** — 19 retratos PNG.
+- **`/public/lvl 3/`** — 13 sprites Child; **`/public/lvl 4/`** — 19 sprites Adult/Armor.
+- **`/public/affinity/`** — 14 ícones: Agua, Cura, Enfraquecer, Fisico, Fogo, Gelo, Luz, Madeira, Metal, Resistencia, Terra, Trevas, Trovao, Vento.
+- **`/public/avatar/`** — avatares pixel-art dos PCs (exibidos na navbar).
 
-1. Adicionar tamers com Domain ao palco → painel Domain aparece automaticamente
-2. Cada aba mostra passivas de Memory daquele Domain
-3. Se Hare E Hibito estiverem na cena → aba "Jogress" bicolor aparece
-4. Se apenas um → mensagem "Jogress — aguardando [outro]"
-5. Selecionar 2 passivas → painel Domain of Time completo aparece
-
-### 12.5 Backup e restore
-
-**Backup:** Botão **↓ Backup** na navbar → baixa `midnight-summer-backup-YYYY-MM-DD.json` incluindo todas as imagens do IDB.
-
-**Restore:** Botão **↑ Importar** na navbar → seleciona arquivo `.json`, grava imagens no IDB e atualiza estado.
-
-**Reset total:**
-```javascript
-// Console do navegador (F12):
-localStorage.removeItem('digimon_survive')
-// Depois recarregar a página
+Layout das afinidades na ficha (grid 4×4):
+```
+Fogo    · Água        · Terra       · Vento
+Trovão  · Gelo        · Metal       · Madeira
+Luz     · Trevas      · (vazio)     · (vazio)
+Físico  · Enfraquecer · Resistência · Cura
 ```
 
 ---
 
-## 13. Como Rodar
+## 17. Elenco Pré-Carregado
 
-**Pré-requisitos:** Node.js ≥ 18, npm ≥ 9
+Definido em `buildDefaultState()` ([store.ts:757](src/data/store.ts#L757)).
+
+### Player Characters (6)
+| Tamer | Cor | Digimon |
+|-------|-----|---------|
+| NAOKI Mochizuki | coral | Tinkermon → Witchmon |
+| EISUKE Morikawa | gold | Solarmon → Guardromon |
+| MIKI Sawatari | purple | Blucomon → Paledramon |
+| YURI Miyamoto | black | Wormmon |
+| SACHI Fujimura | rose | (Puppet Theater / Tokens) |
+| MORI Utsurogi | teal | Kudamon → Reppamon |
+
+### NPCs Fechadura (6) — com Domain
+Hare (Sky), Kanade, Shinra (Nature), Kumo (Logic), Emi (Emotion), Hibito (Oblivion). Hare + Hibito formam o Jogress **Domain of Time**.
+
+### Bestiário (Setor 2 — Sisters)
+Greymon, Pico Devimon, Sistermon Blanc/Noir/Ciel, Yahiro Saki (SIGN 02), Sakura Fabrication.
+
+### BUGs
+`red.trivial/low/high/hood` (ledo) e `green.chevalier/priestess` (chi).
+
+### Survivors
+Yahiro Akugetsu (default).
+
+### Tokens (`DEFAULT_TOKEN_DEFS`)
+Silhouette Token (Hibito), Puppet Token e Enhanced Puppet Token (Sachi).
+
+---
+
+## 18. Como Rodar e Fazer Deploy
+
+**Pré-requisitos:** Node.js ≥ 18, npm ≥ 9.
 
 ```bash
 npm install
-npm run dev
-# → http://localhost:5174
-```
-
-**Build de produção:**
-```bash
-npm run build
+npm run dev       # http://localhost:5174
+npm run build     # tsc + vite build
 npm run preview
 ```
 
-**Primeira execução:** `loadState` detecta localStorage vazio e chama `buildDefaultState`, populando o app com todos os personagens da campanha + imagens default estáticas.
+### Variáveis de ambiente (modo conectado)
+Crie `.env` na raiz:
+```
+VITE_SUPABASE_URL=https://xxxx.supabase.co
+VITE_SUPABASE_ANON_KEY=eyJ...
+```
+Sem elas, o app roda em modo local.
+
+### Setup do Supabase
+1. Criar projeto no Supabase.
+2. Rodar [supabase_schema.sql](supabase_schema.sql) no SQL Editor.
+3. Criar buckets públicos `portraits` e `assets`.
+4. Criar a conta do GM (ou via signup) e promover: `update public.profiles set role='gm' where id='<uuid>';`
+5. Logar no app e usar **⟳ Migrar** (navbar) para enviar os dados locais à nuvem.
+6. (Opcional) Rodar os seeds de grupos do Digi-Zap.
+
+### Deploy (Vercel)
+SPA com `vercel.json` (rewrites para `/index.html`, `index.html` sem cache, `/assets/*` imutável). Definir as variáveis de ambiente no painel da Vercel.
 
 ---
 
-## 14. Como Editar a Base de Dados
+## 19. Como Editar a Base de Dados
 
-**Arquivo:** `src/data/store.ts` → `buildDefaultState()` (~linha 360)
+A base canônica está em `buildDefaultState()` ([src/data/store.ts](src/data/store.ts)).
 
-Após editar, **limpar o localStorage** para o app recarregar os dados frescos:
-```javascript
-localStorage.removeItem('digimon_survive')
-```
-
-> O `mergeWithDefaults` injeta automaticamente novos bugs e bestiários sem necessidade de reset — mas para alterações em tamerSkills ou skills de digimons, o reset é necessário pois essas são sempre substituídas pelo código.
-
-### Adicionar novo tamer
-
-Seguir o padrão dos existentes em `buildDefaultState()`. ID deve ter prefixo `t-`.
-
-### Adicionar imagem default para novo tamer/digimon
-
-1. Colocar o PNG em `public/tamers/` ou `public/lvl 3/` / `public/lvl 4/`
-2. Adicionar entrada em `TAMER_DEFAULT_IMAGES` ou `DIGIMON_DEFAULT_IMAGES` no topo do `store.ts`
-
-### Adicionar passiva com toggle
-
-Incluir `toggleBonus` na skill:
-```typescript
-{
-  type: 'passive', keyword: '...', title: '...',
-  effect: '...',
-  toggleBonus: {
-    statusBonus: { Defesa: 2, Deslocamento: 3 },
-    // xBonus: { xMax: 3, label: 'X (Condições)' }  // opcional, para bônus variável
-  }
-}
-```
+- **Conteúdo de skills/tamerSkills:** edite no código — o `mergeWithDefaults` reinjeta automaticamente (sem reset).
+- **Novos bugs/bestiário:** adicione no código — são injetados sem duplicar.
+- **Imagens default:** coloque o PNG em `public/` e registre em `TAMER_DEFAULT_IMAGES`/`DIGIMON_DEFAULT_IMAGES` ([images.ts](src/data/images.ts)).
+- **Reset total (modo local):**
+  ```js
+  localStorage.removeItem('digimon_survive')  // F12 → Console, depois recarregar
+  ```
+- **Regras (climas/keywords/condições):** as bases vivem em [rulesData.ts](src/data/rulesData.ts); o GM adiciona customizações pela aba Backstage → Regras (gravadas no `AppState`).
 
 ---
 
-## 15. Persistência e Backup
+## 20. Decisões de Arquitetura
 
-### Estratégia atual
-
-```
-localStorage (estado leve, sem imagens)
-     ↕ sincronizados
-IndexedDB store 'state' (estado leve)
-IndexedDB store 'images' (fotos dos personagens)
-     ↓ hidratado ao carregar
-AppState em memória (com imagens)
-```
-
-### Imagens default vs personalizadas
-
-- **Default:** servidas de `/public/tamers/` e `/public/lvl 3-4/` — sempre disponíveis, não ocupam IDB
-- **Personalizadas:** upload pelo usuário → salvas no IDB com chave `img-{tamerId}` → têm prioridade sobre as default
-
-### Limitações conhecidas
-
-- `localStorage` tem limite de ~5MB — imagens grandes podem causar falhas silenciosas
-- `IndexedDB` aguenta muito mais (~50MB+) — imagens ficam lá
-- Múltiplos dispositivos/browsers **não** sincronizam (dados são locais)
-- Ver `MIGRACAO.md` para solução completa com Supabase
+- **AppState como JSONB único:** para ~12 tamers e ~20 digimons, normalizar em 20+ tabelas seria overengineering. O JSONB preserva a estrutura TypeScript e simplifica a migração. Palcos e digivices, que têm sync e RLS próprios, foram extraídos para tabelas dedicadas.
+- **Degradação graciosa:** toda função de backend cai para o equivalente local quando `isSupabaseReady` é falso — permite jogar offline e desenvolver sem credenciais.
+- **`mergeWithDefaults`:** separa *conteúdo canônico* (reescrito pelo código) de *runtime do usuário* (preservado). Correções de texto chegam sem destruir progresso.
+- **Anti-eco do realtime + cache de URLs + debounce de save:** três medidas que reduzem re-renders e uso de memória num app que fica aberto por horas durante a sessão.
+- **Visibilidade de 3 estados:** dá ao GM controle narrativo fino — revelar só o nome de um inimigo antes de revelar a ficha inteira.
+- **Tooltips via JS:** `position: fixed` calculado com `getBoundingClientRect` é a única forma confiável de o tooltip nunca ser cortado pelo overflow do container.
+- **Imagens fora do JSONB:** manter o estado "slim" evita estourar o limite do `localStorage` (~5MB) e mantém os payloads de realtime pequenos.
 
 ---
 
-## 16. Migração Futura — Supabase
-
-Ver `MIGRACAO.md` para o roteiro completo e `supabase_schema.sql` para o schema pronto.
-
-**Resumo da arquitetura alvo:**
-
-```
-Supabase Auth     → login com email/senha, roles gm/player
-Supabase Postgres → AppState como JSONB + tabela stages separada
-Supabase Storage  → bucket 'portraits' para imagens
-Vercel            → hosting do frontend estático
-Realtime          → sync automático entre jogadores via postgres_changes
-```
-
----
-
-## 17. Decisões de Design e Arquitetura
-
-### Por que `digimon_survive` como chave de storage?
-
-Isolamento de dados em relação a outros projetos do mesmo domínio que possam usar `localStorage`.
-
-### Por que estado como JSONB e não normalizado?
-
-Para uma campanha com ~12 tamers e ~20 digimons, normalizar em 20+ tabelas seria overengineering. O JSONB preserva a estrutura TypeScript exata e permite migração direta.
-
-### Por que `mergeWithDefaults` e não reset automático?
-
-Preserva o trabalho do usuário (XP gasto, HP atual, imagens) enquanto garante que correções de texto no código (como o Stagnation do Eisuke) reflitam automaticamente. Apenas os campos de *conteúdo canônico* (skills, tamerSkills) são sobrescritos pelo código; os dados de *runtime* (atributos, XP, status atual) são preservados.
-
-### Por que imagens default estáticas em `/public/`?
-
-Evita que o IDB precise ser populado na primeira execução. Os PNGs são servidos pelo Vite diretamente, sem custo de storage ou carregamento assíncrono.
-
-### Por que o freeMode vive no TamerView e não no AttributeGrid?
-
-O modo livre precisa ser compartilhado entre AttributeGrid, SkillGrid e AffinityGrid. Manter o estado no componente pai (`TamerView`) e passá-lo como prop controlada é o padrão correto de React — evita múltiplos estados dessincronizados.
-
-### Por que tooltips via JS e não CSS puro?
-
-`position: absolute` sofre clipping pelo overflow do container pai. `position: fixed` com CSS puro não tem como saber onde o elemento está na tela. A solução JS com `getBoundingClientRect` + `Math.max/min` contra `window.innerWidth` é a única forma confiável de garantir que o tooltip nunca saia da tela.
-
-### Por que o Domain of Time só aparece com ambos Hare e Hibito?
-
-Narrativo e mecânico: o Domain of Time é o resultado do Jogress entre os dois. Sem um dos membros, o Jogress não pode ser ativado — mostrar as passivas seria confuso e incorreto.
-
----
-
-*Documentação gerada para a versão 1.0.0 do Digimon Survive Companion App.*
-*Campanha: A Midnight Summer's Dream.*
-*5739 linhas de código · 19 tamers · 18 digimons · 6 BUGs · 19+13+14 assets de imagem*
+*Documentação do funcionamento atual — campanha A Midnight Summer's Dream.*

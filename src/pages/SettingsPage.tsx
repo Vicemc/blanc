@@ -72,7 +72,7 @@ function RadioCard({ active, onClick, title, desc }: {
 
 export default function SettingsPage() {
   const { settings, update } = useSettings()
-  const { hideTaglines, roundPopup, sheetView, sheetDotMode, attrView, digizapSound } = settings
+  const { hideTaglines, roundPopup, sheetView, sheetDotMode, attrView, digizapSound, theme } = settings
 
   function toggleTaglinePage(pageId: string) {
     const current = hideTaglines.pages.filter(p => p !== 'all')
@@ -100,6 +100,17 @@ export default function SettingsPage() {
 
         {/* ── Exibição ─────────────────────────────────────────────────────── */}
         <div style={sectionHead}>Exibição</div>
+
+        <div style={row}>
+          <div>
+            <div style={label}>Tema Escuro</div>
+            <div style={sub}>
+              Inverte a paleta de papel claro para um tom escuro, mantendo as cores de acento.
+              Útil em mesas com pouca luz.
+            </div>
+          </div>
+          <Toggle checked={theme === 'dark'} onChange={v => update({ theme: v ? 'dark' : 'light' })} />
+        </div>
 
         <div style={row}>
           <div>

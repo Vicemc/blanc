@@ -283,6 +283,13 @@ export interface TamerStatus {
   digisoulMaxBonus?: number;  // delta de Digisoul máximo definido pelo GM
 }
 
+export interface XpLogEntry {
+  id:    string;
+  ts:    number;    // timestamp
+  label: string;    // descrição (ex: "Força +1, Briga +2")
+  cost:  number;    // XP gasto (negativo) ou concedido (positivo)
+}
+
 export interface Tamer {
   id:         string;
   name:       string;
@@ -304,6 +311,7 @@ export interface Tamer {
   tamerSkills: TamerSkill[];
   inventory:   InventoryItem[];
   digimonId:  string | null;
+  xpLog?:     XpLogEntry[];
 }
 
 // ---------- Bug ----------
@@ -334,13 +342,49 @@ export type ActorRef =
   | { kind: 'survivor'; id: string }
   | { kind: 'sign';     id: string };
 
+// ── Runtime de combate (anexado ao Stage durante o Palco) ───────
+export interface StageConditionBar {
+  id:     string;
+  label:  string;
+  filled: number;
+  max:    number;
+  color:  string;
+}
+
+export interface StageActorState {
+  hp:          number;
+  hp_max:      number;
+  defesa:      number;
+  defesa_base: number;
+  armadura:    number;
+  conditions:  StageConditionBar[];
+}
+
+export interface StageClock {
+  id:       string;
+  name:     string;
+  actorKey: string;
+  filled:   number;
+  color:    string;
+}
+
 export interface Stage {
-  id:        string;
-  title:     string;
-  subtitle:  string;
-  createdAt: number;
-  sides:     { allies: ActorRef[]; enemies: ActorRef[] };
-  notes:     string;
+  id:          string;
+  title:       string;
+  subtitle:    string;
+  createdAt:   number;
+  sides:       { allies: ActorRef[]; enemies: ActorRef[] };
+  notes:       string;
+  isTemplate?: boolean;   // encontro salvo como modelo (instanciável depois)
+
+  // ── Estado de runtime (preenchido durante o combate) ──────────
+  roundCurrent?:  number;
+  actorStates?:   Record<string, StageActorState>;
+  clocks?:        StageClock[];
+  clima?:         string | null;
+  log?:           PalcoLogEntry[];
+  tokenMeta?:     Record<string, { name: string; level: string }>;
+  activeActorKey?: string;   // ator com o turno atual (ordem de iniciativa)
 }
 
 // ---------- Image export ----------
@@ -422,7 +466,7 @@ export const PORTRAIT_LIST: Portrait[] = [
 export interface ClimaEntry {
   id:      string
   name:    string
-  type:    'Natural' | 'Especial'
+  type:    'Natural' | 'Não Natural'
   color:   string   // CSS var name (ex: 'gold', 'blue')
   icon:    string   // emoji
   effects: { tag: string; desc: string; color: string }[]

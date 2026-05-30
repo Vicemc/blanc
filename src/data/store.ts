@@ -5,9 +5,9 @@
 // =============================================================================
 
 import {
-  AppState, Tamer, TamerStatus, DigimonLine, DigimonStage,
+  AppState, Tamer, DigimonLine, DigimonStage,
   Attributes, SkillSet, TamerSkill, DigimonSkill,
-  Affinity, Bug, Stage, Sign, SkillTreePhase, ExportedImage, ExportPackage,
+  Bug, Stage, Sign, SkillTreePhase, ExportedImage, ExportPackage,
   SectorFolder, BugFolder, TokenDef,
   DEFAULT_SKILL_SET,
 } from '../types';
@@ -25,7 +25,7 @@ const STORAGE_KEY = 'digimon_survive';
 
 
 // Coleta imagens do estado para incluir no pacote de export
-async function collectImagesForExport(s: AppState): Promise<ExportedImage[]> {
+async function collectImagesForExport(_s: AppState): Promise<ExportedImage[]> {
   const images: ExportedImage[] = [];
   const keys = await idbListImageKeys();
   for (const key of keys) {
@@ -119,8 +119,7 @@ export function importStateFromFile(): Promise<AppState | null> {
 // sejam sempre propagados para dados carregados do localStorage.
 function mergeWithDefaults(saved: AppState, defaults: AppState): AppState {
   // IDs que existem no código mas não no estado salvo — sempre injetar
-  const savedBestiaryIds = new Set(saved.bestiary?.map(d => d.id) ?? []);
-  const savedBugIds      = new Set(saved.bugs?.map(b => b.id) ?? []);
+  const savedBugIds = new Set(saved.bugs?.map(b => b.id) ?? []);
 
   // Migration: se um tamer chamado Yahiro existir no saved, converte para Survivor
   let savedSurvivors = saved.survivors ?? [];
@@ -265,7 +264,7 @@ async function hydrateImages(s: AppState): Promise<AppState> {
       if (DIGIMON_DEFAULT_IMAGES[key]) result = { ...result, image: DIGIMON_DEFAULT_IMAGES[key] };
     }
     // Hidratar imagens de cada estágio individualmente
-    const hydratedStages = await Promise.all(result.stages.map(async (stage, i) => {
+    const hydratedStages = await Promise.all(result.stages.map(async (stage, _i) => {
       if (stage.imageKey) {
         const dataUrl = await idbLoadImage(stage.imageKey);
         if (dataUrl) return { ...stage, image: dataUrl };
@@ -700,11 +699,13 @@ export function buySkillTreeSkill(
     skillsAvailable: phase.skillsAvailable.filter((_, i) => i !== skillIndex),
     skillsAcquired:  [...phase.skillsAcquired, skill],
   };
+  const xpEntry = { id: `xp-${Date.now().toString(36)}`, ts: Date.now(), label: `Skill Tree: ${skill.title}`, cost: -3 };
   const newTamer: Tamer = {
     ...tamer,
     xp: tamer.xp - 3,
     xpSpent: tamer.xpSpent + 3,
     tamerSkills: [...tamer.tamerSkills, skill],
+    xpLog: [xpEntry, ...(tamer.xpLog ?? [])].slice(0, 50),
   };
   return {
     ...state,
@@ -2596,12 +2597,6 @@ export function buildDefaultState(): AppState {
   ] as DigimonSkill[];
 
   // ── BUGs — ledo.red ─────────────────────────────────────────────────────────
-
-  const makeLedo = (id: string, name: string, level: string, type: string, attrs: Attributes, status: typeof makeBug extends (...args: any[]) => any ? never : never, weakness: Record<string,string>, affinity: Record<string,number>, skills: DigimonSkill[], line: string): Bug => {
-    const b = makeBug(id, name, 'ledo', 'red', [1,2,3,4,5], '');
-    b.attributes = attrs; b.status = status as any; b.weakness = weakness; b.affinity = affinity; b.skills = skills as any;
-    return b;
-  };
 
   const redTrivial = makeBug('b-ledo-trivial', 'red.trivial', 'ledo', 'red', [1,2,3,4,5], 'Baby II (Lvl 2) · Red Eraser');
   redTrivial.attributes = { Inteligência:2,Força:0,Presença:0,Raciocínio:2,Destreza:2,Manipulação:2,Perseverança:0,Vigor:2,Autocontrole:0 };

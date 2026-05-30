@@ -46,6 +46,24 @@
   --font-mono:    'JetBrains Mono', monospace;
 }
 
+/* ── Tema escuro ─────────────────────────────────────────────── */
+/* Sobrescreve apenas os neutros; as cores de acento permanecem. */
+:root[data-theme="dark"] {
+  --paper:       #1c1a17;
+  --paper-deep:  #25221d;
+  --ink:         #ece6d8;
+  --ink-soft:    #c4bdae;
+  --ink-mute:    #8f887a;
+  --line:        #3a362e;
+  --line-soft:   #2c2925;
+  --shadow:      0 12px 32px -18px rgba(0,0,0,0.65);
+  color-scheme: dark;
+}
+:root[data-theme="dark"] body::before {
+  mix-blend-mode: screen;
+  opacity: 0.05;
+}
+
 /* ── Reset ───────────────────────────────────────────────────── */
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
@@ -58,6 +76,29 @@ body {
   min-height: 100vh;
   position: relative;
 }
+
+/* Foco visível para acessibilidade (teclado) */
+:focus-visible {
+  outline: 2px solid var(--coral);
+  outline-offset: 2px;
+  border-radius: 4px;
+}
+
+/* "Skip link" — visível só ao focar via teclado */
+.skipLink {
+  position: absolute;
+  top: -40px;
+  left: 12px;
+  z-index: 1000;
+  padding: 8px 14px;
+  background: var(--ink);
+  color: var(--paper);
+  border-radius: 8px;
+  font-family: var(--font-mono);
+  font-size: 12px;
+  text-decoration: none;
+}
+.skipLink:focus { top: 12px; }
 
 /* Grain sutil de fundo */
 body::before {
@@ -76,6 +117,28 @@ body::before {
 a { color: inherit; }
 
 button { cursor: pointer; font-family: inherit; }
+
+/* ── Responsivo / mobile ─────────────────────────────────────── */
+@media (max-width: 720px) {
+  html { font-size: 14px; }
+  /* Nav rola horizontalmente em telas pequenas */
+  nav[aria-label="Navegação principal"] {
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+  /* Modais ocupam quase a tela toda */
+  .modal { max-width: 96vw !important; max-height: 92vh; overflow-y: auto; }
+  /* FAB do rolador menor para não obstruir */
+  body > * button[title="Rolar dados (d10 pool)"] {
+    width: 44px; height: 44px; font-size: 20px;
+  }
+}
+
+@media (max-width: 480px) {
+  /* Alvos de toque maiores */
+  button, [role="button"], a { min-height: 32px; }
+}
 
 /* ── Grain texture classes ───────────────────────────────────── */
 .grain {

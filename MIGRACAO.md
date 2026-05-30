@@ -1,193 +1,368 @@
-# Migração para Supabase + Vercel
+# Migração e Setup do Supabase
 ## Digimon Survive Companion App — A Midnight Summer's Dream
 
-> **Status:** Planejada — não iniciada  
-> **Estimativa:** 1 sessão de trabalho (~3-4h de implementação)  
-> **Stack atual:** React + Vite + localStorage + IndexedDB  
-> **Stack alvo:** React + Vite + Supabase (Postgres + Storage + Auth) + Vercel  
+> **Status do sistema:** Supabase já integrado ao app — este documento descreve como
+> reproduzir o setup em uma nova instância (do zero) ou migrar uma cópia
+> local existente.
+>
+> **Stack atual:** React 18 + Vite 5 + TypeScript 5 + Supabase (Postgres + Storage + Auth + Realtime + Presence) + Vercel
+> **Fallback:** o app detecta automaticamente a ausência das variáveis de ambiente
+> e roda em modo local (`localStorage` + IndexedDB) sem login.
 
 ---
 
-## 1. Pré-requisitos
+## 1. Visão geral da arquitetura
 
-Antes de começar a implementação, criar as contas:
-
-- [ ] Conta em [supabase.com](https://supabase.com) — plano Free (Spark) é suficiente
-- [ ] Conta em [vercel.com](https://vercel.com) — plano Hobby (gratuito) é suficiente
-- [ ] Repositório Git (GitHub/GitLab) com o código do app
-
----
-
-## 2. Setup do Supabase
-
-### 2.1 Criar o projeto
-1. Novo projeto no Supabase → anotar a **URL** e a **anon key** (serão as variáveis de ambiente)
-2. Guardar também a **service_role key** (só usada no backend, nunca exposta no frontend)
-
-### 2.2 Executar o schema
-Colar o conteúdo de `supabase_schema.sql` no **SQL Editor** do Supabase e executar.
-
-### 2.3 Configurar Storage
-1. Criar um bucket chamado `portraits` (público, para imagens de personagens)
-2. Configurar política: usuários autenticados podem fazer upload; leitura pública
-
-### 2.4 Configurar Auth
-1. Em **Authentication → Providers**: habilitar **Email** (com magic link ou senha — a escolha é sua)
-2. Em **Authentication → URL Configuration**: adicionar a URL do Vercel quando o deploy estiver feito
+| Camada | Responsabilidade | Implementação |
+|---|---|---|
+| Cliente Supabase | Conexão singleton, modo degradável | [src/lib/supabase.ts](src/lib/supabase.ts) |
+| Auth | Sessão, perfis, roles, role helpers | [src/lib/auth.ts](src/lib/auth.ts) + [src/components/AuthProvider.tsx](src/components/AuthProvider.tsx) |
+| Estado central (`app_state`) | JSONB único + concorrência otimista | [src/lib/db/state.ts](src/lib/db/state.ts) |
+| Storage de imagens | Bucket `portraits`/`assets` + compressão | [src/lib/db/storage.ts](src/lib/db/storage.ts) |
+| Realtime | Postgres changes + Presence | [src/lib/db/realtime.ts](src/lib/db/realtime.ts) + [src/lib/presence.ts](src/lib/presence.ts) |
+| RPC escritas granulares | Player só edita o próprio tamer | `update_my_tamer` (ver §6.5) |
+| Skill Tree | Tabela própria + RPC `buy_skill` | [src/lib/db/skillTree.ts](src/lib/db/skillTree.ts) |
+| Palcos / Teatro | Tabela `stages` + RPC `update_actor_state`, `advance_round` | [src/lib/db/state.ts](src/lib/db/state.ts) |
+| Snapshots | Versões históricas do `app_state` | [src/lib/db/snapshots.ts](src/lib/db/snapshots.ts) |
+| Conteúdo do GM | Notas e itens isolados (`gm_notes`, `gm_items`) | [src/lib/db/gmContent.ts](src/lib/db/gmContent.ts) |
+| Migração in-app | Botão `⟳ Migrar` na navbar (GM) | [src/lib/db/migration.ts](src/lib/db/migration.ts) |
+| Healthcheck | Diagnóstico via botão na navbar (GM) | [src/lib/db/healthcheck.ts](src/lib/db/healthcheck.ts) |
 
 ---
 
-## 3. Variáveis de ambiente
+## 2. Pré-requisitos
 
-Criar `.env.local` na raiz do projeto (nunca commitar este arquivo):
+- Conta em [supabase.com](https://supabase.com) (plano Free é suficiente)
+- Conta em [vercel.com](https://vercel.com) (plano Hobby é suficiente)
+- Repositório Git já vinculado ao Vercel
+
+---
+
+## 3. Setup do Supabase (banco)
+
+### 3.1 Criar o projeto
+1. Dashboard → **New Project**
+2. Anotar `Project URL` e `anon key` (Settings → API)
+
+### 3.2 Executar os scripts SQL na ordem
+Cole no **SQL Editor → New Query** e execute, **na ordem listada**:
+
+| # | Arquivo | O que faz |
+|---|---|---|
+| 1 | [supabase_schema.sql](supabase_schema.sql) | Schema completo: tabelas, RLS, RPCs, triggers, Realtime, policies de Storage |
+| 2 | [supabase_player_writes.sql](supabase_player_writes.sql) | RPC `update_my_tamer` (escrita granular sem last-write-wins) |
+| 3 | [supabase_digizap_v2.sql](supabase_digizap_v2.sql) | Anexos, reações e respostas em mensagens do Digi-Zap |
+| 4 (opcional) | [supabase_digizap_groups.sql](supabase_digizap_groups.sql) | Seed dos 3 grupos fixos: `SURVIVORS`, `Sanbaka`, `Kurumizawa Girls` |
+| 5 (opcional) | [supabase_guests.sql](supabase_guests.sql) | 6 contas `convidadoN@survive.local` com role `guest` (acesso somente-leitura a Party/Goggle Girl/Sistema) |
+
+> O arquivo `supabase_schema.sql` é a fonte da verdade — ele cria todas as tabelas,
+> RLS, RPCs e triggers em uma única execução idempotente. Os demais são adições
+> incrementais.
+
+### 3.3 Criar os buckets de Storage
+Dashboard → **Storage → New Bucket** (marcar **Public bucket**):
+
+| Bucket | Uso | Path convention |
+|---|---|---|
+| `portraits` | Fotos de tamers, digimons, survivors, bugs (upload pelo player ou GM) | `{character_id}.{ext}` |
+| `assets` | SIGNs, mapas, records do Digivice (só GM faz upload) | `assets/signs/{sign_id}.webp` etc. |
+
+As policies de Storage (SELECT público, INSERT/UPDATE/DELETE para `authenticated`)
+já estão no Bloco 12 de `supabase_schema.sql`.
+
+### 3.4 Habilitar Realtime
+O Bloco 11 de `supabase_schema.sql` já adiciona `app_state`, `stages`,
+`digi_zap_messages`, `digivices` e `skill_tree_phases` à publication
+`supabase_realtime`. Conferir em Dashboard → Database → Replication.
+
+---
+
+## 4. Variáveis de ambiente
+
+`.env.local` (raiz do projeto — **nunca commitar**):
 
 ```env
 VITE_SUPABASE_URL=https://xxxxxxxxxxxx.supabase.co
 VITE_SUPABASE_ANON_KEY=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
 ```
 
-No Vercel, adicionar as mesmas variáveis em **Project Settings → Environment Variables**.
+No Vercel → **Project Settings → Environment Variables**, adicionar as duas
+mesmas chaves para `Production`, `Preview` e `Development`.
+
+> Sem essas variáveis, [src/lib/supabase.ts](src/lib/supabase.ts#L11) define
+> `supabase = null` e o app cai para modo local (`isSupabaseReady = false`).
+> Nenhum dos módulos quebra — todos têm fallback explícito.
 
 ---
 
-## 4. Dependências a instalar
+## 5. Criar contas
 
-```bash
-npm install @supabase/supabase-js
+### 5.1 Conta do GM
+1. Dashboard → **Authentication → Users → Invite User**
+2. Email do GM → enviar convite
+3. GM define senha ao aceitar
+4. Promover via SQL (UUID em Authentication → Users):
+
+```sql
+UPDATE public.profiles SET role = 'gm' WHERE id = '<uuid-do-gm>';
+```
+
+### 5.2 Contas dos players
+Para cada player:
+1. Dashboard → **Authentication → Users → Invite User**
+2. Após login, vincular ao tamer:
+
+```sql
+UPDATE public.profiles SET tamer_id = 't-naoki' WHERE id = '<uuid-do-player>';
+```
+
+Mapeamento dos IDs de player:
+
+| Player | tamer_id |
+|---|---|
+| Naoki | `t-naoki` |
+| Eisuke | `t-eisuke` |
+| Miki | `t-miki` |
+| Yuri | `t-yuri` |
+| Sachi | `t-sachi` |
+| Mori | `t-mori` |
+
+### 5.3 Contas de convidado (opcional)
+Executar [supabase_guests.sql](supabase_guests.sql) cria 6 logins
+`convidadoN@survive.local` / `convidadoN` com role `guest`. Convidados veem
+**apenas** Party, Goggle Girl e Sistema (sem editar). Renomear depois com:
+
+```sql
+UPDATE public.profiles SET display_name = 'Nome Real'
+  WHERE id = 'c0000000-0000-0000-0000-000000000001';
+```
+
+### 5.4 Digivices dos NPCs Fechadura (opcional)
+NPCs controlados pelo GM (sem login próprio) recebem Digivice atrelado a
+`owner_id = null`:
+
+```sql
+INSERT INTO public.digivices (character_id, owner_id, kind) VALUES
+  ('t-hare',   null, 'fechadura'),
+  ('t-kanade', null, 'fechadura'),
+  ('t-shinra', null, 'fechadura'),
+  ('t-kumo',   null, 'fechadura'),
+  ('t-emi',    null, 'fechadura'),
+  ('t-hibito', null, 'fechadura'),
+  ('t-shiro',  null, 'fechadura');
 ```
 
 ---
 
-## 5. Arquivos a criar
+## 6. Lógica de roles e RLS
 
-### `src/lib/supabase.ts`
-Cliente Supabase singleton:
-```typescript
-import { createClient } from '@supabase/supabase-js'
+### 6.1 Três roles
+Definidos em [src/lib/auth.ts:10](src/lib/auth.ts#L10): `'gm' | 'player' | 'guest'`.
 
-export const supabase = createClient(
-  import.meta.env.VITE_SUPABASE_URL,
-  import.meta.env.VITE_SUPABASE_ANON_KEY
-)
-```
+| Role | Lê | Escreve |
+|---|---|---|
+| `gm` | Tudo | Tudo (inclusive NPCs e backstage) |
+| `player` | Tudo do `app_state` + apenas o **próprio** Digivice e fases liberadas | Apenas o próprio tamer (via RPC) + próprio Digivice + comprar skill da Skill Tree liberada |
+| `guest` | `app_state` (Party/Goggle/Sistema) | Nada |
 
-### `src/lib/auth.ts`
-Funções de autenticação:
-- `signIn(email, password)` → login
-- `signUp(email, password, name)` → cadastro
-- `signOut()` → logout
-- `getCurrentUser()` → usuário atual
-- `isGM()` → verifica se o usuário tem role `gm`
+### 6.2 Helpers SQL
+Implementados no Bloco 8 do schema:
+- `public.is_gm()` — boolean baseado em `profiles.role`
+- `public.my_character_id()` — retorna o `tamer_id` do usuário atual
+- `public.is_participant(group_id)` — checa pertinência a grupo do Digi-Zap
 
-### `src/lib/db.ts`
-Substitui `src/data/store.ts` nas partes de persistência:
-- `loadStateFromDB()` → substitui `loadStateAsync()`
-- `saveStateToDB(state)` → substitui `saveState()`
-- `uploadImage(file, path)` → substitui `idbSaveImage()`
-- `getImageUrl(path)` → substitui `idbLoadImage()`
+### 6.3 Helpers TypeScript
+[src/lib/auth.ts](src/lib/auth.ts) expõe:
+- `isGM(profile)` — em modo local sempre retorna `true`
+- `canEditTamer(profile, tamerId)` — GM edita qualquer, player só o próprio
+- `onAuthStateChange(callback)` — listener de sessão para `AuthProvider`
 
----
+### 6.4 RLS por tabela (resumo)
+| Tabela | SELECT | INSERT/UPDATE | DELETE |
+|---|---|---|---|
+| `profiles` | `authenticated` | `id = auth.uid()` ou GM | — |
+| `app_state` | `authenticated` | GM (player via RPC `update_my_tamer`) | — |
+| `stages` | `authenticated` | GM | GM |
+| `signs` | `authenticated` | GM | GM |
+| `skill_tree_phases` | GM, ou dono se `unlocked = true` | GM (player via RPC `buy_skill`) | — |
+| `digivices` | GM ou dono | GM ou dono | GM |
+| `digi_zap_groups` | GM ou participante | GM ou participante | — |
+| `digi_zap_messages` | participantes do grupo | participantes (sender deve ser o próprio `tamer_id`) | GM |
+| `gm_notes` | GM | GM | GM |
+| `gm_items` | GM ou (dono **and** revealed) | GM | GM |
 
-## 6. Arquivos a modificar
+### 6.5 Escritas atômicas via RPC
+Para evitar last-write-wins quando vários clientes editam o mesmo `app_state`:
 
-| Arquivo | O que muda |
-|---------|-----------|
-| `src/App.tsx` | Adicionar `AuthProvider`, checar sessão na montagem, rota de login |
-| `src/data/store.ts` | `saveState` e `loadState` chamam `db.ts` em vez de localStorage |
-| `src/pages/PartyPage.tsx` | Upload de imagem usa `uploadImage()` do `db.ts` |
-| `src/components/Sheet.tsx` | `ImageUploadZone` usa `uploadImage()` do `db.ts` |
-| `src/main.tsx` | Envolver app no `AuthProvider` |
+| RPC | Quem chama | O que faz |
+|---|---|---|
+| `update_my_tamer(p_tamer jsonb)` | Player | Substitui apenas o próprio tamer dentro de `state.tamers[]` |
+| `buy_skill(p_phase_id, p_skill_index)` | Player | Move skill `available → acquired`, debita 3 XP no `app_state` |
+| `update_actor_state(p_stage_id, p_actor_key, hp?, defesa?, armadura?)` | GM ou dono do ator | Altera HP/Defesa/Armadura de um ator no palco |
+| `advance_round(p_stage_id)` | GM | Incrementa `round_current` |
+| `reveal_item(p_item_id)` | GM | Marca `gm_items.revealed = true` |
 
----
-
-## 7. Novas páginas a criar
-
-### `src/pages/LoginPage.tsx`
-- Formulário de email + senha
-- Botão "Entrar" e "Criar conta"
-- Redireciona para `/party` após login bem-sucedido
-
-### `src/pages/AccountPage.tsx` (opcional)
-- Mostrar email do usuário logado
-- Botão de logout
-- Se GM: painel de gerenciamento (distribuir XP, etc.)
-
----
-
-## 8. Lógica de roles
-
-O campo `role` fica na tabela `profiles` (criada pelo schema SQL).
-
-**GM pode:**
-- Distribuir XP para a party inteira
-- Editar fichas de qualquer personagem
-- Criar/remover pastas no bestiário
-- Criar e editar palcos
-
-**Player pode:**
-- Ver todas as fichas
-- Editar apenas o próprio personagem (baseado no `tamer_id` vinculado ao seu `user_id`)
-- Ver o bestiário
-- Ver os palcos (sem editar)
-
-A verificação de permissão acontece em dois lugares:
-1. **Frontend:** esconder botões de edição para players
-2. **Supabase RLS (Row Level Security):** bloquear writes não autorizados mesmo se alguém tentar pelo console
+### 6.6 Concorrência otimista
+[src/lib/db/state.ts:107](src/lib/db/state.ts#L107) compara `updated_at` antes de
+gravar: se outro cliente atualizou primeiro, dispara o evento global
+`app:save-conflict` e força a sobrescrita. O `App.tsx` exibe um banner laranja
+quando isso acontece.
 
 ---
 
-## 9. Estratégia de migração de dados
+## 7. Realtime e Presence
 
-Para não perder os dados que já estão no localStorage/IndexedDB:
+### 7.1 Postgres changes
+[src/lib/db/realtime.ts](src/lib/db/realtime.ts) expõe:
+- `subscribeToState(onUpdate)` — UPDATEs em `app_state` → hidrata imagens e dispara `onUpdate`
+- `subscribeToStages(onUpdate)` — qualquer evento em `stages` → recarrega lista
 
-1. Criar uma página temporária `/migrate` (só acessível para GM)
-2. Ela lê o estado do localStorage atual
-3. Faz upload de todas as imagens para o Supabase Storage
-4. Salva todos os dados no Supabase Postgres
-5. Limpa o localStorage após confirmar que tudo foi salvo
-6. Remover a página `/migrate` após a migração
+Ignora updates locais nos primeiros 3s para não fazer eco do próprio save
+(ver [src/App.tsx:128](src/App.tsx#L128)).
+
+### 7.2 Presence
+[src/lib/presence.ts](src/lib/presence.ts) implementa `usePresence(profile)`:
+canal `presence-midnight-summer`, mostra quantos usuários estão online na navbar.
 
 ---
 
-## 10. Deploy no Vercel
+## 8. Migração de dados locais
+
+O app inclui uma ferramenta in-app para migrar `localStorage` + IndexedDB → Supabase:
+
+1. Com Supabase configurado e GM logado, abrir o app
+2. Clicar em **`⟳ Migrar`** na navbar (visível só para GM, [src/App.tsx:306](src/App.tsx#L306))
+3. O processo:
+   - Carrega estado local hidratado ([loadStateAsync](src/data/store.ts))
+   - Faz upload de cada imagem (`data:`) para `portraits/`
+   - Substitui imagens inline por `imageKey` (path no Storage)
+   - Insere uma nova linha em `app_state` com o estado limpo
+4. Mensagem de sucesso indica quantas imagens foram migradas
+5. O botão pode ser removido do código após a migração confirmada
+   (ou mantido — é idempotente e rápido)
+
+Implementação em [src/lib/db/migration.ts](src/lib/db/migration.ts).
+
+---
+
+## 9. Deploy no Vercel
 
 ```bash
-# Instalar CLI do Vercel (opcional, pode usar a UI)
+# Opcional: CLI
 npm i -g vercel
-
-# Fazer deploy
-vercel
-
-# Para produção
 vercel --prod
 ```
 
-Configurar no painel do Vercel:
-- **Framework Preset:** Vite
-- **Build Command:** `npm run build`
-- **Output Directory:** `dist`
-- Adicionar as variáveis de ambiente do passo 3
+Configurações no painel:
+
+| Campo | Valor |
+|---|---|
+| Framework Preset | Vite |
+| Build Command | `npm run build` |
+| Output Directory | `dist` |
+| Environment Variables | `VITE_SUPABASE_URL`, `VITE_SUPABASE_ANON_KEY` (production + preview) |
+
+Após o deploy, adicionar a URL do Vercel em:
+- Supabase Dashboard → **Authentication → URL Configuration → Site URL**
+- Supabase Dashboard → **Authentication → URL Configuration → Redirect URLs**
 
 ---
 
-## 11. Checklist final
+## 10. Diagnóstico — Healthcheck
 
-- [ ] Schema SQL executado no Supabase
-- [ ] Bucket `portraits` criado e configurado
-- [ ] Variáveis de ambiente configuradas (local + Vercel)
-- [ ] `@supabase/supabase-js` instalado
-- [ ] `src/lib/supabase.ts` criado
-- [ ] `src/lib/auth.ts` criado
-- [ ] `src/lib/db.ts` criado
-- [ ] `src/App.tsx` atualizado com AuthProvider e rota de login
-- [ ] `src/data/store.ts` atualizado para usar `db.ts`
-- [ ] `src/pages/LoginPage.tsx` criado
-- [ ] Upload de imagens atualizado para usar Storage
-- [ ] Roles de GM/Player implementados
-- [ ] Migração de dados locais para o Supabase feita
-- [ ] Deploy no Vercel feito
-- [ ] URL de callback configurada no Supabase Auth
+[src/lib/db/healthcheck.ts](src/lib/db/healthcheck.ts) verifica:
+- Acesso a todas as 8 tabelas (`profiles`, `app_state`, `stages`, `signs`, `digivices`, `digi_zap_groups`, `digi_zap_messages`, `skill_tree_phases`)
+- Existência dos buckets `portraits` e `assets`
+- Seed dos grupos do Digi-Zap
+
+Acessível pelo botão **SetupHealth** na navbar (visível só para GM,
+[src/App.tsx:313](src/App.tsx#L313)).
 
 ---
 
-*Documento gerado em preparação para a migração — implementação a ser feita numa sessão dedicada.*
+## 11. Modo local (sem Supabase)
+
+Quando `VITE_SUPABASE_URL`/`VITE_SUPABASE_ANON_KEY` estão ausentes:
+- `isSupabaseReady = false`
+- Todos os módulos de `src/lib/db/**` caem para `localStorage`/IndexedDB
+- `isGM()` retorna `true` (sem restrições)
+- Tela de login não aparece
+- Botões `⟳ Migrar` e `SetupHealth` ficam ocultos
+- Funciona offline / em desenvolvimento sem configurar nada
+
+Útil para desenvolvimento local e para o GM testar mudanças sem mexer no
+banco de produção.
+
+---
+
+## 12. Checklist completo
+
+### Setup inicial
+- [ ] Projeto Supabase criado
+- [ ] [supabase_schema.sql](supabase_schema.sql) executado
+- [ ] [supabase_player_writes.sql](supabase_player_writes.sql) executado
+- [ ] [supabase_digizap_v2.sql](supabase_digizap_v2.sql) executado
+- [ ] Buckets `portraits` e `assets` criados (public)
+- [ ] Realtime habilitado em `app_state`, `stages`, `digi_zap_messages`, `digivices`, `skill_tree_phases`
+- [ ] `.env.local` configurado
+- [ ] `npm install` executado
+- [ ] `npm run dev` rodando localmente
+
+### Contas
+- [ ] Conta do GM criada e promovida (`role = 'gm'`)
+- [ ] Contas dos players criadas e vinculadas a `tamer_id`
+- [ ] (Opcional) Contas de convidado via [supabase_guests.sql](supabase_guests.sql)
+- [ ] (Opcional) Digivices dos NPCs Fechadura criados
+
+### Seeds
+- [ ] [supabase_digizap_groups.sql](supabase_digizap_groups.sql) executado (grupos fixos do Digi-Zap)
+- [ ] Healthcheck no app retorna tudo ✓
+
+### Migração (se vindo de uma instância local)
+- [ ] GM logado abriu o app uma vez (perfil criado pelo trigger)
+- [ ] Botão `⟳ Migrar` clicado com sucesso
+- [ ] Estado e imagens conferidos
+
+### Deploy
+- [ ] Variáveis de ambiente configuradas no Vercel
+- [ ] Deploy executado
+- [ ] URL do Vercel adicionada em Authentication → URL Configuration
+- [ ] Login em produção testado
+
+---
+
+## Apêndice A — Mapa de arquivos SQL
+
+| Arquivo | Quando executar |
+|---|---|
+| [supabase_schema.sql](supabase_schema.sql) | Sempre, na criação do projeto |
+| [supabase_player_writes.sql](supabase_player_writes.sql) | Sempre, após o schema |
+| [supabase_digizap_v2.sql](supabase_digizap_v2.sql) | Sempre, após o schema |
+| [supabase_digizap_groups.sql](supabase_digizap_groups.sql) | Após criar as contas de players e Fechadura |
+| [supabase_guests.sql](supabase_guests.sql) | Opcional — se quiser contas de convidado |
+
+## Apêndice B — Tabelas do banco
+
+Definidas em [supabase_schema.sql](supabase_schema.sql):
+
+- **profiles** — extensão de `auth.users` com `role`, `tamer_id`, `npc_id`, `active_npc_view`
+- **app_state** — JSONB único com tamers, bestiary, bugs, sectors, bugFolders, customKeywords, customConditions, customClimas, skillTree, survivors
+- **signs** — entidades da Goggle Girl (lista plana)
+- **skill_tree_phases** — fases liberáveis pelo GM, skills compráveis por 3 XP
+- **stages** — palcos de combate com `actor_states`, `clocks`, `tokens` em tempo real
+- **digivices** — fichas + inventário + records + mapas por personagem
+- **digi_zap_groups** — grupos de conversa (fixos e bilaterais)
+- **digi_zap_messages** — mensagens com anexos, reações, reply chains
+- **gm_notes** — notas privadas do GM
+- **gm_items** — itens em limbo, atribuíveis e reveláveis ao player
+
+## Apêndice C — RPCs disponíveis
+
+| Função | Caller esperado | Retorno |
+|---|---|---|
+| `update_my_tamer(p_tamer jsonb)` | Player (ou GM) | `{ok, reason?}` |
+| `buy_skill(p_phase_id uuid, p_skill_index int)` | Player | `{ok, reason?}` |
+| `update_actor_state(p_stage_id, p_actor_key, p_hp?, p_defesa?, p_armadura?)` | GM ou dono do ator | `{ok, reason?}` |
+| `advance_round(p_stage_id uuid)` | GM | `{ok, reason?}` |
+| `reveal_item(p_item_id uuid)` | GM | `{ok, reason?}` |
+| `is_gm()` / `my_character_id()` / `is_participant(group_id)` | Internas (usadas por RLS) | boolean / text / boolean |

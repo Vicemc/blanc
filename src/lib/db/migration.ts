@@ -113,11 +113,9 @@ export async function migrateLocalToSupabase(): Promise<{
     }
 
     // 5. Salvar estado atualizado no Supabase
-    const { data, error } = await supabase
+    const { error } = await supabase
       .from('app_state')
       .insert({ campaign: CAMPAIGN, state: updatedState })
-      .select('id')
-      .single()
 
     if (error) return { ok: false, error: error.message, imagesMigrated }
 

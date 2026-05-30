@@ -801,24 +801,24 @@ export default function GogglePage({ state, onUpdate, canEdit, isGM = false }: P
 
   const digimonsBySetor = useMemo(() => {
     const map = new Map<number, DigimonLine[]>()
-    sectors.forEach(s => map.set(s.n, []))
+    ;(state.sectors ?? []).forEach(s => map.set(s.n, []))
     state.bestiary.forEach(d => {
       d.sectors.forEach(sn => {
         if (map.has(sn)) map.get(sn)!.push(d)
       })
     })
     return map
-  }, [state.bestiary, sectors])
+  }, [state.bestiary, state.sectors])
 
   const bugsByFolder = useMemo(() => {
     const map = new Map<string, Bug[]>()
-    bugFolders.forEach(f => map.set(`${f.cls}.${f.color}`, []))
+    ;(state.bugFolders ?? []).forEach(f => map.set(`${f.cls}.${f.color}`, []))
     state.bugs.forEach(b => {
       const key = `${b.class}.${b.color}`
       if (map.has(key)) map.get(key)!.push(b)
     })
     return map
-  }, [state.bugs, bugFolders])
+  }, [state.bugs, state.bugFolders])
 
   const deleteSector    = (n: number) =>
     onUpdate({ ...state, sectors: state.sectors.filter(s => s.n !== n) })

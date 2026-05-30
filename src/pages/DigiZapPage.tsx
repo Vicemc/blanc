@@ -7,6 +7,7 @@ import type { AppState } from '../types'
 import type { UserProfile } from '../lib/auth'
 import { supabase } from '../lib/supabase'
 import { useSettings } from '../lib/settings'
+import { uploadImage } from '../lib/db'
 
 interface Props {
   state:            AppState
@@ -25,14 +26,17 @@ interface DigiZapGroup {
 }
 
 interface DigiZapMessage {
-  id:           string
-  group_id:     string
-  sender_id:    string
-  content:      string
-  survival_day: number | null
-  sent_at_time: string | null
-  session_num:  number | null
-  created_at:   string
+  id:             string
+  group_id:       string
+  sender_id:      string
+  content:        string
+  survival_day:   number | null
+  sent_at_time:   string | null
+  session_num:    number | null
+  created_at:     string
+  attachment_url?: string | null
+  reactions?:     Record<string, string[]>  // emoji → array de character_id
+  reply_to?:      string | null
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -122,6 +126,9 @@ export default function DigiZapPage({ state, profile, isGM, onUnreadChange }: Pr
   const [showMeta,       setShowMeta]       = useState(false)
   const [sending,        setSending]        = useState(false)
   const [loadingMsgs,    setLoadingMsgs]    = useState(false)
+  const [attachment,     setAttachment]     = useState<string | null>(null)
+  const [replyTo,        setReplyTo]        = useState<DigiZapMessage | null>(null)
+  const [typingMap,      setTypingMap]      = useState<Record<string, number>>({})
   const [npcView,        setNpcView]        = useState<string>('')
   const [showCreateGroup, setShowCreateGroup] = useState(false)
   const [newGroupName,   setNewGroupName]   = useState('')
@@ -254,20 +261,70 @@ export default function DigiZapPage({ state, profile, isGM, onUnreadChange }: Pr
   // ── Enviar mensagem ──────────────────────────────────────────────────────
 
   const sendMessage = async () => {
-    if (!input.trim() || !activeGroupId || !myCharId || !supabase) return
+    if ((!input.trim() && !attachment) || !activeGroupId || !myCharId || !supabase) return
     setSending(true)
 
+    let attachmentUrl: string | null = null
+    if (attachment) {
+      const path = `digizap/${activeGroupId}/${Date.now().toString(36)}`
+      const url = await uploadImage(attachment, path, 'assets')
+      attachmentUrl = url
+    }
+
     await supabase.from('digi_zap_messages').insert({
-      group_id:     activeGroupId,
-      sender_id:    myCharId,
-      content:      input.trim(),
-      survival_day: survivalDay ? parseInt(survivalDay) : null,
-      sent_at_time: sentAtTime.trim() || null,
-      session_num:  sessionNum ? parseInt(sessionNum) : null,
+      group_id:       activeGroupId,
+      sender_id:      myCharId,
+      content:        input.trim(),
+      survival_day:   survivalDay ? parseInt(survivalDay) : null,
+      sent_at_time:   sentAtTime.trim() || null,
+      session_num:    sessionNum ? parseInt(sessionNum) : null,
+      attachment_url: attachmentUrl,
+      reply_to:       replyTo?.id ?? null,
     })
 
     setInput('')
+    setAttachment(null)
+    setReplyTo(null)
     setSending(false)
+  }
+
+  // Reações
+  const toggleReaction = async (msg: DigiZapMessage, emoji: string) => {
+    if (!supabase || !myCharId) return
+    const cur = (msg.reactions ?? {}) as Record<string, string[]>
+    const list = cur[emoji] ?? []
+    const next = list.includes(myCharId) ? list.filter(x => x !== myCharId) : [...list, myCharId]
+    const updated = { ...cur, [emoji]: next }
+    if (next.length === 0) delete updated[emoji]
+    // Atualização otimista local
+    setMessages(prev => prev.map(m => m.id === msg.id ? { ...m, reactions: updated } : m))
+    await supabase.from('digi_zap_messages').update({ reactions: updated }).eq('id', msg.id)
+  }
+
+  // Typing presence (broadcast por grupo)
+  const typingChannelRef = useRef<ReturnType<NonNullable<typeof supabase>['channel']> | null>(null)
+  useEffect(() => {
+    if (!supabase || !activeGroupId || !myCharId) return
+    const ch = supabase.channel(`typing-${activeGroupId}`)
+    ch.on('broadcast', { event: 'typing' }, payload => {
+      const who = (payload.payload as { user: string })?.user
+      if (!who || who === myCharId) return
+      setTypingMap(m => ({ ...m, [who]: Date.now() }))
+    }).subscribe()
+    typingChannelRef.current = ch
+    const cleanup = setInterval(() => {
+      setTypingMap(m => {
+        const now = Date.now()
+        const next: Record<string, number> = {}
+        for (const [k, v] of Object.entries(m)) if (now - v < 3000) next[k] = v
+        return next
+      })
+    }, 1000)
+    return () => { clearInterval(cleanup); void ch.unsubscribe() }
+  }, [activeGroupId, myCharId])
+
+  const broadcastTyping = () => {
+    typingChannelRef.current?.send({ type: 'broadcast', event: 'typing', payload: { user: myCharId } })
   }
 
   // ── Criar grupo bilateral ────────────────────────────────────────────────
@@ -602,6 +659,19 @@ export default function DigiZapPage({ state, profile, isGM, onUnreadChange }: Pr
                       {msg.session_num  && ` · Sessão ${msg.session_num}`}
                     </div>
 
+                    {/* Reply context */}
+                    {msg.reply_to && (() => {
+                      const ref = messages.find(m => m.id === msg.reply_to)
+                      if (!ref) return null
+                      return (
+                        <div style={{ padding: '4px 10px', marginBottom: 4, borderLeft: '3px solid var(--coral)',
+                          background: 'var(--paper-deep)', borderRadius: 6,
+                          fontFamily: 'var(--font-mono)', fontSize: 9, color: 'var(--ink-mute)' }}>
+                          ↩ {tamerName(state, ref.sender_id)}: <span style={{ fontFamily: 'var(--font-body)', fontSize: 11, color: 'var(--ink-soft)' }}>{ref.content.slice(0, 80)}{ref.content.length > 80 ? '…' : ''}</span>
+                        </div>
+                      )
+                    })()}
+
                     <div style={{
                       padding: '10px 14px',
                       borderRadius: isMe ? '14px 4px 14px 14px' : '4px 14px 14px 14px',
@@ -612,6 +682,36 @@ export default function DigiZapPage({ state, profile, isGM, onUnreadChange }: Pr
                       whiteSpace: 'pre-wrap', wordBreak: 'break-word',
                     }}>
                       {msg.content}
+                      {msg.attachment_url && (
+                        <img src={msg.attachment_url} alt="anexo"
+                          style={{ display: 'block', maxWidth: '100%', maxHeight: 260, borderRadius: 8, marginTop: msg.content ? 8 : 0 }} />
+                      )}
+                    </div>
+
+                    {/* Reações + responder */}
+                    <div style={{ display: 'flex', gap: 6, marginTop: 4, alignItems: 'center',
+                      justifyContent: isMe ? 'flex-end' : 'flex-start', flexWrap: 'wrap' }}>
+                      {Object.entries(msg.reactions ?? {}).map(([emoji, users]) => (
+                        users.length > 0 && (
+                          <button key={emoji} onClick={() => toggleReaction(msg, emoji)}
+                            style={{ padding: '1px 7px', borderRadius: 999, cursor: 'pointer',
+                              border: '1px solid var(--line-soft)', background: 'var(--paper)',
+                              fontSize: 11, color: 'var(--ink-soft)' }}>
+                            {emoji} {users.length}
+                          </button>
+                        )
+                      ))}
+                      {(['❤','👍','😂','😢','🔥'] as const).map(e => (
+                        <button key={e} onClick={() => toggleReaction(msg, e)}
+                          title={`Reagir ${e}`}
+                          style={{ padding: '0 5px', border: 'none', background: 'transparent',
+                            cursor: 'pointer', fontSize: 12, opacity: 0.4 }}>{e}</button>
+                      ))}
+                      <button onClick={() => setReplyTo(msg)}
+                        style={{ background: 'transparent', border: 'none', cursor: 'pointer',
+                          color: 'var(--ink-mute)', fontFamily: 'var(--font-mono)', fontSize: 9, letterSpacing: '0.08em' }}>
+                        ↩ responder
+                      </button>
                     </div>
                   </div>
                 </div>
@@ -653,8 +753,48 @@ export default function DigiZapPage({ state, profile, isGM, onUnreadChange }: Pr
                 )}
               </div>
 
+              {/* Quote de resposta */}
+              {replyTo && (
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8,
+                  padding: '6px 10px', background: 'var(--paper-deep)', borderLeft: '3px solid var(--coral)', borderRadius: 6 }}>
+                  <span style={{ fontFamily: 'var(--font-mono)', fontSize: 9, color: 'var(--ink-mute)' }}>
+                    ↩ {tamerName(state, replyTo.sender_id)}:
+                  </span>
+                  <span style={{ fontFamily: 'var(--font-body)', fontSize: 11, color: 'var(--ink-soft)',
+                    overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flex: 1 }}>
+                    {replyTo.content || '(anexo)'}
+                  </span>
+                  <button onClick={() => setReplyTo(null)} style={{ background: 'transparent', border: 'none', cursor: 'pointer', color: 'var(--ink-mute)' }}>×</button>
+                </div>
+              )}
+
+              {/* Preview de anexo */}
+              {attachment && (
+                <div style={{ marginBottom: 8, position: 'relative', display: 'inline-block' }}>
+                  <img src={attachment} alt="anexo" style={{ maxHeight: 80, borderRadius: 8, border: '1px solid var(--line)' }} />
+                  <button onClick={() => setAttachment(null)}
+                    style={{ position: 'absolute', top: -6, right: -6, width: 22, height: 22, borderRadius: '50%',
+                      border: '1px solid var(--line)', background: 'var(--paper)', cursor: 'pointer', fontSize: 12 }}>×</button>
+                </div>
+              )}
+
+              {/* Indicador "digitando" */}
+              {Object.keys(typingMap).length > 0 && (
+                <div style={{ fontFamily: 'var(--font-mono)', fontSize: 9, color: 'var(--ink-mute)', marginBottom: 4 }}>
+                  {Object.keys(typingMap).map(id => tamerName(state, id)).join(', ')} {Object.keys(typingMap).length > 1 ? 'estão' : 'está'} digitando...
+                </div>
+              )}
+
               <div style={{ display: 'flex', gap: 8 }}>
-                <textarea value={input} onChange={e => setInput(e.target.value)}
+                <label style={{ padding: '0 10px', borderRadius: 10, border: '1px solid var(--line)',
+                  cursor: 'pointer', background: 'transparent', display: 'flex', alignItems: 'center', flexShrink: 0 }}>
+                  📎
+                  <input type="file" accept="image/*" style={{ display: 'none' }} onChange={e => {
+                    const f = e.target.files?.[0]; if (!f) return
+                    const r = new FileReader(); r.onload = ev => setAttachment(ev.target?.result as string); r.readAsDataURL(f)
+                  }} />
+                </label>
+                <textarea value={input} onChange={e => { setInput(e.target.value); broadcastTyping() }}
                   onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendMessage() } }}
                   placeholder={`Mensagem como ${tamerName(state, myCharId)}... (Enter para enviar)`}
                   rows={2}
@@ -662,11 +802,11 @@ export default function DigiZapPage({ state, profile, isGM, onUnreadChange }: Pr
                     padding: '10px 14px', fontFamily: 'var(--font-body)', fontSize: 14,
                     background: 'var(--paper)', color: 'var(--ink)', resize: 'none',
                     outline: 'none' }} />
-                <button onClick={sendMessage} disabled={sending || !input.trim()}
+                <button onClick={sendMessage} disabled={sending || (!input.trim() && !attachment)}
                   style={{ padding: '0 20px', borderRadius: 10,
                     border: '1px solid var(--ink)', cursor: 'pointer',
-                    background: input.trim() ? 'var(--ink)' : 'transparent',
-                    color: input.trim() ? 'var(--paper)' : 'var(--ink-mute)',
+                    background: (input.trim() || attachment) ? 'var(--ink)' : 'transparent',
+                    color: (input.trim() || attachment) ? 'var(--paper)' : 'var(--ink-mute)',
                     fontFamily: 'var(--font-body)', fontWeight: 600, fontSize: 13,
                     transition: 'all 0.12s', flexShrink: 0 }}>
                   {sending ? '...' : 'Enviar'}

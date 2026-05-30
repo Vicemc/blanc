@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState, useCallback } from 'react'
+import React, { createContext, useContext, useState, useCallback, useEffect } from 'react'
 
 export interface AppSettings {
   hideTaglines:  { enabled: boolean; pages: string[] }
@@ -8,6 +8,7 @@ export interface AppSettings {
   partyCompact:  boolean
   attrView:      'blanc' | 'classica'
   digizapSound:  boolean
+  theme:         'light' | 'dark'
 }
 
 const DEFAULT: AppSettings = {
@@ -18,6 +19,7 @@ const DEFAULT: AppSettings = {
   partyCompact:  false,
   attrView:      'blanc',
   digizapSound:  true,
+  theme:         'light',
 }
 
 const KEY = 'survive_settings'
@@ -51,6 +53,11 @@ const Context = createContext<Ctx>({
 
 export function SettingsProvider({ children }: { children: React.ReactNode }) {
   const [settings, setSettings] = useState<AppSettings>(load)
+
+  // Aplica o tema no <html> sempre que mudar
+  useEffect(() => {
+    document.documentElement.dataset.theme = settings.theme === 'dark' ? 'dark' : 'light'
+  }, [settings.theme])
 
   const update = useCallback((patch: Partial<AppSettings>) => {
     setSettings(prev => {

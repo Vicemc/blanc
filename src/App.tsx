@@ -7,6 +7,10 @@ import { signOut, canEditTamer } from './lib/auth'
 import type { UserProfile } from './lib/auth'
 import type { Tamer } from './types'
 import { AuthProvider, useAuth } from './components/AuthProvider'
+import { SetupHealth } from './components/SetupHealth'
+import { DiceRoller } from './components/DiceRoller'
+import { GlobalSearch } from './components/GlobalSearch'
+import { usePresence } from './lib/presence'
 import { SettingsProvider } from './lib/settings'
 import { isSupabaseReady } from './lib/supabase'
 import type { AppState } from './types'
@@ -100,6 +104,7 @@ function AppInner() {
   const [appReady, setAppReady] = useState(false)
   const [migrating, setMigrating] = useState(false)
   const [migrateResult, setMigrateResult] = useState<string | null>(null)
+  const [conflictAt, setConflictAt] = useState<number | null>(null)
   const [isDirty, setIsDirty] = useState(false)
   const [isSaving, setIsSaving] = useState(false)
   const [digizapUnread, setDigizapUnread] = useState(0)
@@ -108,6 +113,7 @@ function AppInner() {
   const saveDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   const isGuest = !localMode && profile?.role === 'guest'
+  const presences = usePresence(profile)
 
   useEffect(() => {
     if (loading) return
@@ -124,6 +130,16 @@ function AppInner() {
     })
     return () => { realtimeUnsub.current?.() }
   }, [session])
+
+  // Detecta conflitos de save em multiplayer
+  useEffect(() => {
+    const onConflict = () => {
+      setConflictAt(Date.now())
+      setTimeout(() => setConflictAt(c => (c && Date.now() - c >= 4900 ? null : c)), 5000)
+    }
+    window.addEventListener('app:save-conflict', onConflict)
+    return () => window.removeEventListener('app:save-conflict', onConflict)
+  }, [])
 
   // Avisa sobre mudanças não salvas ao fechar a aba
   useEffect(() => {
@@ -218,7 +234,8 @@ function AppInner() {
 
   return (
     <div className={styles.app}>
-      <nav className={styles.nav}>
+      <a href="#main" className="skipLink">Pular para o conteúdo</a>
+      <nav className={styles.nav} aria-label="Navegação principal">
         <NavLink to="/"         end className={({ isActive }) => isActive ? styles.active : ''}>Início</NavLink>
         <NavLink to="/party"        className={({ isActive }) => isActive ? styles.active : ''}>Party</NavLink>
         <NavLink to="/goggle"       className={({ isActive }) => isActive ? styles.active : ''}>Goggle Girl</NavLink>
@@ -252,6 +269,18 @@ function AppInner() {
 
         <div className={styles.navSpacer} />
 
+        <GlobalSearch state={state} isGM={isGM} className={styles.navBtn} />
+
+        {!localMode && presences.length > 0 && (
+          <span title={presences.map(p => p.display_name).join(', ')}
+            style={{ fontFamily: 'var(--font-mono)', fontSize: 10, letterSpacing: '0.1em',
+              textTransform: 'uppercase', padding: '3px 10px', borderRadius: 999,
+              background: 'rgba(110,157,112,0.15)', color: 'var(--green)',
+              border: '1px solid var(--green)' }}>
+            ● {presences.length} online
+          </span>
+        )}
+
         {!localMode && profile && (
           <TamerAvatar
             profile={profile}
@@ -281,6 +310,8 @@ function AppInner() {
           </button>
         )}
 
+        {isGM && isSupabaseReady && <SetupHealth className={styles.navBtn} />}
+
         {!isGuest && (
           <>
             <button className={styles.navBtn} onClick={async () => exportStateToFile(state)}>↓ Backup</button>
@@ -302,6 +333,16 @@ function AppInner() {
         </div>
       )}
 
+      {conflictAt && (
+        <div style={{ padding: '10px 24px', fontFamily: 'var(--font-mono)', fontSize: 11,
+          background: 'rgba(231,212,163,0.18)', color: 'var(--orange)',
+          borderBottom: '1px solid var(--line-soft)', display: 'flex',
+          alignItems: 'center', justifyContent: 'space-between' }}>
+          ⚠ Conflito de save: alguém atualizou primeiro. Seu salvamento foi forçado — recarregue se algo parecer estranho.
+          <button onClick={() => setConflictAt(null)} style={{ background: 'transparent', border: 'none', cursor: 'pointer', color: 'inherit', fontSize: 14 }}>×</button>
+        </div>
+      )}
+
       {migrateResult && (
         <div style={{ padding: '10px 24px', fontFamily: 'var(--font-mono)', fontSize: 11,
           background: migrateResult.startsWith('✓') ? 'rgba(110,157,112,0.12)' : 'rgba(196,51,33,0.08)',
@@ -315,7 +356,7 @@ function AppInner() {
         </div>
       )}
 
-      <main className={styles.main}>
+      <main id="main" className={styles.main}>
         <Suspense fallback={pageFallback}>
           <Routes>
             <Route path="/"          element={<HomePage />} />
@@ -331,6 +372,8 @@ function AppInner() {
           </Routes>
         </Suspense>
       </main>
+
+      <DiceRoller />
     </div>
   )
 }

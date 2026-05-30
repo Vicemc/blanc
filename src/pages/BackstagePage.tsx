@@ -1,18 +1,20 @@
 // src/pages/BackstagePage.tsx
 // Painel exclusivo do GM: gerenciar usuários, vincular tamers, liberar Skill Tree.
 
-import React, { useState, useEffect, useCallback } from 'react'
+import React, { useState, useEffect } from 'react'
 import { listProfiles, setUserRole } from '../lib/auth'
 import type { UserProfile } from '../lib/auth'
 import { useAuth } from '../components/AuthProvider'
 import { useSettings } from '../lib/settings'
 import type { AppState, SkillTreePhase, TamerSkill, ClimaEntry, KeywordEntry, ConditionEntry, JogressConfig, JogressGroup, JogressSkill, VisibilityLevel } from '../types'
-import { saveStateToDB } from '../lib/db'
+import { listNotes, saveNote, deleteNote, listItems, saveItem, deleteItem, revealItem,
+  listSnapshots, createSnapshot, loadSnapshot, deleteSnapshot } from '../lib/db'
+import type { GMNote, GMItem, SnapshotRow } from '../lib/db'
 import { supabase } from '../lib/supabase'
 import { SheetModal } from '../components/Sheet'
 import type { SheetSubject } from '../components/Sheet'
-import { BASE_CLIMAS, BASE_KEYWORDS, BASE_CONDITIONS, getEffectiveClimas, groupBy } from '../data/rulesData'
-import { getVisLevel, setVisibility, visKey } from '../data/store'
+import { BASE_KEYWORDS, BASE_CONDITIONS, getEffectiveClimas, groupBy } from '../data/rulesData'
+import { getVisLevel, setVisibility } from '../data/store'
 
 interface Props {
   state:    AppState
@@ -31,7 +33,7 @@ const TAMER_OPTIONS = [
 
 // ── Seção: Usuários ────────────────────────────────────────────────────────────
 
-function UsersSection({ state, onUpdate }: { state: AppState; onUpdate: (s: AppState) => void }) {
+function UsersSection({ state: _state, onUpdate: _onUpdate }: { state: AppState; onUpdate: (s: AppState) => void }) {
   const [profiles, setProfiles]   = useState<UserProfile[]>([])
   const [loading,  setLoading]    = useState(true)
   const [saving,   setSaving]     = useState<string | null>(null)
@@ -397,7 +399,7 @@ function ClimaCrud({ state, onUpdate }: Props) {
   const [editId, setEditId]   = useState<string | null>(null)
   const [editDraft, setED]    = useState<ClimaEntry | null>(null)
   const [adding, setAdding]   = useState(false)
-  const [addDraft, setAD]     = useState({ name:'', type:'Natural' as 'Natural'|'Especial', color:'teal', icon:'🌀', effectsRaw:'' })
+  const [addDraft, setAD]     = useState({ name:'', type:'Natural' as 'Natural'|'Não Natural', color:'teal', icon:'🌀', effectsRaw:'' })
 
   function parseEffects(raw: string): ClimaEntry['effects'] {
     return raw.trim()
@@ -457,7 +459,7 @@ function ClimaCrud({ state, onUpdate }: Props) {
                 <input value={editDraft.name} onChange={e => setED(p => p && ({ ...p, name: e.target.value }))}
                   placeholder="Nome" style={fld} />
                 <select value={editDraft.type} onChange={e => setED(p => p && ({ ...p, type: e.target.value as any }))} style={fld}>
-                  <option value="Natural">Natural</option><option value="Especial">Especial</option>
+                  <option value="Natural">Natural</option><option value="Não Natural">Não Natural</option>
                 </select>
                 <input value={editDraft.icon} onChange={e => setED(p => p && ({ ...p, icon: e.target.value }))}
                   placeholder="🌀" style={fld} />
@@ -529,7 +531,7 @@ function ClimaCrud({ state, onUpdate }: Props) {
             <input value={addDraft.name} onChange={e => setAD(p=>({...p,name:e.target.value}))}
               placeholder="Nome *" style={fld} />
             <select value={addDraft.type} onChange={e => setAD(p=>({...p,type:e.target.value as any}))} style={fld}>
-              <option value="Natural">Natural</option><option value="Especial">Especial</option>
+              <option value="Natural">Natural</option><option value="Não Natural">Não Natural</option>
             </select>
             <input value={addDraft.icon} onChange={e => setAD(p=>({...p,icon:e.target.value}))} placeholder="🌀" style={fld} />
             <input value={addDraft.color} onChange={e => setAD(p=>({...p,color:e.target.value}))} placeholder="teal" style={fld} />
@@ -1289,12 +1291,67 @@ function VisibilitySection({ state, onUpdate }: Props) {
 
   const show = (k: VEntityKind) => filter === 'all' || filter === k
 
+  // Entidades atualmente visíveis no filtro, como pares [type, id]
+  const visibleEntities = (): [string, string][] => {
+    const out: [string, string][] = []
+    if (show('tamer'))    state.tamers.forEach(t => out.push(['tamer', t.id]))
+    if (show('survivor')) (state.survivors ?? []).forEach(sv => out.push(['survivor', sv.id]))
+    if (show('bestiary')) state.bestiary.filter(d => !d.tamerId).forEach(d => out.push(['bestiary', d.id]))
+    if (show('bug'))      state.bugs.forEach(b => out.push(['bug', b.id]))
+    if (show('sign'))     (state.signs ?? []).forEach(sg => out.push(['sign', sg.id]))
+    if (show('stage'))    state.stages.forEach(s => out.push(['stage', s.id]))
+    return out
+  }
+
+  const bulkSet = (level: VisibilityLevel) => {
+    let next = state
+    for (const [type, id] of visibleEntities()) next = setVisibility(next, type, id, level)
+    onUpdate(next)
+  }
+
+  // Revela (Completo) os bestiários/bugs/SIGNs presentes no palco mais recente com atores
+  const revealActiveStage = () => {
+    const palco = [...state.stages].reverse().find(s => s.sides.allies.length + s.sides.enemies.length > 0)
+    if (!palco) return
+    let next = state
+    for (const a of [...palco.sides.allies, ...palco.sides.enemies]) {
+      if (a.kind === 'wild' || a.kind === 'pair') {
+        const id = a.kind === 'pair' ? a.digimonId : a.id
+        next = setVisibility(next, 'bestiary', id, 'full')
+      } else if (a.kind === 'bug')  next = setVisibility(next, 'bug',  a.id, 'full')
+      else if (a.kind === 'sign')   next = setVisibility(next, 'sign', a.id, 'full')
+    }
+    onUpdate(next)
+  }
+
   return (
     <div>
       <div style={{ fontFamily: 'var(--font-mono)', fontSize: 10, color: 'var(--ink-mute)', marginBottom: 12, lineHeight: 1.6 }}>
         Controle o que os players conseguem ver. <b>Oculto</b> = só GM vê.{' '}
         <b>Foto + Nome</b> = players vêem imagem e nome (bestiário, BUGs, SIGNs). <b>Completo</b> = players vêem tudo.
-        <br />Novos itens ficam <b>Ocultos</b> por padrão.
+        <br />Novos itens ficam <b>Ocultos</b> por padrão. Mudanças são enviadas aos players em tempo real.
+      </div>
+
+      {/* Ações rápidas (revelar ao vivo) */}
+      <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 14 }}>
+        <button onClick={() => bulkSet('full')}
+          style={{ padding: '5px 14px', borderRadius: 999, cursor: 'pointer',
+            border: '1px solid var(--green)', background: 'rgba(110,157,112,0.12)', color: 'var(--green)',
+            fontFamily: 'var(--font-mono)', fontSize: 10, letterSpacing: '0.08em', textTransform: 'uppercase' }}>
+          ● Revelar tudo (filtro)
+        </button>
+        <button onClick={() => bulkSet('hidden')}
+          style={{ padding: '5px 14px', borderRadius: 999, cursor: 'pointer',
+            border: '1px solid var(--line)', background: 'var(--paper-deep)', color: 'var(--ink-mute)',
+            fontFamily: 'var(--font-mono)', fontSize: 10, letterSpacing: '0.08em', textTransform: 'uppercase' }}>
+          ○ Ocultar tudo (filtro)
+        </button>
+        <button onClick={revealActiveStage}
+          style={{ padding: '5px 14px', borderRadius: 999, cursor: 'pointer',
+            border: '1px solid var(--coral)', background: 'transparent', color: 'var(--coral)',
+            fontFamily: 'var(--font-mono)', fontSize: 10, letterSpacing: '0.08em', textTransform: 'uppercase' }}>
+          ▶ Revelar atores do palco ativo
+        </button>
       </div>
 
       {/* Filtro */}
@@ -1369,14 +1426,283 @@ function RulesSection({ state, onUpdate }: Props) {
   )
 }
 
+// ── Seção: GM (notas privadas + itens revelados sob demanda) ───────────────────
+function GMSection({ state }: { state: AppState }) {
+  const [notes, setNotes] = useState<GMNote[]>([])
+  const [items, setItems] = useState<GMItem[]>([])
+  const [loading, setLoading] = useState(true)
+  const [noteDraft, setNoteDraft] = useState<GMNote>({ title: '', content: '' })
+  const [itemDraft, setItemDraft] = useState<GMItem>({ name: '', description: '', item_type: 'item', assigned_to: null, revealed: false })
+
+  const charOptions = state.tamers.map(t => ({ id: t.id, name: t.name }))
+
+  useEffect(() => {
+    if (!supabase) { setLoading(false); return }
+    Promise.all([listNotes(), listItems()]).then(([n, i]) => {
+      setNotes(n); setItems(i); setLoading(false)
+    })
+  }, [])
+
+  if (!supabase) {
+    return <div style={{ fontFamily: 'var(--font-serif)', fontStyle: 'italic', fontSize: 16, color: 'var(--ink-mute)' }}>
+      ~ Notas e itens do GM requerem o Supabase configurado ~
+    </div>
+  }
+  if (loading) return <div style={{ fontFamily: 'var(--font-mono)', fontSize: 12, color: 'var(--ink-mute)' }}>Carregando...</div>
+
+  const addNote = async () => {
+    if (!noteDraft.title.trim()) return
+    const saved = await saveNote(noteDraft)
+    if (saved) setNotes(n => [saved, ...n])
+    setNoteDraft({ title: '', content: '' })
+  }
+  const removeNote = async (id?: string) => {
+    if (!id) return
+    await deleteNote(id); setNotes(n => n.filter(x => x.id !== id))
+  }
+  const addItem = async () => {
+    if (!itemDraft.name.trim()) return
+    const saved = await saveItem(itemDraft)
+    if (saved) setItems(i => [saved, ...i])
+    setItemDraft({ name: '', description: '', item_type: 'item', assigned_to: null, revealed: false })
+  }
+  const removeItem = async (id?: string) => {
+    if (!id) return
+    await deleteItem(id); setItems(i => i.filter(x => x.id !== id))
+  }
+  const toggleReveal = async (it: GMItem) => {
+    if (!it.id) return
+    const next = !it.revealed
+    await revealItem(it.id, next)
+    setItems(list => list.map(x => x.id === it.id ? { ...x, revealed: next } : x))
+  }
+
+  const inp: React.CSSProperties = { border: '1px solid var(--line)', borderRadius: 8, padding: '7px 12px',
+    fontFamily: 'var(--font-body)', fontSize: 13, background: 'var(--paper)', color: 'var(--ink)' }
+
+  return (
+    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))', gap: 28 }}>
+      {/* Notas */}
+      <div>
+        <div style={{ fontFamily: 'var(--font-mono)', fontSize: 10, letterSpacing: '0.14em',
+          textTransform: 'uppercase', color: 'var(--ink-mute)', marginBottom: 12 }}>Notas privadas</div>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginBottom: 14 }}>
+          <input value={noteDraft.title} onChange={e => setNoteDraft(d => ({ ...d, title: e.target.value }))} placeholder="Título" style={inp} />
+          <textarea value={noteDraft.content} onChange={e => setNoteDraft(d => ({ ...d, content: e.target.value }))} placeholder="Conteúdo..." rows={3} style={{ ...inp, resize: 'vertical' }} />
+          <button onClick={addNote} style={{ ...inp, cursor: 'pointer', background: 'var(--ink)', color: 'var(--paper)', border: '1px solid var(--ink)', fontWeight: 600 }}>+ Nota</button>
+        </div>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+          {notes.map(n => (
+            <div key={n.id} style={{ border: '1px solid var(--line)', borderRadius: 8, padding: '10px 12px', background: 'var(--paper)' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8 }}>
+                <strong style={{ fontFamily: 'var(--font-body)', fontSize: 14 }}>{n.title}</strong>
+                <button onClick={() => removeNote(n.id)} style={{ background: 'transparent', border: 'none', cursor: 'pointer', color: 'var(--coral)', fontSize: 16 }}>×</button>
+              </div>
+              {n.content && <div style={{ fontFamily: 'var(--font-body)', fontSize: 13, color: 'var(--ink-soft)', marginTop: 4, whiteSpace: 'pre-wrap' }}>{n.content}</div>}
+            </div>
+          ))}
+          {notes.length === 0 && <div style={{ fontFamily: 'var(--font-mono)', fontSize: 11, color: 'var(--ink-mute)' }}>Nenhuma nota.</div>}
+        </div>
+      </div>
+
+      {/* Itens */}
+      <div>
+        <div style={{ fontFamily: 'var(--font-mono)', fontSize: 10, letterSpacing: '0.14em',
+          textTransform: 'uppercase', color: 'var(--ink-mute)', marginBottom: 12 }}>Itens (revelados sob demanda)</div>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginBottom: 14 }}>
+          <input value={itemDraft.name} onChange={e => setItemDraft(d => ({ ...d, name: e.target.value }))} placeholder="Nome do item" style={inp} />
+          <textarea value={itemDraft.description} onChange={e => setItemDraft(d => ({ ...d, description: e.target.value }))} placeholder="Descrição / efeitos..." rows={2} style={{ ...inp, resize: 'vertical' }} />
+          <div style={{ display: 'flex', gap: 8 }}>
+            <select value={itemDraft.item_type} onChange={e => setItemDraft(d => ({ ...d, item_type: e.target.value }))} style={{ ...inp, flex: 1 }}>
+              <option value="item">Item</option><option value="weapon">Arma</option>
+              <option value="accessory">Acessório</option><option value="key">Chave</option>
+            </select>
+            <select value={itemDraft.assigned_to ?? ''} onChange={e => setItemDraft(d => ({ ...d, assigned_to: e.target.value || null }))} style={{ ...inp, flex: 1 }}>
+              <option value="">— sem dono —</option>
+              {charOptions.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+            </select>
+          </div>
+          <button onClick={addItem} style={{ ...inp, cursor: 'pointer', background: 'var(--ink)', color: 'var(--paper)', border: '1px solid var(--ink)', fontWeight: 600 }}>+ Item</button>
+        </div>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+          {items.map(it => (
+            <div key={it.id} style={{ border: '1px solid var(--line)', borderRadius: 8, padding: '10px 12px', background: 'var(--paper)' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8, alignItems: 'center' }}>
+                <strong style={{ fontFamily: 'var(--font-body)', fontSize: 14 }}>{it.name}</strong>
+                <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+                  <button onClick={() => toggleReveal(it)} title={it.revealed ? 'Visível ao dono' : 'Oculto'}
+                    style={{ padding: '2px 10px', borderRadius: 999, cursor: 'pointer', fontFamily: 'var(--font-mono)', fontSize: 9, letterSpacing: '0.08em', textTransform: 'uppercase',
+                      border: `1px solid ${it.revealed ? 'var(--green)' : 'var(--line)'}`, background: it.revealed ? 'rgba(110,157,112,0.15)' : 'transparent', color: it.revealed ? 'var(--green)' : 'var(--ink-mute)' }}>
+                    {it.revealed ? '● revelado' : '○ oculto'}
+                  </button>
+                  <button onClick={() => removeItem(it.id)} style={{ background: 'transparent', border: 'none', cursor: 'pointer', color: 'var(--coral)', fontSize: 16 }}>×</button>
+                </div>
+              </div>
+              <div style={{ fontFamily: 'var(--font-mono)', fontSize: 9, letterSpacing: '0.08em', textTransform: 'uppercase', color: 'var(--ink-mute)', marginTop: 2 }}>
+                {it.item_type}{it.assigned_to ? ` · ${charOptions.find(c => c.id === it.assigned_to)?.name ?? it.assigned_to}` : ' · sem dono'}
+              </div>
+              {it.description && <div style={{ fontFamily: 'var(--font-body)', fontSize: 13, color: 'var(--ink-soft)', marginTop: 4 }}>{it.description}</div>}
+            </div>
+          ))}
+          {items.length === 0 && <div style={{ fontFamily: 'var(--font-mono)', fontSize: 11, color: 'var(--ink-mute)' }}>Nenhum item.</div>}
+        </div>
+      </div>
+    </div>
+  )
+}
+
+// ── Seção: Dashboard (resumo da campanha + snapshots) ─────────────────────────
+function DashboardSection({ state, onUpdate }: { state: AppState; onUpdate: (s: AppState) => void }) {
+  const activeStage = [...state.stages].reverse().find(s => s.sides.allies.length + s.sides.enemies.length > 0)
+  const totalXpFree  = state.tamers.reduce((a, t) => a + t.xp, 0)
+  const totalXpSpent = state.tamers.reduce((a, t) => a + t.xpSpent, 0)
+
+  const [snapshots, setSnapshots] = useState<SnapshotRow[]>([])
+  const [loadingSnap, setLoadingSnap] = useState(false)
+  useEffect(() => {
+    if (!supabase) return
+    listSnapshots(20).then(setSnapshots)
+  }, [])
+  const doSnapshot = async () => {
+    setLoadingSnap(true)
+    const row = await createSnapshot(state)
+    if (row) setSnapshots(s => [row, ...s])
+    setLoadingSnap(false)
+  }
+  const doRestore = async (id: string) => {
+    if (!confirm('Restaurar este snapshot? O estado atual será sobrescrito (mas continua nos snapshots).')) return
+    const snap = await loadSnapshot(id)
+    if (snap) onUpdate(snap)
+  }
+  const doDelete = async (id: string) => {
+    if (!confirm('Apagar este snapshot?')) return
+    await deleteSnapshot(id)
+    setSnapshots(s => s.filter(x => x.id !== id))
+  }
+
+  return (
+    <div style={{ display: 'grid', gap: 24 }}>
+      {/* Palco ativo */}
+      <div>
+        <div style={{ fontFamily: 'var(--font-mono)', fontSize: 10, letterSpacing: '0.14em',
+          textTransform: 'uppercase', color: 'var(--ink-mute)', marginBottom: 8 }}>Palco ativo</div>
+        {activeStage ? (
+          <div style={{ border: '1px solid var(--line)', borderRadius: 10, padding: '14px 18px', background: 'var(--paper)' }}>
+            <div style={{ fontFamily: 'var(--font-display)', fontSize: 18, textTransform: 'uppercase' }}>{activeStage.title}</div>
+            <div style={{ fontFamily: 'var(--font-mono)', fontSize: 11, color: 'var(--ink-mute)', marginTop: 4 }}>
+              R{activeStage.roundCurrent ?? 0} · Aliados: {activeStage.sides.allies.length} · Inimigos: {activeStage.sides.enemies.length}
+              {activeStage.clima && ` · Clima: ${activeStage.clima}`}
+            </div>
+          </div>
+        ) : (
+          <div style={{ fontFamily: 'var(--font-serif)', fontStyle: 'italic', color: 'var(--ink-mute)' }}>
+            ~ nenhum palco ativo ~
+          </div>
+        )}
+      </div>
+
+      {/* PCs */}
+      <div>
+        <div style={{ fontFamily: 'var(--font-mono)', fontSize: 10, letterSpacing: '0.14em',
+          textTransform: 'uppercase', color: 'var(--ink-mute)', marginBottom: 8 }}>
+          Tamers ({state.tamers.length}) · XP livre: {totalXpFree} · gasto: {totalXpSpent}
+        </div>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))', gap: 10 }}>
+          {state.tamers.map(t => (
+            <div key={t.id} style={{ border: '1px solid var(--line)', borderRadius: 10, padding: '10px 14px', background: 'var(--paper)' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <strong style={{ fontFamily: 'var(--font-display)', fontSize: 14, textTransform: 'uppercase' }}>{t.name}</strong>
+                <span style={{ fontFamily: 'var(--font-mono)', fontSize: 10, color: 'var(--ink-mute)' }}>XP {t.xp}</span>
+              </div>
+              <div style={{ fontFamily: 'var(--font-mono)', fontSize: 11, color: 'var(--ink-soft)', marginTop: 4 }}>
+                HP {t.status.HP.v}/{t.status.HP.max} · Mem {t.status.Memory.v}/{t.status.Memory.max} · DS {t.status.Digisoul.v}/{t.status.Digisoul.max}
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      {/* Survivors */}
+      {(state.survivors ?? []).length > 0 && (
+        <div>
+          <div style={{ fontFamily: 'var(--font-mono)', fontSize: 10, letterSpacing: '0.14em',
+            textTransform: 'uppercase', color: 'var(--ink-mute)', marginBottom: 8 }}>
+            Survivors ({state.survivors!.length})
+          </div>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))', gap: 10 }}>
+            {state.survivors!.map(sv => (
+              <div key={sv.id} style={{ border: '1px solid var(--line)', borderRadius: 10, padding: '10px 14px', background: 'var(--paper)' }}>
+                <strong style={{ fontFamily: 'var(--font-display)', fontSize: 14, textTransform: 'uppercase' }}>{sv.name}</strong>
+                <div style={{ fontFamily: 'var(--font-mono)', fontSize: 11, color: 'var(--ink-soft)', marginTop: 4 }}>
+                  HP {sv.status.HP.v}/{sv.status.HP.max} · DS {sv.status.Digisoul.v}/{sv.status.Digisoul.max}
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Conteúdo */}
+      <div>
+        <div style={{ fontFamily: 'var(--font-mono)', fontSize: 10, letterSpacing: '0.14em',
+          textTransform: 'uppercase', color: 'var(--ink-mute)', marginBottom: 8 }}>Conteúdo</div>
+        <div style={{ fontFamily: 'var(--font-mono)', fontSize: 11, color: 'var(--ink-soft)' }}>
+          {state.bestiary.length} bestiário · {state.bugs.length} BUGs · {(state.signs ?? []).length} SIGNs · {state.stages.length} palcos · {state.skillTree.length} fases de skill tree
+        </div>
+      </div>
+
+      {/* Snapshots */}
+      {supabase && (
+        <div>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
+            <span style={{ fontFamily: 'var(--font-mono)', fontSize: 10, letterSpacing: '0.14em',
+              textTransform: 'uppercase', color: 'var(--ink-mute)' }}>Snapshots</span>
+            <button onClick={doSnapshot} disabled={loadingSnap}
+              style={{ padding: '4px 12px', borderRadius: 999, cursor: 'pointer',
+                border: '1px solid var(--ink)', background: 'var(--ink)', color: 'var(--paper)',
+                fontFamily: 'var(--font-mono)', fontSize: 10, letterSpacing: '0.08em', textTransform: 'uppercase' }}>
+              {loadingSnap ? '...' : '+ Salvar agora'}
+            </button>
+          </div>
+          {snapshots.length === 0 ? (
+            <div style={{ fontFamily: 'var(--font-mono)', fontSize: 11, color: 'var(--ink-mute)' }}>Nenhum snapshot.</div>
+          ) : (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+              {snapshots.map((s, i) => (
+                <div key={s.id} style={{ display: 'flex', alignItems: 'center', gap: 12,
+                  padding: '6px 12px', border: '1px solid var(--line-soft)', borderRadius: 8,
+                  background: i === 0 ? 'rgba(110,157,112,0.10)' : 'var(--paper)' }}>
+                  <span style={{ fontFamily: 'var(--font-mono)', fontSize: 11, color: 'var(--ink-soft)', flex: 1 }}>
+                    {new Date(s.updated_at).toLocaleString('pt-BR')}
+                    {i === 0 && <span style={{ color: 'var(--green)', marginLeft: 8 }}>atual</span>}
+                  </span>
+                  {i > 0 && (
+                    <button onClick={() => doRestore(s.id)}
+                      style={{ padding: '3px 10px', borderRadius: 999, cursor: 'pointer',
+                        border: '1px solid var(--coral)', background: 'transparent', color: 'var(--coral)',
+                        fontFamily: 'var(--font-mono)', fontSize: 9, letterSpacing: '0.08em', textTransform: 'uppercase' }}>
+                      ↺ Restaurar
+                    </button>
+                  )}
+                  <button onClick={() => doDelete(s.id)} style={{ background: 'transparent', border: 'none', cursor: 'pointer', color: 'var(--coral)', fontSize: 16 }}>×</button>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  )
+}
+
 // ── BackstagePage ─────────────────────────────────────────────────────────────
 
-type Tab = 'usuarios' | 'fichas' | 'skilltree' | 'regras' | 'visibilidade'
+type Tab = 'dashboard' | 'usuarios' | 'fichas' | 'skilltree' | 'regras' | 'visibilidade' | 'gm'
 
 export default function BackstagePage({ state, onUpdate }: Props) {
   const { isGM } = useAuth()
   const { isTaglineHidden } = useSettings()
-  const [tab, setTab] = useState<Tab>('usuarios')
+  const [tab, setTab] = useState<Tab>('dashboard')
 
   if (!isGM) {
     return (
@@ -1389,11 +1715,13 @@ export default function BackstagePage({ state, onUpdate }: Props) {
   }
 
   const TABS: { id: Tab; label: string }[] = [
+    { id: 'dashboard',   label: 'Dashboard'    },
     { id: 'usuarios',    label: 'Usuários'     },
     { id: 'fichas',      label: 'Fichas'       },
     { id: 'skilltree',   label: 'Skill Tree'   },
     { id: 'regras',      label: 'Regras'       },
     { id: 'visibilidade', label: 'Visibilidade' },
+    { id: 'gm',          label: 'GM'           },
   ]
 
   return (
@@ -1430,11 +1758,13 @@ export default function BackstagePage({ state, onUpdate }: Props) {
 
       {/* Conteúdo */}
       <div style={{ padding: '0 56px' }}>
+        {tab === 'dashboard'    && <DashboardSection  state={state} onUpdate={onUpdate} />}
         {tab === 'usuarios'     && <UsersSection      state={state} onUpdate={onUpdate} />}
         {tab === 'fichas'       && <SheetSection      state={state} onUpdate={onUpdate} />}
         {tab === 'skilltree'    && <SkillTreeSection  state={state} onUpdate={onUpdate} />}
         {tab === 'regras'       && <RulesSection      state={state} onUpdate={onUpdate} />}
         {tab === 'visibilidade' && <VisibilitySection state={state} onUpdate={onUpdate} />}
+        {tab === 'gm'           && <GMSection         state={state} />}
       </div>
     </div>
   )

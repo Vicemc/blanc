@@ -34,6 +34,16 @@ export const BASE_CLIMAS: ClimaEntry[] = [
     ],
     gm_only: false,
   },
+  {
+    id: 'clima-base-deep-darkness', name: 'Deep Darkness', type: 'Não Natural', color: 'purple', icon: '🌑',
+    effects: [
+      { tag: 'Trevas +2',    desc: 'Dano de ataques de [Trevas] +2.',                                                                          color: 'purple'   },
+      { tag: 'Luz −2',       desc: 'Dano de ataques de [Luz] −2.',                                                                             color: 'gold'     },
+      { tag: 'Penalidade',   desc: 'Personagens sem afinidade 3+ à Trevas têm −2 sucessos em todas as rolagens.',                              color: 'ink-mute' },
+      { tag: 'Habilidades',  desc: 'Algumas habilidades podem ter efeitos adicionais durante este clima.',                                     color: 'indigo'   },
+    ],
+    gm_only: false,
+  },
 ]
 
 export const BASE_KEYWORDS: KeywordEntry[] = [
@@ -86,6 +96,25 @@ export function getEffectiveClimas(customClimas: ClimaEntry[]): ClimaEntry[] {
   const hasBase = customClimas.some(c => BASE_CLIMAS.some(b => b.id === c.id))
   if (!hasBase) return [...BASE_CLIMAS, ...customClimas]
   return customClimas
+}
+
+// Slug estável de uma keyword/condição/clima para âncoras e links cruzados.
+// Normaliza variantes: "Security Attack +1" → "security-attack", "Blast 2" → "blast".
+export function ruleSlug(name: string): string {
+  return name
+    .toLowerCase()
+    .replace(/\s*[+-]\s*\d+\s*$/, '') // remove sufixos "+1", "-2"
+    .replace(/\s+\d+\s*$/, '')        // remove número solto ao fim ("Blast 2")
+    .trim()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/(^-|-$)/g, '')
+}
+
+// Decide em qual sub-aba do Sistema uma keyword vive ('climas' se for clima, senão 'regras').
+export function ruleTabFor(name: string, customClimas: ClimaEntry[] = []): 'regras' | 'climas' {
+  const slug = ruleSlug(name)
+  const climas = getEffectiveClimas(customClimas)
+  return climas.some(c => ruleSlug(c.name) === slug) ? 'climas' : 'regras'
 }
 
 export function groupBy<T>(arr: T[], key: (item: T) => string): [string, T[]][] {

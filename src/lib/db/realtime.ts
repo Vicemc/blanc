@@ -1,5 +1,5 @@
 import { supabase, isSupabaseReady } from '../supabase'
-import { loadStagesFromDB, hydrateImagesFromStorage } from './state'
+import { loadStagesFromDB, hydrateImagesFromStorage, setLastKnownUpdatedAt } from './state'
 import type { AppState } from '../../types'
 
 export function subscribeToState(
@@ -14,6 +14,7 @@ export function subscribeToState(
       { event: 'UPDATE', schema: 'public', table: 'app_state' },
       payload => {
         if (payload.new?.state) {
+          if (payload.new.updated_at) setLastKnownUpdatedAt(payload.new.updated_at)
           hydrateImagesFromStorage(payload.new.state as AppState).then(onUpdate)
         }
       },
