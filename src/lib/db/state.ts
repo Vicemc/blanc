@@ -1,5 +1,5 @@
 import { supabase, isSupabaseReady } from '../supabase'
-import { loadState as localLoad, saveState as localSave, TAMER_DEFAULT_IMAGES, DIGIMON_DEFAULT_IMAGES } from '../../data/store'
+import { loadState as localLoad, saveState as localSave, TAMER_DEFAULT_IMAGES, DIGIMON_DEFAULT_IMAGES, runMigrations } from '../../data/store'
 import { DEFAULT_SURVIVORS } from '../../data/domain'
 import type { AppState } from '../../types'
 
@@ -43,7 +43,7 @@ export async function loadStateFromDB(): Promise<AppState> {
 
     // Sincronizar localStorage como cache offline
     localSave(remoteState)
-    return hydrated
+    return runMigrations(hydrated)
   } catch {
     return localLoad()
   }

@@ -168,7 +168,22 @@ function mergeWithDefaults(saved: AppState, defaults: AppState): AppState {
     tamers: defaults.tamers.map(defaultTamer => {
       const savedTamer = saved.tamers?.find(t => t.id === defaultTamer.id);
       if (!savedTamer) return defaultTamer;
-      return { ...savedTamer, tamerSkills: defaultTamer.tamerSkills };
+      const merged = { ...savedTamer, tamerSkills: defaultTamer.tamerSkills };
+      // Migration: corrige Vigor do Mori (foi importado como 2, correto é 4)
+      if (merged.id === 't-mori' && merged.attributes.Vigor < 4) {
+        const fixedAttrs = { ...merged.attributes, Vigor: 4 };
+        const newHPMax = 9; // Vigor(4) + size(5)
+        const hpDiff = newHPMax - (merged.status.HP.max ?? 7);
+        return {
+          ...merged,
+          attributes: fixedAttrs,
+          status: {
+            ...merged.status,
+            HP: { v: Math.min(merged.status.HP.v + hpDiff, newHPMax), max: newHPMax },
+          },
+        };
+      }
+      return merged;
     }),
 
     // Bestiary: preserva linhas salvas com skills do código + injeta novas linhas do código
@@ -177,7 +192,7 @@ function mergeWithDefaults(saved: AppState, defaults: AppState): AppState {
       ...defaults.bestiary.map(defaultLine => {
         const savedLine = saved.bestiary?.find(l => l.id === defaultLine.id);
         if (!savedLine) return defaultLine;
-        return {
+        const mergedLine = {
           ...savedLine,
           stages: defaultLine.stages.map((defStage, si) => {
             const savedStage = savedLine.stages[si];
@@ -185,6 +200,18 @@ function mergeWithDefaults(saved: AppState, defaults: AppState): AppState {
             return { ...savedStage, skills: defStage.skills };
           }),
         };
+        // Migration: corrige HP Kudamon/Reppamon após correção do Vigor do Mori
+        if (mergedLine.id === 'd-kudamon-line') {
+          return {
+            ...mergedLine,
+            stages: mergedLine.stages.map((s, i) => {
+              if (i === 1 && s.status.HP === 12) return { ...s, status: { ...s.status, HP: 14 } };
+              if (i === 2 && s.status.HP === 17) return { ...s, status: { ...s.status, HP: 19 } };
+              return s;
+            }),
+          };
+        }
+        return mergedLine;
       }),
       // Linhas do saved que não existem no código (adicionadas pelo usuário via UI)
       ...(saved.bestiary?.filter(d => !defaults.bestiary.some(dd => dd.id === d.id)) ?? []),
@@ -198,6 +225,46 @@ function mergeWithDefaults(saved: AppState, defaults: AppState): AppState {
       ...defaults.bugs.filter(b => !savedBugIds.has(b.id)),
     ],
   };
+}
+
+// Aplica migrações de dados em um estado carregado do banco ou localStorage.
+// Chamado tanto no fluxo local (mergeWithDefaults) quanto no remoto (loadStateFromDB).
+export function runMigrations(s: AppState): AppState {
+  // Migration: corrige Vigor do Mori (foi importado como 2, correto é 4)
+  const tamers = s.tamers.map(t => {
+    if (t.id === 't-mori' && t.attributes.Vigor < 4) {
+      const fixedAttrs = { ...t.attributes, Vigor: 4 };
+      const newHPMax = 9; // Vigor(4) + size(5)
+      const hpDiff = newHPMax - (t.status.HP.max ?? 7);
+      return {
+        ...t,
+        attributes: fixedAttrs,
+        status: {
+          ...t.status,
+          HP: { v: Math.min(t.status.HP.v + hpDiff, newHPMax), max: newHPMax },
+        },
+      };
+    }
+    return t;
+  });
+
+  // Migration: corrige HP Kudamon/Reppamon após correção do Vigor do Mori
+  const bestiary = s.bestiary.map(line => {
+    if (line.id === 'd-kudamon-line') {
+      return {
+        ...line,
+        stages: line.stages.map((st, i) => {
+          if (i === 1 && st.status.HP === 12) return { ...st, status: { ...st.status, HP: 14 } };
+          if (i === 2 && st.status.HP === 17) return { ...st, status: { ...st.status, HP: 19 } };
+          return st;
+        }),
+      };
+    }
+    return line;
+  });
+
+  if (tamers === s.tamers && bestiary === s.bestiary) return s;
+  return { ...s, tamers, bestiary };
 }
 
 function applyDefaultImages(s: AppState): AppState {
@@ -977,9 +1044,9 @@ export function buildDefaultState(): AppState {
   const moriAttrs: Attributes = {
     Inteligência: 4, Força: 1, Presença: 1,
     Raciocínio: 3,  Destreza: 2, Manipulação: 4,
-    Perseverança: 3, Vigor: 2,  Autocontrole: 3,
+    Perseverança: 3, Vigor: 4,  Autocontrole: 3,
   };
-  // HP=7 | Digisoul=6 | Def=min(2,3)=2 | Inic=2+3+1=6 | Desloc=1+2+5=8
+  // HP=9 | Digisoul=6 | Def=min(2,3)=2 | Inic=2+3+1=6 | Desloc=1+2+5=8
 
   const mori: Tamer = {
     id: 't-mori',
@@ -991,7 +1058,7 @@ export function buildDefaultState(): AppState {
     tagline: 'Não há distância que o laço do karma não alcance.',
     xp: 90, xpSpent: 0,
     status: {
-      HP:       { v: 7,  max: 7  },
+      HP:       { v: 9,  max: 9  },
       Memory:   { v: 3,  max: 10 },
       Digisoul: { v: 6,  max: 6  },
       Deslocamento: 8,
@@ -1051,7 +1118,7 @@ export function buildDefaultState(): AppState {
   };
 
   // ── Kudamon Line ────────────────────────────────────────────────────────────
-  // HP Kudamon = HP tamer (7) + 5 = 12 | HP Reppamon = 12 + 5 = 17
+  // HP Kudamon = HP tamer (9) + 5 = 14 | HP Reppamon = tamer (9) + 10 = 19
   // Kudamon speed: Levitate → voa. Speed base 5.
   // Desloc Kudamon = 1+2+5 = 8
 
@@ -1075,7 +1142,7 @@ export function buildDefaultState(): AppState {
         stageName: 'Kudamon', level: 'Child (Lvl 3)', cost: '0',
         type: 'Holy Beast', portrait: 'teal', size: 3, speed: 5, locked: false,
         status: {
-          HP: 12, Deslocamento: 8, Iniciativa: 6, Defesa: 2, Armadura: 0,
+          HP: 14, Deslocamento: 8, Iniciativa: 6, Defesa: 2, Armadura: 0,
         },
         attributes: { ...moriAttrs },
         weakness: {
@@ -1112,7 +1179,7 @@ export function buildDefaultState(): AppState {
         stageName: 'Reppamon', level: 'Adult (Lvl 4)', cost: '-2 Memory / duração 5 rounds',
         type: 'Holy Beast', portrait: 'teal', size: 3, speed: 5, locked: false,
         status: {
-          HP: 17,          // 12 + 5
+          HP: 19,          // 14 + 5
           Deslocamento: 8, // Força(1)+Destreza(2)+speed(5)
           Iniciativa: 6,
           Defesa: 3,       // min(2,3)+1 evo bonus

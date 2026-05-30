@@ -2,7 +2,7 @@
 import { Suspense, lazy, useState, useCallback, useEffect, useRef, type FC } from 'react'
 import { Routes, Route, NavLink } from 'react-router-dom'
 import { loadState, exportStateToFile, importStateFromFile } from './data/store'
-import { loadStateFromDB, saveStateToDB, subscribeToState, migrateLocalToSupabase } from './lib/db'
+import { loadStateFromDB, saveStateToDB, subscribeToState, migrateLocalToSupabase, updateMyTamer } from './lib/db'
 import { signOut, canEditTamer } from './lib/auth'
 import type { UserProfile } from './lib/auth'
 import type { Tamer } from './types'
@@ -156,7 +156,9 @@ function AppInner() {
     saveStateToDB(s)
   }, [])
 
-  // Edição local — marca dirty e auto-salva após 1.5s de inatividade
+  // Edição local — marca dirty e auto-salva após 1.5s de inatividade.
+  // Players (não-GM, não-localMode) usam updateMyTamer (RPC atômico) para evitar
+  // sobrescrever o estado inteiro e causar conflitos de concorrência com outros players.
   const onUpdateLocal = useCallback((s: AppState) => {
     setState(s)
     lastSaveRef.current = Date.now()
@@ -164,9 +166,22 @@ function AppInner() {
     if (saveDebounceRef.current) clearTimeout(saveDebounceRef.current)
     saveDebounceRef.current = setTimeout(() => {
       lastSaveRef.current = Date.now()
+      if (!localMode && !isGM && profile?.tamer_id) {
+        const tamer = s.tamers.find(t => t.id === profile.tamer_id)
+        if (tamer) {
+          void updateMyTamer(tamer).then(({ ok, error }) => {
+            if (ok) setIsDirty(false)
+            else {
+              console.warn('[player save] updateMyTamer falhou, fallback para saveStateToDB:', error)
+              void saveStateToDB(s).then(() => setIsDirty(false))
+            }
+          })
+          return
+        }
+      }
       void saveStateToDB(s).then(() => setIsDirty(false))
     }, 1500)
-  }, [])
+  }, [localMode, isGM, profile])
 
   const handleSave = useCallback(async () => {
     if (!isDirty) return
