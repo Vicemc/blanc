@@ -4,10 +4,9 @@ export type Portrait =
   | 'sage' | 'wheat' | 'rose' | 'indigo' | 'gold'
   | 'coral' | 'orange' | 'red' | 'pink' | 'green'
   | 'blue' | 'purple' | 'black' | 'teal'
-  | 'white' | 'gray' | 'butter' | 'mint' | 'celadon'
-  | 'sky' | 'powder' | 'lavender' | 'mauve' | 'lilac'
-  | 'dusty' | 'peach' | 'blush' | 'linen' | 'sand'
-  | 'thistle' | 'mallow';
+  | 'butter' | 'mint' | 'lavender' | 'mauve' | 'mallow'
+  | 'white' | 'gray' | 'thistle'
+  | 'amber' | 'forest' | 'slate';
 
 export type BugColor = 'red' | 'green' | 'blue' | 'white' | 'purple' | 'yellow';
 
@@ -479,8 +478,7 @@ export const BUG_COLORS: BugColor[] = ['red','green','blue','white','purple','ye
 
 export const PORTRAIT_LIST: Portrait[] = [
   'sage','wheat','rose','indigo','gold','coral','orange','red','pink','green','blue','purple','teal','black',
-  'white','gray','butter','mint','celadon','sky','powder','lavender','mauve','lilac','dusty','peach','blush','linen','sand',
-  'thistle','mallow',
+  'butter','mint','lavender','mauve','mallow','white','gray','thistle','amber','forest','slate',
 ];
 
 // ---------- Clima (extensível pelo GM) ----------

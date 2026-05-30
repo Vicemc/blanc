@@ -175,19 +175,13 @@ button { cursor: pointer; font-family: inherit; }
 .fill-gray    { background-color: #B0ABAB;        color: var(--ink); }
 .fill-butter  { background-color: #F3E1A3;        color: var(--ink); }
 .fill-mint    { background-color: #D2E7D6;        color: var(--ink); }
-.fill-celadon { background-color: #D0E1D4;        color: var(--ink); }
-.fill-sky     { background-color: #BCE4ED;        color: var(--ink); }
-.fill-powder  { background-color: #AEC6CF;        color: var(--ink); }
 .fill-lavender{ background-color: #B19FF5;        color: var(--ink); }
 .fill-mauve   { background-color: #AAA1C8;        color: var(--ink); }
-.fill-lilac   { background-color: #DBCDF0;        color: var(--ink); }
-.fill-dusty   { background-color: #D68C8C;        color: var(--ink); }
-.fill-peach   { background-color: #F0C2B7;        color: var(--ink); }
-.fill-blush   { background-color: #E8C5C8;        color: var(--ink); }
-.fill-linen   { background-color: #FCE1D4;        color: var(--ink); }
-.fill-sand    { background-color: #D6C7B9;        color: var(--ink); }
 .fill-thistle { background-color: #EADCF8;        color: var(--ink); }
 .fill-mallow  { background-color: #E6B2B2;        color: var(--ink); }
+.fill-amber   { background-color: #C8902A;        color: #f6f2e9; }
+.fill-forest  { background-color: #4A7A58;        color: #f6f2e9; }
+.fill-slate   { background-color: #607898;        color: #f6f2e9; }
 
 .fill-bug-red    { background-color: var(--fill-bug-red);    color: #f6f2e9; }
 .fill-bug-green  { background-color: var(--fill-bug-green);  color: #f6f2e9; }
