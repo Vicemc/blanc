@@ -234,6 +234,7 @@ export function FullSheet({ subject, state, onSaveState, onClose, editable = fal
         {active === 'sv-inventario' && survivor && <SurvivorInventoryTab sv={survivor} editable={editable} onSave={saveSurvivor} />}
         {stageIdx !== null && line && (
           <DigimonStageView line={line} stageIdx={stageIdx} tamer={tamer} editable={editable} isGM={isGM} onSaveLine={saveLine} onSaveTamer={tamer ? saveTamer : undefined}
+            onSaveBoth={tamer && onSaveState ? (t, l) => onSaveState({ ...state, tamers: state.tamers.map(x => x.id===t.id?t:x), bestiary: state.bestiary.map(x => x.id===l.id?l:x) }) : undefined}
             onDeleteStage={editable && isGM ? () => {
               const newStages = line.stages.filter((_,i) => i !== stageIdx)
               saveLine({ ...line, stages: newStages })

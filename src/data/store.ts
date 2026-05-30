@@ -200,14 +200,16 @@ function mergeWithDefaults(saved: AppState, defaults: AppState): AppState {
             return { ...savedStage, skills: defStage.skills };
           }),
         };
-        // Migration: corrige HP Kudamon/Reppamon após correção do Vigor do Mori
+        // Migration: corrige HP e atributos Kudamon/Reppamon após correção do Vigor do Mori
         if (mergedLine.id === 'd-kudamon-line') {
           return {
             ...mergedLine,
             stages: mergedLine.stages.map((s, i) => {
-              if (i === 1 && s.status.HP === 12) return { ...s, status: { ...s.status, HP: 14 } };
-              if (i === 2 && s.status.HP === 17) return { ...s, status: { ...s.status, HP: 19 } };
-              return s;
+              let st = s;
+              if (i === 1 && st.status.HP === 12) st = { ...st, status: { ...st.status, HP: 14 } };
+              if (i === 2 && st.status.HP === 17) st = { ...st, status: { ...st.status, HP: 19 } };
+              if (!st.locked && st.attributes.Vigor < 4) st = { ...st, attributes: { ...st.attributes, Vigor: 4 } };
+              return st;
             }),
           };
         }
@@ -248,15 +250,17 @@ export function runMigrations(s: AppState): AppState {
     return t;
   });
 
-  // Migration: corrige HP Kudamon/Reppamon após correção do Vigor do Mori
+  // Migration: corrige HP e atributos Kudamon/Reppamon após correção do Vigor do Mori
   const bestiary = s.bestiary.map(line => {
     if (line.id === 'd-kudamon-line') {
       return {
         ...line,
         stages: line.stages.map((st, i) => {
-          if (i === 1 && st.status.HP === 12) return { ...st, status: { ...st.status, HP: 14 } };
-          if (i === 2 && st.status.HP === 17) return { ...st, status: { ...st.status, HP: 19 } };
-          return st;
+          let stage = st;
+          if (i === 1 && stage.status.HP === 12) stage = { ...stage, status: { ...stage.status, HP: 14 } };
+          if (i === 2 && stage.status.HP === 17) stage = { ...stage, status: { ...stage.status, HP: 19 } };
+          if (!stage.locked && stage.attributes.Vigor < 4) stage = { ...stage, attributes: { ...stage.attributes, Vigor: 4 } };
+          return stage;
         }),
       };
     }

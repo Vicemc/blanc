@@ -541,10 +541,18 @@ export function TamerView({ tamer, line, editable, isGM, onSave, onSaveLine: _on
       const entry = { id: `xp-${Date.now().toString(36)}`, ts: Date.now(), label: parts.join(', '), cost: -pendCost }
       t = { ...t, xpLog: [entry, ...(t.xpLog ?? [])].slice(0, 50) }
     }
-    onSave(t)
-    // Regra: atributos do digimon parceiro são sempre iguais ao do tamer
-    if (line && _onSaveLine) {
-      _onSaveLine({ ...line, stages: line.stages.map(s => s.locked ? s : { ...s, attributes: t.attributes }) })
+    // Sync atômico: tamer + stages do parceiro em um único setState, evita conflito de concorrência
+    const updatedLine = line
+      ? { ...line, stages: line.stages.map(s => s.locked ? s : { ...s, attributes: t.attributes }) }
+      : null
+    if (state && onSaveState && updatedLine) {
+      onSaveState({
+        ...state,
+        tamers: state.tamers.map(x => x.id === t.id ? t : x),
+        bestiary: state.bestiary.map(x => x.id === updatedLine.id ? updatedLine : x),
+      })
+    } else {
+      onSave(t)
     }
     setPendAttr({}); setPendSkill({})
     msg(`−${pendCost} XP confirmado!`)

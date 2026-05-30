@@ -258,9 +258,10 @@ function StageDiff({ line, stageIdx, tamer }: { line: DigimonLine; stageIdx: num
 }
 
 // ── DigimonStageView ───────────────────────────────────────────────
-export function DigimonStageView({ line, stageIdx, tamer, editable, isGM, onSaveLine, onSaveTamer, onDeleteStage }: {
+export function DigimonStageView({ line, stageIdx, tamer, editable, isGM, onSaveLine, onSaveTamer, onSaveBoth, onDeleteStage }: {
   line: DigimonLine; stageIdx: number; tamer?: Tamer; editable: boolean; isGM?: boolean
-  onSaveLine: (l: DigimonLine) => void; onSaveTamer?: (t: Tamer) => void; onDeleteStage?: () => void
+  onSaveLine: (l: DigimonLine) => void; onSaveTamer?: (t: Tamer) => void
+  onSaveBoth?: (t: Tamer, l: DigimonLine) => void; onDeleteStage?: () => void
 }) {
   const stage = line.stages[stageIdx]
   const [toast, setToast]    = useState<string|null>(null)
@@ -360,12 +361,16 @@ export function DigimonStageView({ line, stageIdx, tamer, editable, isGM, onSave
   const confirmXp = () => {
     if (!tamer || !onSaveTamer) { msg('Sem tamer vinculado.'); return }
     if (pendCost > tamer.xp) { msg('XP insuficiente!'); return }
-    // Atributos do tamer (regra: parceiro sempre iguala ao tamer)
     const newAttrs = { ...tamer.attributes }
     for (const [k, d] of Object.entries(pendAttr)) if (d > 0) newAttrs[k as AttributeKey] += d
-    onSaveTamer({ ...tamer, xp: tamer.xp - pendCost, xpSpent: tamer.xpSpent + pendCost, attributes: newAttrs })
-    // Sincroniza todos os estágios não bloqueados com os novos atributos
-    onSaveLine({ ...line, stages: line.stages.map(s => s.locked ? s : { ...s, attributes: newAttrs }) })
+    const updatedTamer = { ...tamer, xp: tamer.xp - pendCost, xpSpent: tamer.xpSpent + pendCost, attributes: newAttrs }
+    const updatedLine  = { ...line, stages: line.stages.map(s => s.locked ? s : { ...s, attributes: newAttrs }) }
+    if (onSaveBoth) {
+      onSaveBoth(updatedTamer, updatedLine)
+    } else {
+      onSaveTamer(updatedTamer)
+      onSaveLine(updatedLine)
+    }
     setPendAttr({}); msg(`−${pendCost} XP do tamer confirmado!`)
   }
   const cancelXp = () => { setPendAttr({}); msg('Cancelado.') }
@@ -510,9 +515,20 @@ export function DigimonStageView({ line, stageIdx, tamer, editable, isGM, onSave
       )}
 
       <SectionTitle>Atributos</SectionTitle>
-      <AttributeGrid attrs={stage.attributes} editable={editable} pending={pendAttr} onPend={pendAttrUp} onUnpend={pendAttrDown}
+      <AttributeGrid attrs={isDerived ? tamer!.attributes : stage.attributes} editable={editable} pending={pendAttr} onPend={pendAttrUp} onUnpend={pendAttrDown}
         freeMode={freeMode} onFreeModeChange={setFreeMode}
-        onFreeEdit={(k, delta) => { onSaveLine({ ...line, stages: line.stages.map((s,i) => i===stageIdx ? { ...s, attributes: { ...s.attributes, [k]: Math.max(1, Math.min(10, s.attributes[k] + delta)) } } : s) }) }} />
+        onFreeEdit={(k, delta) => {
+          if (isDerived && onSaveTamer && tamer) {
+            const newVal = Math.max(1, Math.min(10, tamer.attributes[k] + delta))
+            const newAttrs = { ...tamer.attributes, [k]: newVal }
+            const updatedTamer = { ...tamer, attributes: newAttrs }
+            const updatedLine  = { ...line, stages: line.stages.map(s => s.locked ? s : { ...s, attributes: newAttrs }) }
+            if (onSaveBoth) { onSaveBoth(updatedTamer, updatedLine) }
+            else { onSaveTamer(updatedTamer); onSaveLine(updatedLine) }
+          } else {
+            onSaveLine({ ...line, stages: line.stages.map((s,i) => i===stageIdx ? { ...s, attributes: { ...s.attributes, [k]: Math.max(1, Math.min(10, s.attributes[k] + delta)) } } : s) })
+          }
+        }} />
       {hasPending && <XpConfirmBar cost={pendCost} xpAvail={xpAvail} onConfirm={confirmXp} onCancel={cancelXp} />}
 
       <SectionTitle>Weakness & Resistance</SectionTitle>
