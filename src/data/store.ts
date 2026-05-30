@@ -169,8 +169,8 @@ function mergeWithDefaults(saved: AppState, defaults: AppState): AppState {
       const savedTamer = saved.tamers?.find(t => t.id === defaultTamer.id);
       if (!savedTamer) return defaultTamer;
       const merged = { ...savedTamer, tamerSkills: defaultTamer.tamerSkills };
-      // Migration: corrige Vigor do Mori (foi importado como 2, correto é 4)
-      if (merged.id === 't-mori' && merged.attributes.Vigor < 4) {
+      // Migration: corrige Vigor do Mori (foi importado como 2, correto é 4) e HP.max derivado
+      if (merged.id === 't-mori' && (merged.attributes.Vigor < 4 || merged.status.HP.max < 9)) {
         const fixedAttrs = { ...merged.attributes, Vigor: 4 };
         const newHPMax = 9; // Vigor(4) + size(5)
         const hpDiff = newHPMax - (merged.status.HP.max ?? 7);
@@ -230,9 +230,9 @@ function mergeWithDefaults(saved: AppState, defaults: AppState): AppState {
 // Aplica migrações de dados em um estado carregado do banco ou localStorage.
 // Chamado tanto no fluxo local (mergeWithDefaults) quanto no remoto (loadStateFromDB).
 export function runMigrations(s: AppState): AppState {
-  // Migration: corrige Vigor do Mori (foi importado como 2, correto é 4)
+  // Migration: corrige Vigor do Mori e HP.max derivado
   const tamers = s.tamers.map(t => {
-    if (t.id === 't-mori' && t.attributes.Vigor < 4) {
+    if (t.id === 't-mori' && (t.attributes.Vigor < 4 || t.status.HP.max < 9)) {
       const fixedAttrs = { ...t.attributes, Vigor: 4 };
       const newHPMax = 9; // Vigor(4) + size(5)
       const hpDiff = newHPMax - (t.status.HP.max ?? 7);

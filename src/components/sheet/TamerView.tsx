@@ -542,6 +542,10 @@ export function TamerView({ tamer, line, editable, isGM, onSave, onSaveLine: _on
       t = { ...t, xpLog: [entry, ...(t.xpLog ?? [])].slice(0, 50) }
     }
     onSave(t)
+    // Regra: atributos do digimon parceiro são sempre iguais ao do tamer
+    if (line && _onSaveLine) {
+      _onSaveLine({ ...line, stages: line.stages.map(s => s.locked ? s : { ...s, attributes: t.attributes }) })
+    }
     setPendAttr({}); setPendSkill({})
     msg(`−${pendCost} XP confirmado!`)
   }

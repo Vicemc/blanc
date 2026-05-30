@@ -1,7 +1,7 @@
 // src/App.tsx
 import { Suspense, lazy, useState, useCallback, useEffect, useRef, type FC } from 'react'
 import { Routes, Route, NavLink } from 'react-router-dom'
-import { loadState, exportStateToFile, importStateFromFile } from './data/store'
+import { loadState, exportStateToFile, importStateFromFile, runMigrations } from './data/store'
 import { loadStateFromDB, saveStateToDB, subscribeToState, migrateLocalToSupabase, updateMyTamer } from './lib/db'
 import { signOut, canEditTamer } from './lib/auth'
 import type { UserProfile } from './lib/auth'
@@ -126,7 +126,7 @@ function AppInner() {
     realtimeUnsub.current?.()
     realtimeUnsub.current = subscribeToState(remoteState => {
       if (Date.now() - lastSaveRef.current < 3000) return
-      setState(remoteState)
+      setState(runMigrations(remoteState))
     })
     return () => { realtimeUnsub.current?.() }
   }, [session])

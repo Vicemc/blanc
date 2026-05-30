@@ -272,7 +272,7 @@ export function DigimonStageView({ line, stageIdx, tamer, editable, isGM, onSave
   // toggles das passivas: chave = índice da skill no array original, valor = { active, x }
   const [passiveToggles, setPassiveToggles] = useState<Record<number, { active: boolean; x: number }>>({})
   const [freeMode, setFreeMode] = useState(false)
-  const pendCost = useMemo(() => pendingCost(pendAttr, stage?.attributes ?? {}, true), [pendAttr, stage])
+  const pendCost = useMemo(() => pendingCost(pendAttr, tamer?.attributes ?? stage?.attributes ?? {}, true), [pendAttr, stage, tamer])
   const hasPending = pendCost > 0
   const msg = (m: string) => setToast(m)
 
@@ -292,7 +292,7 @@ export function DigimonStageView({ line, stageIdx, tamer, editable, isGM, onSave
   const isDerived = !!tamer
   const tamerHP = tamer ? tamer.status.HP.max : undefined
   const derived = isDerived
-    ? calcDigimonDerived(stage.attributes, stage.size, stage.speed, evBonus, tamerHP, stage.level)
+    ? calcDigimonDerived(tamer!.attributes, stage.size, stage.speed, evBonus, tamerHP, stage.level)
     : {
         HP:           stage.status.HP,
         Defesa:       stage.status.Defesa,
@@ -349,7 +349,8 @@ export function DigimonStageView({ line, stageIdx, tamer, editable, isGM, onSave
   ]
 
   const pendAttrUp = (k: AttributeKey) => {
-    if ((stage.attributes[k] + (pendAttr[k]??0)) >= 10) return
+    const baseAttrs = tamer?.attributes ?? stage.attributes
+    if ((baseAttrs[k] + (pendAttr[k]??0)) >= 10) return
     setPendAttr(p => ({ ...p, [k]: (p[k]??0)+1 }))
   }
   const pendAttrDown = (k: AttributeKey) => {
@@ -359,10 +360,12 @@ export function DigimonStageView({ line, stageIdx, tamer, editable, isGM, onSave
   const confirmXp = () => {
     if (!tamer || !onSaveTamer) { msg('Sem tamer vinculado.'); return }
     if (pendCost > tamer.xp) { msg('XP insuficiente!'); return }
-    const attrs = { ...stage.attributes }
-    for (const [k, d] of Object.entries(pendAttr)) if (d > 0) attrs[k as AttributeKey] += d
-    onSaveTamer({ ...tamer, xp: tamer.xp - pendCost, xpSpent: tamer.xpSpent + pendCost })
-    onSaveLine({ ...line, stages: line.stages.map((s,i) => i===stageIdx ? { ...s, attributes: attrs } : s) })
+    // Atributos do tamer (regra: parceiro sempre iguala ao tamer)
+    const newAttrs = { ...tamer.attributes }
+    for (const [k, d] of Object.entries(pendAttr)) if (d > 0) newAttrs[k as AttributeKey] += d
+    onSaveTamer({ ...tamer, xp: tamer.xp - pendCost, xpSpent: tamer.xpSpent + pendCost, attributes: newAttrs })
+    // Sincroniza todos os estágios não bloqueados com os novos atributos
+    onSaveLine({ ...line, stages: line.stages.map(s => s.locked ? s : { ...s, attributes: newAttrs }) })
     setPendAttr({}); msg(`−${pendCost} XP do tamer confirmado!`)
   }
   const cancelXp = () => { setPendAttr({}); msg('Cancelado.') }
