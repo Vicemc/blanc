@@ -24,8 +24,15 @@ export function usePresence(profile: UserProfile | null): PresenceState[] {
 
     const compile = () => {
       const raw = channel.presenceState() as Record<string, PresenceState[]>
+      const seen = new Set<string>()
       const flat: PresenceState[] = []
-      for (const arr of Object.values(raw)) for (const p of arr) flat.push(p)
+      for (const arr of Object.values(raw)) {
+        for (const p of arr) {
+          if (!p?.user_id || seen.has(p.user_id)) continue
+          seen.add(p.user_id)
+          flat.push(p)
+        }
+      }
       setPresences(flat)
     }
 
