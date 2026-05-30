@@ -134,11 +134,11 @@ export function FullSheet({ subject, state, onSaveState, onClose, editable = fal
     tamers: state.tamers.map(x => ({ ...x, status: { ...x.status, Autoridade: autoridade } }))
   })
   const saveImage = async (dataUrl: string) => {
-    const ext = dataUrl.match(/data:image\/([^;]+);/)?.[1] ?? 'webp'
     if (tamer) {
       const url = await uploadImage(dataUrl, tamer.id)
       const toStorage = url != null && !url.startsWith('data:')
-      const newTamer = { ...tamer, image: url ?? dataUrl, imageKey: toStorage ? `${tamer.id}.${ext}` : null }
+      const imageKey = toStorage ? (url!.split('/').pop() ?? null) : null
+      const newTamer = { ...tamer, image: url ?? dataUrl, imageKey }
       const newState = { ...state, tamers: state.tamers.map(x => x.id === newTamer.id ? newTamer : x) }
       onSaveState?.(newState)
       if (toStorage) void saveStateToDB(newState)
@@ -147,8 +147,9 @@ export function FullSheet({ subject, state, onSaveState, onClose, editable = fal
       const stId = `${line.id}-stage-${displayIdx}`
       const url = await uploadImage(dataUrl, stId)
       const toStorage = url != null && !url.startsWith('data:')
+      const imageKey = toStorage ? (url!.split('/').pop() ?? null) : null
       const newStages = line.stages.map((s, i) =>
-        i === displayIdx ? { ...s, image: url ?? dataUrl, imageKey: toStorage ? `${stId}.${ext}` : null } : s
+        i === displayIdx ? { ...s, image: url ?? dataUrl, imageKey } : s
       )
       const newLine = { ...line, stages: newStages }
       const newState = { ...state, bestiary: state.bestiary.map(x => x.id === newLine.id ? newLine : x) }
@@ -158,7 +159,8 @@ export function FullSheet({ subject, state, onSaveState, onClose, editable = fal
     else if (survivor) {
       const url = await uploadImage(dataUrl, survivor.id)
       const toStorage = url != null && !url.startsWith('data:')
-      const newSurvivor = { ...survivor, image: url ?? dataUrl, imageKey: toStorage ? `${survivor.id}.${ext}` : null }
+      const imageKey = toStorage ? (url!.split('/').pop() ?? null) : null
+      const newSurvivor = { ...survivor, image: url ?? dataUrl, imageKey }
       const newState = { ...state, survivors: (state.survivors ?? []).map(x => x.id === newSurvivor.id ? newSurvivor : x) }
       onSaveState?.(newState)
       if (toStorage) void saveStateToDB(newState)
