@@ -104,6 +104,20 @@
   text-align: right; background: var(--paper); color: var(--ink);
 }
 
+/* ── Seção Guest ── */
+.guestSection { margin-top: 4px; }
+.guestDivider {
+  display: flex; align-items: center; gap: 16px;
+  padding: 0 56px; margin-bottom: 0;
+}
+.guestDivider::before, .guestDivider::after {
+  content: ''; flex: 1; height: 1px; background: var(--line-soft);
+}
+.guestDividerLabel {
+  font-family: var(--font-mono); font-size: 10px; letter-spacing: 0.18em;
+  text-transform: uppercase; color: var(--ink-mute); white-space: nowrap;
+}
+
 /* ── Botões de export\/import no card ── */
 .cardActions {
   position: absolute;

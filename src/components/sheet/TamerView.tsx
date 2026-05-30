@@ -44,7 +44,7 @@ function InlineXpAward({ tamerXp, tamerName, onAward }: {
 }
 
 // ── Tamer info editor ──────────────────────────────────────────────
-function TamerInfoEditor({ tamer, onSave }: { tamer: Tamer; onSave: (t: Tamer) => void }) {
+function TamerInfoEditor({ tamer, onSave, isGM }: { tamer: Tamer; onSave: (t: Tamer) => void; isGM?: boolean }) {
   const [d, setD] = useState(tamer)
   const f = (k: keyof Tamer) => (v: string) => setD(t => ({ ...t, [k]: v }))
   const changed = JSON.stringify(d) !== JSON.stringify(tamer)
@@ -76,6 +76,21 @@ function TamerInfoEditor({ tamer, onSave }: { tamer: Tamer; onSave: (t: Tamer) =
           ))}
         </div>
       </div>
+      {isGM && (
+        <div style={{ marginBottom:10 }}>
+          <button
+            onClick={() => setD(t => ({ ...t, guest: !t.guest }))}
+            style={{
+              padding:'5px 14px', borderRadius:999, border:'1.5px solid var(--line)',
+              background: d.guest ? 'var(--ink)' : 'var(--paper)',
+              color: d.guest ? 'var(--paper)' : 'var(--ink-soft)',
+              fontFamily:'var(--font-mono)', fontSize:11, letterSpacing:'0.08em',
+              textTransform:'uppercase', cursor:'pointer', transition:'all 0.15s',
+            }}>
+            {d.guest ? '★ Guest' : '☆ Marcar como Guest'}
+          </button>
+        </div>
+      )}
       {changed && (
         <div style={{ display:'flex', gap:8 }}>
           <button className={styles.btnSolid} style={{ fontSize:12 }} onClick={() => onSave(d)}>Salvar info</button>
@@ -604,7 +619,7 @@ export function TamerView({ tamer, line, editable, isGM, onSave, onSaveLine: _on
       {editable && editInfo && (
         <>
           <SectionTitle>Informações</SectionTitle>
-          <TamerInfoEditor tamer={tamer} onSave={t => { onSave(t); msg('Info salva!') }} />
+          <TamerInfoEditor tamer={tamer} onSave={t => { onSave(t); msg('Info salva!') }} isGM={isGM} />
         </>
       )}
       {editable && (

@@ -145,6 +145,7 @@ function AddTamerModal({ state, onSave, onClose }: { state: AppState; onSave: (s
   const [voice, setVoice]     = useState('')
   const [digiName, setDigiName] = useState('')
   const [digiType, setDigiType] = useState('')
+  const [isGuest, setIsGuest] = useState(false)
 
   const handleSubmit = () => {
     if (!name.trim()) return
@@ -159,16 +160,19 @@ function AddTamerModal({ state, onSave, onClose }: { state: AppState; onSave: (s
     const tamer: Tamer = {
       ...makeTamer(id, name.toUpperCase(), surname, portrait, parseInt(age)||17, parseInt(height)||170, sign||'—', digimonId),
       tagline, birthday: birthday||'—', voice: voice||'—',
+      guest: isGuest || undefined,
     }
-    // Insere o novo tamer imediatamente depois dos Survivors (PCs principais),
-    // antes da primeira Fechadura. Tamers adicionados subsequentemente preservam
-    // a ordem de inserção (não viram pilha).
     const newTamers = [...state.tamers]
-    let insertAt = newTamers.length
-    for (let i = 0; i < newTamers.length; i++) {
-      if (NPC_FECHADURA_IDS.has(newTamers[i].id)) { insertAt = i; break }
+    if (!isGuest) {
+      // Insere antes da primeira Fechadura
+      let insertAt = newTamers.length
+      for (let i = 0; i < newTamers.length; i++) {
+        if (NPC_FECHADURA_IDS.has(newTamers[i].id)) { insertAt = i; break }
+      }
+      newTamers.splice(insertAt, 0, tamer)
+    } else {
+      newTamers.push(tamer)
     }
-    newTamers.splice(insertAt, 0, tamer)
     onSave({ ...state, tamers: newTamers, bestiary: newBestiary })
     onClose()
   }
@@ -218,6 +222,19 @@ function AddTamerModal({ state, onSave, onClose }: { state: AppState; onSave: (s
                 </div>
               ))}
             </div>
+          </div>
+          <div style={{ margin:'8px 0 12px' }}>
+            <button type="button" onClick={() => setIsGuest(p => !p)}
+              style={{
+                padding:'6px 16px', borderRadius:999,
+                border: `1.5px solid ${isGuest ? 'var(--ink)' : 'var(--line)'}`,
+                background: isGuest ? 'var(--ink)' : 'var(--paper)',
+                color: isGuest ? 'var(--paper)' : 'var(--ink-soft)',
+                fontFamily:'var(--font-mono)', fontSize:11, letterSpacing:'0.08em',
+                textTransform:'uppercase', cursor:'pointer', transition:'all 0.15s',
+              }}>
+              {isGuest ? '★ Guest (temporário)' : '☆ Marcar como Guest'}
+            </button>
           </div>
           <div style={{ display:'flex', gap:8, marginTop:8 }}>
             <button className={styles.btnSolid} onClick={handleSubmit}>Criar</button>
@@ -310,7 +327,9 @@ export default function PartyPage({ state, onUpdate, canEdit, isGM }: Props) {
   const [open, setOpen]         = useState<SheetSubject | null>(null)
   const [showAdd, setShowAdd]   = useState(false)
   const [showAddSv, setShowAddSv] = useState(false)
-  const { coreTamers, extraTamers } = splitTamersByLockBoundary(state.tamers)
+  const mainTamers  = state.tamers.filter(t => !t.guest)
+  const guestTamers = state.tamers.filter(t => t.guest)
+  const { coreTamers, extraTamers } = splitTamersByLockBoundary(mainTamers)
   const { settings, update: updateSettings } = useSettings()
   const compactGrid = settings.partyCompact
   const setCompactGrid = (v: boolean | ((prev: boolean) => boolean)) => {
@@ -321,8 +340,7 @@ export default function PartyPage({ state, onUpdate, canEdit, isGM }: Props) {
   const handleImageUpload = useCallback(async (tamerId: string, dataUrl: string) => {
     const url = await uploadImage(dataUrl, tamerId)
     const uploadedToStorage = url != null && !url.startsWith('data:')
-    const ext = dataUrl.match(/data:image\/([^;]+);/)?.[1] ?? 'webp'
-    const imageKey = uploadedToStorage ? `${tamerId}.${ext}` : null
+    const imageKey = uploadedToStorage ? (url!.split('/').pop() ?? null) : null
     const newState = { ...state, tamers: state.tamers.map(t => t.id === tamerId ? { ...t, image: url ?? dataUrl, imageKey } : t) }
     onUpdate(newState)
     if (uploadedToStorage) void saveStateToDB(newState)
@@ -331,8 +349,7 @@ export default function PartyPage({ state, onUpdate, canEdit, isGM }: Props) {
   const handleSurvivorImageUpload = useCallback(async (svId: string, dataUrl: string) => {
     const url = await uploadImage(dataUrl, svId)
     const uploadedToStorage = url != null && !url.startsWith('data:')
-    const ext = dataUrl.match(/data:image\/([^;]+);/)?.[1] ?? 'webp'
-    const imageKey = uploadedToStorage ? `${svId}.${ext}` : null
+    const imageKey = uploadedToStorage ? (url!.split('/').pop() ?? null) : null
     const newState = { ...state, survivors: (state.survivors ?? []).map(sv => sv.id === svId ? { ...sv, image: url ?? dataUrl, imageKey } : sv) }
     onUpdate(newState)
     if (uploadedToStorage) void saveStateToDB(newState)
@@ -365,6 +382,7 @@ export default function PartyPage({ state, onUpdate, canEdit, isGM }: Props) {
             }) }}>↑</button>
         </div>
         <div className={styles.info}>
+          {t.guest && <div style={{ fontFamily:'var(--font-mono)', fontSize:9, letterSpacing:'0.14em', textTransform:'uppercase', color:'var(--ink-mute)', marginBottom:2 }}>Guest</div>}
           <h3 className={styles.name}>{t.name}</h3>
           <div className={styles.meta}>{t.age} anos · {t.sign} · {t.height} cm</div>
           <div className={styles.tagline}>~ {t.tagline} ~</div>
@@ -440,6 +458,26 @@ export default function PartyPage({ state, onUpdate, canEdit, isGM }: Props) {
         {extraTamers.map(renderTamerCard)}
         {isGM && <div className={styles.addCard} onClick={() => setShowAdd(true)}>+ Novo Tamer</div>}
       </div>
+
+      {/* ── Seção Guest ─────────────────────────────────────────── */}
+      {(guestTamers.length > 0 || isGM) && (
+        <div className={styles.guestSection}>
+          <div className={styles.guestDivider}>
+            <span className={styles.guestDividerLabel}>Guests</span>
+          </div>
+          {guestTamers.length > 0 && (
+            <div className={compactGrid ? styles.gridCompact : styles.grid} style={{ paddingTop: 0 }}>
+              {guestTamers.map(renderTamerCard)}
+              {isGM && <div className={styles.addCard} onClick={() => setShowAdd(true)} style={{ minHeight: 120 }}>+ Guest</div>}
+            </div>
+          )}
+          {guestTamers.length === 0 && isGM && (
+            <div style={{ padding: '8px 56px 0' }}>
+              <button className={styles.btnGhost} style={{ fontSize: 12 }} onClick={() => setShowAdd(true)}>+ Adicionar Guest</button>
+            </div>
+          )}
+        </div>
+      )}
 
       {open && <SheetModal subject={open} state={state} onSaveState={onUpdate} onClose={() => setOpen(null)}
         editable={canEdit ? canEdit(open.kind === 'tamer' ? (open as any).id : undefined) : true} isGM={isGM} />}

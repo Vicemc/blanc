@@ -316,6 +316,7 @@ export interface Tamer {
   inventory:   InventoryItem[];
   digimonId:  string | null;
   xpLog?:     XpLogEntry[];
+  guest?:     boolean;
 }
 
 // ---------- Bug ----------
