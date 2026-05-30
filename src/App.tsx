@@ -159,6 +159,7 @@ function AppInner() {
   // Edição local — marca dirty e auto-salva após 1.5s de inatividade
   const onUpdateLocal = useCallback((s: AppState) => {
     setState(s)
+    lastSaveRef.current = Date.now()
     setIsDirty(true)
     if (saveDebounceRef.current) clearTimeout(saveDebounceRef.current)
     saveDebounceRef.current = setTimeout(() => {

@@ -62,9 +62,11 @@ export async function uploadImage(
     const blob = await res.blob()
     const ext  = blob.type.split('/')[1] || 'webp'
 
+    // Timestamp no nome para garantir URL única a cada upload (evita cache do browser)
+    const uniqueKey = `${path}-${Date.now()}.${ext}`
     const { error } = await supabase.storage
       .from(bucket)
-      .upload(`${path}.${ext}`, blob, { upsert: true, contentType: blob.type })
+      .upload(uniqueKey, blob, { upsert: true, contentType: blob.type })
 
     if (error) {
       console.warn('[db] upload falhou, usando IDB', error.message)
@@ -74,7 +76,7 @@ export async function uploadImage(
 
     const { data: urlData } = supabase.storage
       .from(bucket)
-      .getPublicUrl(`${path}.${ext}`)
+      .getPublicUrl(uniqueKey)
 
     return urlData.publicUrl
   } catch (e) {
