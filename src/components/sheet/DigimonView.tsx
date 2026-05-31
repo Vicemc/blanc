@@ -286,6 +286,7 @@ export function DigimonStageView({ line, stageIdx, tamer, editable, isGM, onSave
   // toggles das passivas: chave = índice da skill no array original, valor = { active, x }
   const [passiveToggles, setPassiveToggles] = useState<Record<number, { active: boolean; x: number }>>({})
   const [freeMode, setFreeMode] = useState(false)
+  const [freeModeAffinity, setFreeModeAffinity] = useState(false)
   const pendCost = useMemo(() => {
     const attrCost = pendingCost(pendAttr, tamer?.attributes ?? stage?.attributes ?? {}, true)
     const affinCost = tamer ? pendingCost(pendAffinity, stage.affinity as Record<string, number>, false) : 0
@@ -440,6 +441,15 @@ export function DigimonStageView({ line, stageIdx, tamer, editable, isGM, onSave
     onSaveLine({ ...line, stages: line.stages.map((s,i)=>i===stageIdx?{...s,weakness:w}:s) })
   const onChangeAffinity = (a: Partial<Record<string,number>>) =>
     onSaveLine({ ...line, stages: line.stages.map((s,i)=>i===stageIdx?{...s,affinity:a}:s) })
+  // Converte mudança no valor acumulado para o delta do estágio atual
+  const onFreeEditAffinity = (newCumulative: Partial<Record<string, number>>) => {
+    const newDelta = { ...stage.affinity } as Record<string, number>
+    for (const [k, newCum] of Object.entries(newCumulative)) {
+      const diff = (newCum ?? 0) - (cumulativeAffinity[k] ?? 0)
+      if (diff !== 0) newDelta[k] = (newDelta[k] ?? 0) + diff
+    }
+    onChangeAffinity(newDelta)
+  }
 
   return (
     <div>
@@ -578,11 +588,29 @@ export function DigimonStageView({ line, stageIdx, tamer, editable, isGM, onSave
       <SectionTitle>Weakness & Resistance</SectionTitle>
       <WeaknessBox weakness={stage.weakness} editable={editable} onChange={onChangeWeakness} />
       <SectionTitle>Affinity</SectionTitle>
-      {isDerived
-        ? <AffinityGrid affinity={cumulativeAffinity} editable={editable}
-            pending={pendAffinity} onPend={pendAffinityUp} onUnpend={pendAffinityDown} />
-        : <AffinityGrid affinity={stage.affinity} editable={editable} onChange={onChangeAffinity} />
-      }
+      {isDerived ? (
+        <>
+          {editable && (
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
+              <button
+                onClick={() => { setFreeModeAffinity(p => !p); setPendAffinity({}) }}
+                className={freeModeAffinity ? styles.pendBtn : styles.pendBtnUndo}
+                style={{ width: 'auto', borderRadius: 999, padding: '2px 10px', fontSize: 11, fontFamily: 'var(--font-mono)', letterSpacing: '0.08em' }}
+                title="Editar afinidades diretamente, sem custo de XP">
+                {freeModeAffinity ? '✓ Modo livre ativo' : 'Modo livre (sem XP)'}
+              </button>
+              {freeModeAffinity && <span style={{ fontFamily: 'var(--font-mono)', fontSize: 10, color: 'var(--ink-mute)', letterSpacing: '0.1em' }}>edição direta · sem custo</span>}
+            </div>
+          )}
+          {freeModeAffinity
+            ? <AffinityGrid affinity={cumulativeAffinity} freeMode editable={editable} onChange={onFreeEditAffinity} />
+            : <AffinityGrid affinity={cumulativeAffinity} editable={editable}
+                pending={pendAffinity} onPend={pendAffinityUp} onUnpend={pendAffinityDown} />
+          }
+        </>
+      ) : (
+        <AffinityGrid affinity={stage.affinity} editable={editable} onChange={onChangeAffinity} />
+      )}
 
       <SectionTitle action={editable && !showAdd && (
         <button className={styles.btnGhost} style={{ fontSize:11 }} onClick={() => setShowAdd(true)}>+ Nova Skill</button>
