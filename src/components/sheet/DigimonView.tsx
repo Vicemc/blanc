@@ -206,8 +206,20 @@ function StageDiff({ line, stageIdx, tamer }: { line: DigimonLine; stageIdx: num
     { label: 'Armadura',     from: curStatus.Armadura,     to: nextStatus.Armadura },
   ]
 
+  const accumAffinity = (upToIdx: number) => {
+    const acc: Record<string, number> = {}
+    for (let i = 0; i <= upToIdx; i++) {
+      const s = line.stages[i]
+      if (s?.locked) continue
+      for (const [k, v] of Object.entries(s?.affinity ?? {})) acc[k] = (acc[k] ?? 0) + (v ?? 0)
+    }
+    return acc
+  }
+  const curAff  = isDerived ? accumAffinity(stageIdx)     : (cur.affinity  as Record<string,number>)
+  const nextAff = isDerived ? accumAffinity(stageIdx + 1) : (next.affinity as Record<string,number>)
+
   const affinityRows = AFFINITY_KEYS
-    .map(k => ({ label: k, from: cur.affinity[k] ?? 0, to: next.affinity[k] ?? 0 }))
+    .map(k => ({ label: k, from: curAff[k] ?? 0, to: nextAff[k] ?? 0 }))
     .filter(r => r.from !== 0 || r.to !== 0)
 
   const renderRow = (r: { label: string; from: number; to: number }) => {
@@ -297,6 +309,19 @@ export function DigimonStageView({ line, stageIdx, tamer, editable, isGM, onSave
   // Para selvagens e bugs: usar os valores absolutos do status — sem cálculo
   const isDerived = !!tamer
   const tamerHP = tamer ? tamer.status.HP.max : undefined
+
+  // Afinidade acumulada: para parceiros, cada estágio guarda seu delta; o display soma do estágio 0 até o atual
+  const cumulativeAffinity = isDerived ? (() => {
+    const acc: Record<string, number> = {}
+    for (let i = 0; i <= stageIdx; i++) {
+      const s = line.stages[i]
+      if (s.locked) continue
+      for (const [k, v] of Object.entries(s.affinity ?? {})) {
+        acc[k] = (acc[k] ?? 0) + (v ?? 0)
+      }
+    }
+    return acc
+  })() : stage.affinity as Record<string, number>
   const derived = isDerived
     ? calcDigimonDerived(tamer!.attributes, stage.size, stage.speed, evBonus, tamerHP, stage.level)
     : {
@@ -364,8 +389,7 @@ export function DigimonStageView({ line, stageIdx, tamer, editable, isGM, onSave
     setPendAttr(p => ({ ...p, [k]: p[k]-1 }))
   }
   const pendAffinityUp = (k: string) => {
-    const aff = stage.affinity as Record<string, number>
-    if (((aff[k] ?? 0) + (pendAffinity[k] ?? 0)) >= 10) return
+    if (((cumulativeAffinity[k] ?? 0) + (pendAffinity[k] ?? 0)) >= 10) return
     setPendAffinity(p => ({ ...p, [k]: (p[k] ?? 0) + 1 }))
   }
   const pendAffinityDown = (k: string) => {
@@ -555,7 +579,7 @@ export function DigimonStageView({ line, stageIdx, tamer, editable, isGM, onSave
       <WeaknessBox weakness={stage.weakness} editable={editable} onChange={onChangeWeakness} />
       <SectionTitle>Affinity</SectionTitle>
       {isDerived
-        ? <AffinityGrid affinity={stage.affinity} editable={editable}
+        ? <AffinityGrid affinity={cumulativeAffinity} editable={editable}
             pending={pendAffinity} onPend={pendAffinityUp} onUnpend={pendAffinityDown} />
         : <AffinityGrid affinity={stage.affinity} editable={editable} onChange={onChangeAffinity} />
       }

@@ -10,7 +10,11 @@
       "Bash(npx vite *)",
       "Bash(xargs wc -l)",
       "Bash(perl -0pi -e 's/\\\\\\(s as any\\\\\\)\\\\.actorStates/s.actorStates/g; s/\\\\\\(s as any\\\\\\)\\\\.tokenMeta/s.tokenMeta/g; s/\\\\\\(s as any\\\\\\)\\\\.log/s.log/g; s/\\\\\\(s as any\\\\\\)\\\\.roundCurrent/s.roundCurrent/g; s/\\\\\\(tmpl as any\\\\\\)\\\\.clima/tmpl.clima/g; s/\\\\\\(sv as any\\\\\\)\\\\.surname/sv.surname/g' src/pages/TeatroPage.tsx)",
-      "Bash(findstr typecheck *)"
+      "Bash(findstr typecheck *)",
+      "Bash(node -e ' *)",
+      "Bash(node gen_store1.js)",
+      "Bash(node /e/survive/gen_store1.cjs)",
+      "Bash(xargs grep -l \"saveStateToDB\\\\|subscribeToState\\\\|supabase\\\\|realtime\")"
     ]
   }
 }
