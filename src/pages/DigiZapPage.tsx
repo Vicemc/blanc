@@ -664,12 +664,14 @@ export default function DigiZapPage({ state, profile, isGM, onUnreadChange }: Pr
                   {/* Avatar */}
                   <div style={{ width: 32, height: 32, borderRadius: 8, flexShrink: 0,
                     overflow: 'hidden', position: 'relative' }}>
-                    <div className={`fill-${portrait}`} style={{ position: 'absolute', inset: 0 }} />
-                    {avatar && (
-                      <img src={avatar} alt={senderName}
-                        style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'cover', objectPosition: 'top' }} />
-                    )}
-                    <div className="grain" style={{ position: 'absolute', inset: 0 }} />
+                    {avatar
+                      ? <img src={avatar} alt={senderName}
+                          style={{ width: '100%', height: '100%', objectFit: 'cover', objectPosition: 'top', display: 'block' }} />
+                      : <>
+                          <div className={`fill-${portrait}`} style={{ position: 'absolute', inset: 0 }} />
+                          <div className="grain" style={{ position: 'absolute', inset: 0 }} />
+                        </>
+                    }
                   </div>
 
                   {/* Balão */}
