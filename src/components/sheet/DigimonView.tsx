@@ -300,6 +300,16 @@ export function DigimonStageView({ line, stageIdx, tamer, editable, isGM, onSave
     <div style={{ textAlign:'center', padding:'48px 24px', color:'var(--ink-mute)' }}>
       <div style={{ fontFamily:'var(--font-mono)', fontSize:11, letterSpacing:'0.18em', textTransform:'uppercase' }}>Estágio bloqueado</div>
       <div style={{ fontFamily:'var(--font-serif)', fontStyle:'italic', fontSize:32, marginTop:8 }}>~ Ainda não revelado ~</div>
+      {isGM && (
+        <button
+          onClick={() => onSaveLine({ ...line, stages: line.stages.map((s, i) => i === stageIdx ? { ...s, locked: false } : s) })}
+          style={{ marginTop:20, padding:'6px 20px', borderRadius:8, cursor:'pointer',
+            border:'1px solid var(--ink)', background:'transparent',
+            color:'var(--ink)', fontFamily:'var(--font-mono)', fontSize:11,
+            letterSpacing:'0.1em', textTransform:'uppercase' }}>
+          Desbloquear estágio
+        </button>
+      )}
     </div>
   )
 
