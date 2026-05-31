@@ -311,6 +311,7 @@ export interface Tamer {
   status:     TamerStatus;
   attributes: Attributes;
   skills:     SkillSet;
+  affinity?:  Partial<Affinity>;
   tamerSkills: TamerSkill[];
   inventory:   InventoryItem[];
   digimonId:  string | null;

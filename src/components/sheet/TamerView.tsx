@@ -3,13 +3,14 @@ import type {
   AppState, Tamer, DigimonLine, AttributeKey, SkillSet, TamerSkill,
 } from '../../types'
 import { PORTRAIT_LIST } from '../../types'
+import { AFFINITY_KEYS } from '../../types'
 import { calcTamerDerived, makeSlimLine, buySkillTreeSkill } from '../../data/store'
 import { GrainFill } from '../GrainFill'
 import { Toast } from '../Toast'
 import { supabase } from '../../lib/supabase'
 import styles from '../Sheet.module.css'
 import {
-  StatRow, AttributeGrid, SkillGrid, SkillCard, AddSkillForm,
+  StatRow, AttributeGrid, AffinityGrid, SkillGrid, SkillCard, AddSkillForm,
   SectionTitle, XpConfirmBar, inp,
 } from './shared/components'
 import { pendingCost, AFFINITY_ICONS } from './shared/utils'
@@ -487,14 +488,17 @@ export function TamerView({ tamer, line, editable, isGM, onSave, onSaveLine: _on
   // Toggles de passivas do tamer
   const [passiveToggles, setPassiveToggles] = useState<Record<number, { active: boolean; x: number }>>({})
   // XP pending
-  const [pendAttr, setPendAttr]   = useState<Record<string, number>>({})
-  const [pendSkill, setPendSkill] = useState<Record<string, number>>({})
+  const [pendAttr, setPendAttr]       = useState<Record<string, number>>({})
+  const [pendSkill, setPendSkill]     = useState<Record<string, number>>({})
+  const [pendAffinity, setPendAffinity] = useState<Record<string, number>>({})
+  const [freeModeAffinity, setFreeModeAffinity] = useState(false)
   const pendCost = useMemo(() => {
     const a = pendingCost(pendAttr, tamer.attributes, true)
     const allSkills = { ...tamer.skills.Mental, ...tamer.skills.Físico, ...tamer.skills.Social } as Record<string, number>
     const s = pendingCost(pendSkill, allSkills, false)
-    return a + s
-  }, [pendAttr, pendSkill, tamer])
+    const aff = pendingCost(pendAffinity, tamer.affinity ?? {}, false)
+    return a + s + aff
+  }, [pendAttr, pendSkill, pendAffinity, tamer])
   const hasPending = pendCost > 0
 
   const msg = useCallback((m: string) => setToast(m), [])
@@ -517,6 +521,15 @@ export function TamerView({ tamer, line, editable, isGM, onSave, onSaveLine: _on
     if ((pendSkill[name] ?? 0) <= 0) return
     setPendSkill(p => ({ ...p, [name]: p[name] - 1 }))
   }
+  const pendAffinityUp = (k: string) => {
+    const cur = (tamer.affinity?.[k as keyof typeof tamer.affinity] ?? 0) + (pendAffinity[k] ?? 0)
+    if (cur >= 10) return
+    setPendAffinity(p => ({ ...p, [k]: (p[k] ?? 0) + 1 }))
+  }
+  const pendAffinityDown = (k: string) => {
+    if ((pendAffinity[k] ?? 0) <= 0) return
+    setPendAffinity(p => ({ ...p, [k]: p[k] - 1 }))
+  }
   const confirmXp = () => {
     if (pendCost > tamer.xp) { msg('XP insuficiente!'); return }
     let t = { ...tamer, xp: tamer.xp - pendCost, xpSpent: tamer.xpSpent + pendCost }
@@ -532,10 +545,17 @@ export function TamerView({ tamer, line, editable, isGM, onSave, onSaveLine: _on
         }
       }
     }
+    // apply affinity
+    const newAffinity = { ...(t.affinity ?? {}) } as Record<string, number>
+    for (const [k, delta] of Object.entries(pendAffinity)) {
+      if (delta > 0) newAffinity[k] = (newAffinity[k] ?? 0) + delta
+    }
+    t = { ...t, affinity: newAffinity }
     // Registra no histórico de XP
     const parts: string[] = []
     for (const [k, delta] of Object.entries(pendAttr)) if (delta > 0) parts.push(`${k} +${delta}`)
     for (const [name, delta] of Object.entries(pendSkill)) if (delta > 0) parts.push(`${name} +${delta}`)
+    for (const [k, delta] of Object.entries(pendAffinity)) if (delta > 0) parts.push(`Afinidade ${k} +${delta}`)
     if (parts.length) {
       const entry = { id: `xp-${Date.now().toString(36)}`, ts: Date.now(), label: parts.join(', '), cost: -pendCost }
       t = { ...t, xpLog: [entry, ...(t.xpLog ?? [])].slice(0, 50) }
@@ -556,7 +576,7 @@ export function TamerView({ tamer, line, editable, isGM, onSave, onSaveLine: _on
     setPendAttr({}); setPendSkill({})
     msg(`−${pendCost} XP confirmado!`)
   }
-  const cancelXp = () => { setPendAttr({}); setPendSkill({}); msg('Compras canceladas.') }
+  const cancelXp = () => { setPendAttr({}); setPendSkill({}); setPendAffinity({}); msg('Compras canceladas.') }
 
   const derived = useMemo(() => calcTamerDerived(tamer.attributes), [tamer.attributes])
 
@@ -573,12 +593,19 @@ export function TamerView({ tamer, line, editable, isGM, onSave, onSaveLine: _on
   }, {} as Record<string, number>)
 
   // alwaysOn: afinidades permanentes do tamer (ex: A Glimmer in the Ocean → Cura)
-  const tamerAlwaysOnAffinity = tamer.tamerSkills.reduce((acc, sk) => {
+  const tamerSkillAffinity = tamer.tamerSkills.reduce((acc, sk) => {
     if (!sk.alwaysOn?.affinityBonus) return acc
     for (const [k, v] of Object.entries(sk.alwaysOn.affinityBonus)) acc[k] = (acc[k] ?? 0) + (v ?? 0)
     return acc
   }, {} as Record<string, number>)
-  const hasTamerAffinity = Object.values(tamerAlwaysOnAffinity).some(v => v > 0)
+  // Afinidade total: própria (upável) + bônus permanentes de skills
+  const tamerAlwaysOnAffinity = AFFINITY_KEYS.reduce((acc, k) => {
+    const own = (tamer.affinity?.[k] ?? 0)
+    const skill = tamerSkillAffinity[k] ?? 0
+    if (own + skill > 0) acc[k] = own + skill
+    return acc
+  }, {} as Record<string, number>)
+  const hasTamerAffinity = AFFINITY_KEYS.some(k => (tamer.affinity?.[k] ?? 0) + (tamerSkillAffinity[k] ?? 0) > 0)
 
   const maxHP       = derived.HP       + (tamer.status.hpMaxBonus       ?? 0) + (tamerActiveBonus['HP'] ?? 0)
   const maxDigisoul = derived.Digisoul + (tamer.status.digisoulMaxBonus  ?? 0)
@@ -652,26 +679,35 @@ export function TamerView({ tamer, line, editable, isGM, onSave, onSaveLine: _on
 
       {editable && (tamer.xpLog?.length ?? 0) > 0 && <XpLogSection log={tamer.xpLog!} />}
 
-      {hasTamerAffinity && (
+      {(hasTamerAffinity || editable) && (
         <>
           <SectionTitle>Afinidades</SectionTitle>
-          <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px 16px', padding: '4px 0 12px' }}>
-            {Object.entries(tamerAlwaysOnAffinity).filter(([, v]) => v > 0).map(([k, v]) => (
-              <div key={k} className={styles.affinityRow} style={{ width: 'auto', minWidth: 90 }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 6, flex: 1 }}>
-                  <span className={styles.affinityIcon}>
-                    {AFFINITY_ICONS[k]
-                      ? <img src={AFFINITY_ICONS[k]} alt={k} style={{ width: '100%', height: '100%', objectFit: 'contain', display: 'block', padding: 1 }} />
-                      : <span style={{ fontSize: 12 }}>{k}</span>
-                    }
-                    <span className={styles.affinityTooltip}>{k}</span>
-                  </span>
-                  <span style={{ fontFamily: 'var(--font-body)', fontSize: 13, color: 'var(--ink-soft)' }}>{k}</span>
-                </div>
-                <span style={{ fontFamily: 'var(--font-mono)', fontWeight: 700, fontSize: 15, marginLeft: 8 }}>{v}</span>
-              </div>
-            ))}
-          </div>
+          {editable && (
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
+              <button
+                onClick={() => { setFreeModeAffinity(p => !p); setPendAffinity({}) }}
+                className={freeModeAffinity ? styles.pendBtn : styles.pendBtnUndo}
+                style={{ width: 'auto', borderRadius: 999, padding: '2px 10px', fontSize: 11, fontFamily: 'var(--font-mono)', letterSpacing: '0.08em' }}
+                title="Editar afinidades diretamente, sem custo de XP">
+                {freeModeAffinity ? '✓ Modo livre ativo' : 'Modo livre (sem XP)'}
+              </button>
+              {freeModeAffinity && <span style={{ fontFamily: 'var(--font-mono)', fontSize: 10, color: 'var(--ink-mute)', letterSpacing: '0.1em' }}>edição direta · sem custo</span>}
+            </div>
+          )}
+          {freeModeAffinity
+            ? <AffinityGrid
+                affinity={tamer.affinity ?? {}}
+                freeMode editable={editable}
+                onChange={a => onSave({ ...tamer, affinity: a })}
+              />
+            : <AffinityGrid
+                affinity={tamerAlwaysOnAffinity}
+                editable={editable}
+                pending={pendAffinity}
+                onPend={pendAffinityUp}
+                onUnpend={pendAffinityDown}
+              />
+          }
         </>
       )}
     </>
