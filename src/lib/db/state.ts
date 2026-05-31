@@ -116,14 +116,24 @@ export async function saveStateToDB(s: AppState): Promise<void> {
         if (typeof window !== 'undefined') {
           window.dispatchEvent(new CustomEvent('app:save-conflict'))
         }
-        // Força salvamento para não perder dados (sobrescreve), atualizando a marca temporal.
-        const forced = await supabase
+        // Busca o updated_at atual e tenta salvar com timestamp atualizado.
+        // Evita force-save cego com estado potencialmente desatualizado.
+        const { data: current } = await supabase
           .from('app_state')
-          .update({ state: slim, updated_at: new Date().toISOString() })
-          .eq('id', _stateRowId)
           .select('updated_at')
+          .eq('id', _stateRowId)
           .single()
-        if (forced.data) _lastKnownUpdatedAt = forced.data.updated_at
+        if (current) {
+          _lastKnownUpdatedAt = current.updated_at
+          const { data: retried } = await supabase
+            .from('app_state')
+            .update({ state: slim, updated_at: new Date().toISOString() })
+            .eq('id', _stateRowId)
+            .eq('updated_at', current.updated_at)
+            .select('updated_at')
+            .single()
+          if (retried) _lastKnownUpdatedAt = retried.updated_at
+        }
       } else {
         _lastKnownUpdatedAt = data.updated_at
       }
@@ -181,6 +191,27 @@ export async function updateMyTamer(tamer: import('../../types').Tamer): Promise
   // Não envia data URLs inline
   const slim = { ...tamer, image: null }
   const { data, error } = await supabase.rpc('update_my_tamer', { p_tamer: slim })
+  if (error) return { ok: false, error: error.message }
+  const res = data as { ok: boolean; reason?: string }
+  return res?.ok ? { ok: true } : { ok: false, error: res?.reason }
+}
+
+// Atualiza atomicamente tamer + linha de digimon do player num único UPDATE.
+// Substitui updateMyTamer nos fluxos de edição de ficha para que mudanças
+// no digimon também sejam persistidas sem sobrescrever o estado inteiro.
+export async function updateMyTamerAndLine(
+  tamer: import('../../types').Tamer,
+  line: import('../../types').DigimonLine | null,
+): Promise<{ ok: boolean; error?: string }> {
+  if (!isSupabaseReady || !supabase) return { ok: false, error: 'Supabase não configurado' }
+  const slimTamer = { ...tamer, image: null }
+  const slimLine = line
+    ? { ...line, image: null, stages: line.stages.map(st => ({ ...st, image: null })) }
+    : null
+  const { data, error } = await supabase.rpc('update_my_tamer_and_line', {
+    p_tamer: slimTamer,
+    p_line: slimLine,
+  })
   if (error) return { ok: false, error: error.message }
   const res = data as { ok: boolean; reason?: string }
   return res?.ok ? { ok: true } : { ok: false, error: res?.reason }

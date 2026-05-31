@@ -1,4 +1,4 @@
-export { loadStateFromDB, saveStateToDB, loadStagesFromDB, saveStage, deleteStage, updateMyTamer } from './db/state'
+export { loadStateFromDB, saveStateToDB, loadStagesFromDB, saveStage, deleteStage, updateMyTamer, updateMyTamerAndLine } from './db/state'
 export { uploadImage, getImageUrl } from './db/storage'
 export { loadSkillTree, saveSkillPhase } from './db/skillTree'
 export { subscribeToState, subscribeToStages } from './db/realtime'

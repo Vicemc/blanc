@@ -2,7 +2,7 @@
 import { Suspense, lazy, useState, useCallback, useEffect, useRef, type FC } from 'react'
 import { Routes, Route, NavLink } from 'react-router-dom'
 import { loadState, exportStateToFile, importStateFromFile, runMigrations } from './data/store'
-import { loadStateFromDB, saveStateToDB, subscribeToState, migrateLocalToSupabase, updateMyTamer } from './lib/db'
+import { loadStateFromDB, saveStateToDB, subscribeToState, migrateLocalToSupabase, updateMyTamerAndLine } from './lib/db'
 import { signOut, canEditTamer } from './lib/auth'
 import type { UserProfile } from './lib/auth'
 import type { Tamer } from './types'
@@ -108,9 +108,10 @@ function AppInner() {
   const [isDirty, setIsDirty] = useState(false)
   const [isSaving, setIsSaving] = useState(false)
   const [digizapUnread, setDigizapUnread] = useState(0)
-  const realtimeUnsub  = useRef<(() => void) | null>(null)
-  const lastSaveRef    = useRef(0)
+  const realtimeUnsub   = useRef<(() => void) | null>(null)
+  const lastSaveRef     = useRef(0)
   const saveDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const latestRemoteRef = useRef<AppState | null>(null)
 
   const isGuest = !localMode && profile?.role === 'guest'
   const presences = usePresence(profile)
@@ -125,6 +126,7 @@ function AppInner() {
     if (!isSupabaseReady || !session) return
     realtimeUnsub.current?.()
     realtimeUnsub.current = subscribeToState(remoteState => {
+      latestRemoteRef.current = remoteState
       if (Date.now() - lastSaveRef.current < 3000) return
       setState(runMigrations(remoteState))
     })
@@ -157,8 +159,9 @@ function AppInner() {
   }, [])
 
   // Edição local — marca dirty e auto-salva após 1.5s de inatividade.
-  // Players (não-GM, não-localMode) usam updateMyTamer (RPC atômico) para evitar
+  // Players (não-GM, não-localMode) usam updateMyTamerAndLine (RPC atômico) para evitar
   // sobrescrever o estado inteiro e causar conflitos de concorrência com outros players.
+  // NUNCA há fallback para saveStateToDB para players — isso deletaria NPCs/mudanças alheias.
   const onUpdateLocal = useCallback((s: AppState) => {
     setState(s)
     lastSaveRef.current = Date.now()
@@ -169,12 +172,11 @@ function AppInner() {
       if (!localMode && !isGM && profile?.tamer_id) {
         const tamer = s.tamers.find(t => t.id === profile.tamer_id)
         if (tamer) {
-          void updateMyTamer(tamer).then(({ ok, error }) => {
+          const line = s.bestiary.find(l => l.tamerId === profile.tamer_id) ?? null
+          void updateMyTamerAndLine(tamer, line).then(({ ok, error }) => {
             if (ok) setIsDirty(false)
-            else {
-              console.warn('[player save] updateMyTamer falhou, fallback para saveStateToDB:', error)
-              void saveStateToDB(s).then(() => setIsDirty(false))
-            }
+            else console.warn('[player save] updateMyTamerAndLine falhou:', error)
+            // Sem fallback para saveStateToDB — write atômico é a única opção segura
           })
           return
         }
@@ -186,10 +188,21 @@ function AppInner() {
   const handleSave = useCallback(async () => {
     if (!isDirty) return
     setIsSaving(true)
+    if (!localMode && !isGM && profile?.tamer_id) {
+      const tamer = state.tamers.find(t => t.id === profile.tamer_id)
+      if (tamer) {
+        const line = state.bestiary.find(l => l.tamerId === profile.tamer_id) ?? null
+        const { ok, error } = await updateMyTamerAndLine(tamer, line)
+        if (ok) setIsDirty(false)
+        else console.warn('[player save] handleSave updateMyTamerAndLine falhou:', error)
+        setIsSaving(false)
+        return
+      }
+    }
     await saveStateToDB(state)
     setIsDirty(false)
     setIsSaving(false)
-  }, [isDirty, state])
+  }, [isDirty, state, localMode, isGM, profile])
 
   const handleImport = async () => {
     const imported = await importStateFromFile()
