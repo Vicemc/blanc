@@ -317,17 +317,25 @@ export function WeaknessBox({ weakness, editable, onChange }: {
 }
 
 // ── AffinityGrid editable ─────────────────────────────────────────
-export function AffinityGrid({ affinity, editable, freeMode, onChange }: {
+export function AffinityGrid({ affinity, editable, freeMode, onChange, pending, onPend, onUnpend }: {
   affinity: Partial<Record<string, number>>
   editable?: boolean
   freeMode?: boolean
   onChange?: (a: Partial<Record<string, number>>) => void
+  pending?: Record<string, number>
+  onPend?: (k: string) => void
+  onUnpend?: (k: string) => void
 }) {
   const mode = useContext(DisplayModeCtx)
+  const xpMode = !!(pending && onPend && onUnpend)
   return (
     <div className={styles.affinityGrid}>
       {(() => {
-        const renderCell = (k: string) => (
+        const renderCell = (k: string) => {
+          const base = affinity[k] ?? 0
+          const pend = pending?.[k] ?? 0
+          const displayed = base + pend
+          return (
           <div key={k} className={styles.affinityRow}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 6, minWidth: 0, flex: 1 }}>
               <span className={styles.affinityIcon}>
@@ -342,8 +350,25 @@ export function AffinityGrid({ affinity, editable, freeMode, onChange }: {
               )}
             </div>
             <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexShrink: 0 }}>
-              <ValueDisplay value={affinity[k] ?? 0} max={10} />
-              {(editable || freeMode) && (
+              <ValueDisplay value={base} max={10} pend={pend} />
+              {mode === 'number' && pend > 0 && (
+                <span style={{ fontFamily: 'var(--font-mono)', fontSize: 11, color: 'var(--coral)', fontWeight: 700 }}>+{pend}</span>
+              )}
+              {(editable || freeMode) && xpMode && (
+                <>
+                  {displayed < 10 && (
+                    <button onClick={() => onPend!(k)} className={styles.pendBtn}
+                      title={`+1 ${k} (custa ${xpCostSkill(displayed + 1)} XP)`}>+</button>
+                  )}
+                  {displayed >= 10 && (
+                    <span style={{ fontFamily: 'var(--font-mono)', fontSize: 9, color: 'var(--ink-mute)', padding: '2px 6px', border: '1px solid var(--line-soft)', borderRadius: 4 }}>máx</span>
+                  )}
+                  {pend > 0 && (
+                    <button onClick={() => onUnpend!(k)} className={styles.pendBtnUndo} title="Desfazer">−</button>
+                  )}
+                </>
+              )}
+              {(editable || freeMode) && !xpMode && (
                 <>
                   <button onClick={() => onChange?.({ ...affinity, [k]: Math.min(10, (affinity[k] ?? 0) + 1) })}
                     className={freeMode ? styles.attrFreeBtn : styles.pendBtn}>+</button>
@@ -353,7 +378,8 @@ export function AffinityGrid({ affinity, editable, freeMode, onChange }: {
               )}
             </div>
           </div>
-        )
+          )
+        }
 
         // Grid 4 colunas: 14 items + 2 células vazias na linha 3
         const ALL = AFFINITY_KEYS

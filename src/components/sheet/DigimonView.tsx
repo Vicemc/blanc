@@ -270,10 +270,15 @@ export function DigimonStageView({ line, stageIdx, tamer, editable, isGM, onSave
   const [showDiff, setShowDiff] = useState(false)
   const [editInfo, setEditInfo] = useState(false)
   const [pendAttr, setPendAttr] = useState<Record<string, number>>({})
+  const [pendAffinity, setPendAffinity] = useState<Record<string, number>>({})
   // toggles das passivas: chave = índice da skill no array original, valor = { active, x }
   const [passiveToggles, setPassiveToggles] = useState<Record<number, { active: boolean; x: number }>>({})
   const [freeMode, setFreeMode] = useState(false)
-  const pendCost = useMemo(() => pendingCost(pendAttr, tamer?.attributes ?? stage?.attributes ?? {}, true), [pendAttr, stage, tamer])
+  const pendCost = useMemo(() => {
+    const attrCost = pendingCost(pendAttr, tamer?.attributes ?? stage?.attributes ?? {}, true)
+    const affinCost = tamer ? pendingCost(pendAffinity, stage.affinity as Record<string, number>, false) : 0
+    return attrCost + affinCost
+  }, [pendAttr, pendAffinity, stage, tamer])
   const hasPending = pendCost > 0
   const msg = (m: string) => setToast(m)
 
@@ -358,22 +363,37 @@ export function DigimonStageView({ line, stageIdx, tamer, editable, isGM, onSave
     if ((pendAttr[k]??0) <= 0) return
     setPendAttr(p => ({ ...p, [k]: p[k]-1 }))
   }
+  const pendAffinityUp = (k: string) => {
+    const aff = stage.affinity as Record<string, number>
+    if (((aff[k] ?? 0) + (pendAffinity[k] ?? 0)) >= 10) return
+    setPendAffinity(p => ({ ...p, [k]: (p[k] ?? 0) + 1 }))
+  }
+  const pendAffinityDown = (k: string) => {
+    if ((pendAffinity[k] ?? 0) <= 0) return
+    setPendAffinity(p => ({ ...p, [k]: p[k] - 1 }))
+  }
   const confirmXp = () => {
     if (!tamer || !onSaveTamer) { msg('Sem tamer vinculado.'); return }
     if (pendCost > tamer.xp) { msg('XP insuficiente!'); return }
     const newAttrs = { ...tamer.attributes }
     for (const [k, d] of Object.entries(pendAttr)) if (d > 0) newAttrs[k as AttributeKey] += d
     const updatedTamer = { ...tamer, xp: tamer.xp - pendCost, xpSpent: tamer.xpSpent + pendCost, attributes: newAttrs }
-    const updatedLine  = { ...line, stages: line.stages.map(s => s.locked ? s : { ...s, attributes: newAttrs }) }
+    const newAffinity = { ...stage.affinity } as Record<string, number>
+    for (const [k, d] of Object.entries(pendAffinity)) if (d > 0) newAffinity[k] = (newAffinity[k] ?? 0) + d
+    const updatedLine = { ...line, stages: line.stages.map((s, i) => {
+      if (s.locked) return s
+      const withAttrs = { ...s, attributes: newAttrs }
+      return i === stageIdx ? { ...withAttrs, affinity: newAffinity } : withAttrs
+    })}
     if (onSaveBoth) {
       onSaveBoth(updatedTamer, updatedLine)
     } else {
       onSaveTamer(updatedTamer)
       onSaveLine(updatedLine)
     }
-    setPendAttr({}); msg(`−${pendCost} XP do tamer confirmado!`)
+    setPendAttr({}); setPendAffinity({}); msg(`−${pendCost} XP do tamer confirmado!`)
   }
-  const cancelXp = () => { setPendAttr({}); msg('Cancelado.') }
+  const cancelXp = () => { setPendAttr({}); setPendAffinity({}); msg('Cancelado.') }
 
   const onAddSkill = (sk: TamerSkill | DigimonSkill) => {
     onSaveLine({ ...line, stages: line.stages.map((s,i) => i===stageIdx ? { ...s, skills:[...s.skills, sk as DigimonSkill] } : s) })
@@ -534,7 +554,11 @@ export function DigimonStageView({ line, stageIdx, tamer, editable, isGM, onSave
       <SectionTitle>Weakness & Resistance</SectionTitle>
       <WeaknessBox weakness={stage.weakness} editable={editable} onChange={onChangeWeakness} />
       <SectionTitle>Affinity</SectionTitle>
-      <AffinityGrid affinity={stage.affinity} editable={editable} onChange={onChangeAffinity} />
+      {isDerived
+        ? <AffinityGrid affinity={stage.affinity} editable={editable}
+            pending={pendAffinity} onPend={pendAffinityUp} onUnpend={pendAffinityDown} />
+        : <AffinityGrid affinity={stage.affinity} editable={editable} onChange={onChangeAffinity} />
+      }
 
       <SectionTitle action={editable && !showAdd && (
         <button className={styles.btnGhost} style={{ fontSize:11 }} onClick={() => setShowAdd(true)}>+ Nova Skill</button>
