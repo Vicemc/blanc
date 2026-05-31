@@ -51,6 +51,17 @@ function tamerPortrait(state: AppState, characterId: string): string {
   return t?.portrait ?? 'sage'
 }
 
+const DIGIZAP_AVATAR_NAMES = new Set([
+  'Eisuke','Emi','Hare','Hibito','Kanade','Kumo','Miki','Mori','Naoki','Sachi','Shinra','Yuri',
+])
+
+function tamerAvatar(state: AppState, characterId: string): string | null {
+  const t = state.tamers.find(t => t.id === characterId)
+  const firstName = (t?.name ?? '').split(/\s+/)[0]
+  if (DIGIZAP_AVATAR_NAMES.has(firstName)) return `/digizap%20avatar/${firstName}.png`
+  return null
+}
+
 // Ping sonoro via Web Audio API
 function playPing() {
   try {
@@ -636,6 +647,7 @@ export default function DigiZapPage({ state, profile, isGM, onUnreadChange }: Pr
               const isMe    = msg.sender_id === myCharId
               const senderName = tamerName(state, msg.sender_id)
               const portrait   = tamerPortrait(state, msg.sender_id)
+              const avatar     = tamerAvatar(state, msg.sender_id)
 
               return (
                 <div key={msg.id} style={{ display: 'flex', gap: 10,
@@ -644,6 +656,10 @@ export default function DigiZapPage({ state, profile, isGM, onUnreadChange }: Pr
                   <div style={{ width: 32, height: 32, borderRadius: 8, flexShrink: 0,
                     overflow: 'hidden', position: 'relative' }}>
                     <div className={`fill-${portrait}`} style={{ position: 'absolute', inset: 0 }} />
+                    {avatar && (
+                      <img src={avatar} alt={senderName}
+                        style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'cover', objectPosition: 'top' }} />
+                    )}
                     <div className="grain" style={{ position: 'absolute', inset: 0 }} />
                   </div>
 
