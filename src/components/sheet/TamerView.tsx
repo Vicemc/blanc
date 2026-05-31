@@ -491,9 +491,8 @@ export function TamerView({ tamer, line, editable, isGM, onSave, onSaveLine: _on
   const [pendSkill, setPendSkill] = useState<Record<string, number>>({})
   const pendCost = useMemo(() => {
     const a = pendingCost(pendAttr, tamer.attributes, true)
-    const s = pendingCost(pendSkill, tamer.skills.Mental, false) +
-              pendingCost(pendSkill, tamer.skills.Físico, false) +
-              pendingCost(pendSkill, tamer.skills.Social, false)
+    const allSkills = { ...tamer.skills.Mental, ...tamer.skills.Físico, ...tamer.skills.Social } as Record<string, number>
+    const s = pendingCost(pendSkill, allSkills, false)
     return a + s
   }, [pendAttr, pendSkill, tamer])
   const hasPending = pendCost > 0
