@@ -14,7 +14,9 @@
       "Bash(node -e ' *)",
       "Bash(node gen_store1.js)",
       "Bash(node /e/survive/gen_store1.cjs)",
-      "Bash(xargs grep -l \"saveStateToDB\\\\|subscribeToState\\\\|supabase\\\\|realtime\")"
+      "Bash(xargs grep -l \"saveStateToDB\\\\|subscribeToState\\\\|supabase\\\\|realtime\")",
+      "Bash(node -e \"const fs=require\\('fs'\\); const files=fs.readdirSync\\('public/digizap avatar'\\); console.log\\(files\\)\")",
+      "Bash(curl -s -o /dev/null -w \"%{http_code}\" \"http://localhost:5173/digizap%20avatar/Naoki.png\")"
     ]
   }
 }
