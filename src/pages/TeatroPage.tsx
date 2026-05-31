@@ -102,6 +102,9 @@ interface ActorState {
   defesa_base: number   // valor de base da Defesa — para onde volta no virar do round
   armadura:    number
   conditions:  ConditionBar[]
+  barrier?:        number
+  barrier_max?:    number
+  barrier_rounds?: number  // undefined = sem limite de tempo
 }
 
 interface ConditionBar {
@@ -238,8 +241,24 @@ function ActorStatePanel({ aKey: _aKey, aState, onChange, isTamer = false }: {
   onChange: (s: ActorState) => void
   isTamer?: boolean
 }) {
-  const [showCond, setShowCond] = useState(false)
-  const [newCond, setNewCond]   = useState({ label: '', max: 10, color: 'coral' })
+  const [showCond, setShowCond]       = useState(false)
+  const [newCond, setNewCond]         = useState({ label: '', max: 10, color: 'coral' })
+  const [showBarrierForm, setShowBarrierForm] = useState(false)
+  const [barrierForm, setBarrierForm] = useState({ hp: '', rounds: '' })
+
+  const confirmBarrier = () => {
+    const hp = parseInt(barrierForm.hp) || 0
+    if (hp <= 0) return
+    const rounds = barrierForm.rounds.trim() !== '' ? (parseInt(barrierForm.rounds) || undefined) : undefined
+    onChange({ ...aState, barrier: hp, barrier_max: hp, barrier_rounds: rounds })
+    setBarrierForm({ hp: '', rounds: '' })
+    setShowBarrierForm(false)
+  }
+  const removeBarrier = () => onChange({ ...aState, barrier: undefined, barrier_max: undefined, barrier_rounds: undefined })
+  const setBarrierHP = (v: number) => {
+    if (v <= 0) { removeBarrier(); return }
+    onChange({ ...aState, barrier: v })
+  }
 
   const addCondition = () => {
     if (!newCond.label.trim()) return
@@ -280,6 +299,75 @@ function ActorStatePanel({ aKey: _aKey, aState, onChange, isTamer = false }: {
         <button onClick={() => onChange({ ...aState, hp: aState.hp_max })}
           style={{ ...btnStyle, fontSize: 10, padding: '2px 6px' }}>↺</button>
       </div>
+      {/* Barrier */}
+      {aState.barrier !== undefined ? (
+        <div style={{ marginBottom: 6, padding: '6px 8px', borderRadius: 6,
+          background: 'color-mix(in srgb, var(--gold) 10%, transparent)',
+          border: '1px solid color-mix(in srgb, var(--gold) 35%, transparent)' }}>
+          {/* Header da Barrier */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 4 }}>
+            <span style={{ fontFamily: 'var(--font-mono)', fontSize: 9, color: 'var(--gold)',
+              letterSpacing: '0.12em', textTransform: 'uppercase', fontWeight: 700 }}>◈ Barrier</span>
+            <span style={{ fontFamily: 'var(--font-mono)', fontSize: 9, color: 'var(--ink-mute)',
+              flex: 1, letterSpacing: '0.04em' }}>sem redução de DEF/ARM</span>
+            <button onClick={removeBarrier}
+              style={{ ...btnStyle, color: 'var(--coral)', borderColor: 'var(--coral)', fontSize: 10 }}>×</button>
+          </div>
+          {/* HP da Barrier */}
+          <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginBottom: 4, flexWrap: 'wrap' }}>
+            <span style={{ fontFamily: 'var(--font-mono)', fontSize: 10, color: 'var(--ink-mute)', minWidth: 48 }}>HP</span>
+            <button onClick={() => setBarrierHP((aState.barrier ?? 0) - 1)} style={btnStyle}>−</button>
+            <input type="number" value={aState.barrier}
+              onChange={e => setBarrierHP(Math.max(0, parseInt(e.target.value) || 0))}
+              style={{ width: 44, textAlign: 'center', border: '1px solid var(--line)', borderRadius: 6,
+                padding: '2px 4px', fontFamily: 'var(--font-mono)', fontSize: 12, background: 'var(--paper)' }} />
+            <span style={{ color: 'var(--ink-mute)', fontFamily: 'var(--font-mono)', fontSize: 11 }}>/ {aState.barrier_max}</span>
+            <button onClick={() => onChange({ ...aState, barrier: Math.min(aState.barrier_max ?? 0, (aState.barrier ?? 0) + 1) })}
+              style={btnStyle}>+</button>
+          </div>
+          {/* Rounds da Barrier */}
+          <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+            <span style={{ fontFamily: 'var(--font-mono)', fontSize: 10, color: 'var(--ink-mute)', minWidth: 48 }}>Rounds</span>
+            <button onClick={() => {
+              const r = (aState.barrier_rounds ?? 0) - 1
+              if (r <= 0) removeBarrier()
+              else onChange({ ...aState, barrier_rounds: r })
+            }} style={btnStyle} disabled={aState.barrier_rounds === undefined}>−</button>
+            <span style={{ fontFamily: 'var(--font-mono)', fontSize: 13, fontWeight: 700,
+              color: aState.barrier_rounds !== undefined && aState.barrier_rounds <= 1 ? 'var(--coral)' : 'var(--ink)' }}>
+              {aState.barrier_rounds ?? '∞'}
+            </span>
+            <button onClick={() => onChange({ ...aState, barrier_rounds: (aState.barrier_rounds ?? 0) + 1 })}
+              style={btnStyle}>+</button>
+          </div>
+        </div>
+      ) : (
+        <>
+          <button onClick={() => setShowBarrierForm(p => !p)}
+            style={{ fontFamily: 'var(--font-mono)', fontSize: 10, letterSpacing: '0.1em',
+              textTransform: 'uppercase', background: 'transparent', border: '1px dashed var(--line)',
+              borderRadius: 6, padding: '3px 8px', cursor: 'pointer', color: 'var(--gold)', marginBottom: 4 }}>
+            {showBarrierForm ? '− barrier' : '+ barrier'}
+          </button>
+          {showBarrierForm && (
+            <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'flex-end', marginBottom: 6 }}>
+              <input type="number" min={1} value={barrierForm.hp}
+                onChange={e => setBarrierForm(p => ({ ...p, hp: e.target.value }))}
+                placeholder="HP" onKeyDown={e => e.key === 'Enter' && confirmBarrier()}
+                style={{ width: 52, border: '1px solid var(--line)', borderRadius: 6, padding: '4px 6px',
+                  fontFamily: 'var(--font-mono)', fontSize: 12, background: 'var(--paper)', textAlign: 'center' }} />
+              <input type="number" min={1} value={barrierForm.rounds}
+                onChange={e => setBarrierForm(p => ({ ...p, rounds: e.target.value }))}
+                placeholder="Rounds (∞)"
+                onKeyDown={e => e.key === 'Enter' && confirmBarrier()}
+                style={{ width: 80, border: '1px solid var(--line)', borderRadius: 6, padding: '4px 6px',
+                  fontFamily: 'var(--font-mono)', fontSize: 12, background: 'var(--paper)', textAlign: 'center' }} />
+              <button onClick={confirmBarrier}
+                style={{ ...btnStyle, background: 'var(--gold)', color: 'var(--paper)', borderColor: 'var(--gold)' }}>+</button>
+            </div>
+          )}
+        </>
+      )}
       {/* Defesa / Memory — só para não-tamers, ou tamers com DEF ativa (Eisuke) */}
       {(!isTamer || aState.defesa > 0) && (
       <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginBottom: 6, flexWrap: 'wrap' }}>
@@ -2012,16 +2100,32 @@ function applyRoundAdvance(s: Stage): Stage {
   Object.entries(states).forEach(([k, v]) => {
     const a = v as ActorState
     let hp = a.hp
+    let barrier       = a.barrier
+    let barrier_max   = a.barrier_max
+    let barrier_rounds = a.barrier_rounds
     const conds = (a.conditions ?? []).map(c => ({ ...c }))
+
+    // Helper: aplica dano roteando pela Barrier primeiro
+    const applyDmg = (dmg: number, tag: string) => {
+      if (barrier !== undefined && barrier > 0) {
+        // Barrier absorve; excesso é anulado
+        barrier = Math.max(0, barrier - dmg)
+        extraLogs.push(`${k}: ${tag} → Barrier absorve (${barrier} restante)`)
+        if (barrier === 0) { barrier = undefined; barrier_max = undefined; barrier_rounds = undefined; extraLogs.push(`${k}: Barrier destruída`) }
+      } else {
+        hp = Math.max(0, hp - dmg)
+        extraLogs.push(`${k}: ${tag} → -${dmg} HP`)
+      }
+    }
 
     // Tick automático por condição (regras simplificadas)
     for (const c of conds) {
       const label = c.label.toLowerCase()
       // Ferimentos "estourados" causam dano e zeram as cargas
       if (c.filled >= c.max && c.max >= 5) {
-        if (label === 'burn')   { hp = Math.max(0, hp - 7); extraLogs.push(`${k}: Burn estoura → -7 HP`);   c.filled = 0 }
-        if (label === 'poison') { hp = Math.max(0, hp - 1); extraLogs.push(`${k}: Poison estoura → -1 HP`); c.filled = 0 }
-        if (label === 'bleed')  { hp = Math.max(0, hp - 3); extraLogs.push(`${k}: Bleed estoura → -3 HP`);  c.filled = 0 }
+        if (label === 'burn')   { applyDmg(7, 'Burn estoura');   c.filled = 0 }
+        if (label === 'poison') { applyDmg(1, 'Poison estoura'); c.filled = 0 }
+        if (label === 'bleed')  { applyDmg(3, 'Bleed estoura');  c.filled = 0 }
       }
       // Decay 1 carga / round
       if (label === 'paralysis' || label === 'flight' || label === 'decoy') {
@@ -2030,7 +2134,16 @@ function applyRoundAdvance(s: Stage): Stage {
     }
     const filtered = conds.filter(c => c.filled > 0 || c.label.startsWith('__toggle__'))
 
-    newActorStates[k] = { ...a, defesa: a.defesa_base ?? 0, conditions: filtered, hp }
+    // Decrement de Rounds da Barrier
+    if (barrier !== undefined && barrier_rounds !== undefined) {
+      barrier_rounds -= 1
+      if (barrier_rounds <= 0) {
+        barrier = undefined; barrier_max = undefined; barrier_rounds = undefined
+        extraLogs.push(`${k}: Barrier expirou (duração esgotada)`)
+      }
+    }
+
+    newActorStates[k] = { ...a, defesa: a.defesa_base ?? 0, conditions: filtered, hp, barrier, barrier_max, barrier_rounds }
   })
 
   const logs: PalcoLogEntry[] = [

@@ -363,6 +363,9 @@ export interface StageActorState {
   defesa_base: number;
   armadura:    number;
   conditions:  StageConditionBar[];
+  barrier?:        number;
+  barrier_max?:    number;
+  barrier_rounds?: number;  // undefined = sem limite de tempo
 }
 
 export interface StageClock {
