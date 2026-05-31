@@ -51,15 +51,24 @@ function tamerPortrait(state: AppState, characterId: string): string {
   return t?.portrait ?? 'sage'
 }
 
-const DIGIZAP_AVATAR_NAMES = new Set([
-  'Eisuke','Emi','Hare','Hibito','Kanade','Kumo','Miki','Mori','Naoki','Sachi','Shinra','Yuri',
-])
+const DIGIZAP_AVATAR_BY_ID: Record<string, string> = {
+  't-naoki':  'Naoki',
+  't-sachi':  'Sachi',
+  't-mori':   'Mori',
+  't-miki':   'Miki',
+  't-yuri':   'Yuri',
+  't-eisuke': 'Eisuke',
+  't-hare':   'Hare',
+  't-kanade': 'Kanade',
+  't-shinra': 'Shinra',
+  't-kumo':   'Kumo',
+  't-emi':    'Emi',
+  't-hibito': 'Hibito',
+}
 
-function tamerAvatar(state: AppState, characterId: string): string | null {
-  const t = state.tamers.find(t => t.id === characterId)
-  const firstName = (t?.name ?? '').split(/\s+/)[0]
-  if (DIGIZAP_AVATAR_NAMES.has(firstName)) return `/digizap%20avatar/${firstName}.png`
-  return null
+function tamerAvatar(_state: AppState, characterId: string): string | null {
+  const name = DIGIZAP_AVATAR_BY_ID[characterId]
+  return name ? `/digizap%20avatar/${name}.png` : null
 }
 
 // Ping sonoro via Web Audio API
