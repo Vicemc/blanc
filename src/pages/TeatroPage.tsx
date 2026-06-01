@@ -8,6 +8,7 @@ import { PageHead } from '../components/PageHead'
 
 import { SheetModal } from '../components/Sheet'
 import type { SheetSubject, TokenSpawn } from '../components/Sheet'
+import { RulesModal } from '../components/RulesModal'
 import { useSettings } from '../lib/settings'
 import styles from './TeatroPage.module.css'
 
@@ -155,12 +156,17 @@ function getRuntime(stage: Stage): StageRuntime & { tokenMeta: Record<string, { 
 // ── Actor key único ──────────────────────────────────────────────────────────
 
 function actorKey(a: ActorRef): string {
-  if (a.kind === 'human')    return `tamer:${a.id}`
-  if (a.kind === 'pair')     return `digi:${a.digimonId}:${a.stage}`
-  if (a.kind === 'wild')     return `wild:${a.id}`
-  if (a.kind === 'survivor') return `survivor:${a.id}`
-  if (a.kind === 'sign')     return `sign:${a.id}`
-  return `bug:${a.id}`
+  const sfx = a.instanceId ? `:${a.instanceId}` : ''
+  if (a.kind === 'human')    return `tamer:${a.id}${sfx}`
+  if (a.kind === 'pair')     return `digi:${a.digimonId}:${a.stage}${sfx}`
+  if (a.kind === 'wild')     return `wild:${a.id}${sfx}`
+  if (a.kind === 'survivor') return `survivor:${a.id}${sfx}`
+  if (a.kind === 'sign')     return `sign:${a.id}${sfx}`
+  return `bug:${a.id}${sfx}`
+}
+
+function mkInstId(): string {
+  return Date.now().toString(36) + Math.random().toString(36).slice(2, 6)
 }
 
 // ── Resolver ator para display ───────────────────────────────────────────────
@@ -642,7 +648,7 @@ function GenericSkillToggles({ skills, actorSt, onChange, targets = [], onApplyT
 
 // ── ActorChip ─────────────────────────────────────────────────────────────────
 
-function ActorChip({ actor, state, actorSt, onOpen, onRemove, onChange, onEvolve, tokenMeta, onSpawnToken, isGM, targets, onApplyTarget }: {
+function ActorChip({ actor, state, actorSt, onOpen, onRemove, onChange, onEvolve, tokenMeta, onSpawnToken, isGM, targets, onApplyTarget, instanceLabel }: {
   actor: ActorRef; state: AppState
   actorSt: ActorState | undefined
   onOpen: () => void; onRemove: () => void
@@ -653,6 +659,7 @@ function ActorChip({ actor, state, actorSt, onOpen, onRemove, onChange, onEvolve
   isGM?: boolean
   targets?: { key: string; title: string }[]
   onApplyTarget?: (targetKey: string, conds: import('../types').PalcoCondition[]) => void
+  instanceLabel?: string
 }) {
   const [showState, setShowState] = useState(false)
   const [showEvo,   setShowEvo]   = useState(false)
@@ -770,7 +777,15 @@ function ActorChip({ actor, state, actorSt, onOpen, onRemove, onChange, onEvolve
               style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'cover' }} />
           : <div className="grain" />}
       </div>
-      <h5 className={styles.actorName} style={{ cursor: 'pointer' }} onClick={onOpen}>{r.title}</h5>
+      <h5 className={styles.actorName} style={{ cursor: 'pointer' }} onClick={onOpen}>
+        {r.title}
+        {instanceLabel && (
+          <span style={{ marginLeft: 4, fontFamily: 'var(--font-mono)', fontSize: 9,
+            fontWeight: 700, letterSpacing: '0.1em', color: 'var(--ink-mute)',
+            background: 'var(--paper-deep)', border: '1px solid var(--line)',
+            borderRadius: 3, padding: '0 3px' }}>{instanceLabel}</span>
+        )}
+      </h5>
       {nameOnly && (
         <div style={{ fontFamily: 'var(--font-mono)', fontSize: 9, color: 'var(--ink-mute)',
           letterSpacing: '0.1em', textTransform: 'uppercase', textAlign: 'center', padding: '4px 0' }}>
@@ -2161,7 +2176,7 @@ function applyRoundAdvance(s: Stage): Stage {
 // ── Painel de Ordem de Turno (iniciativa) ─────────────────────────────────────
 function TurnOrderPanel({
   order, actors, activeId, round, canEdit,
-  onSetActive, onNext, onReset, onRoll, onReorder, onAddExtraTurn, onRemoveEntry, onClear,
+  onSetActive, onNext, onReset, onRoll, onReorder, onAddExtraTurn, onRemoveEntry, onClear, onEditInit, onEditAllInit,
 }: {
   order:   { id: string; key: string; title: string; init: number; portrait: string; side: 'allies' | 'enemies'; extra: boolean }[]
   actors:  { key: string; title: string }[]
@@ -2176,12 +2191,53 @@ function TurnOrderPanel({
   onAddExtraTurn:  (actorKey: string, init: number) => void
   onRemoveEntry:   (entryId: string) => void
   onClear:         () => void
+  onEditInit:      (entryId: string, newInit: number) => void
+  onEditAllInit:   (updates: Record<string, number>) => void
 }) {
   const [dragId, setDragId]    = useState<string | null>(null)
   const [overId, setOverId]    = useState<string | null>(null)
   const [extraOpen, setExtraOpen] = useState(false)
   const [extraActor, setExtraActor] = useState<string>('')
   const [extraInit, setExtraInit]   = useState<string>('')
+  const [editingId, setEditingId]   = useState<string | null>(null)
+  const [editValue, setEditValue]   = useState<string>('')
+  const editRef = useRef<HTMLInputElement>(null)
+  const [insertOpen, setInsertOpen] = useState(false)
+  const [insertValues, setInsertValues] = useState<Record<string, string>>({})
+
+  const openInsert = () => {
+    const initial: Record<string, string> = {}
+    order.forEach(o => { initial[o.id] = String(o.init) })
+    setInsertValues(initial)
+    setInsertOpen(true)
+  }
+
+  const commitInsert = () => {
+    const updates: Record<string, number> = {}
+    Object.entries(insertValues).forEach(([id, v]) => {
+      const n = parseInt(v)
+      if (!isNaN(n)) updates[id] = n
+    })
+    onEditAllInit(updates)
+    setInsertOpen(false)
+  }
+
+  useEffect(() => {
+    if (editingId) editRef.current?.focus()
+  }, [editingId])
+
+  const startEditInit = (e: React.MouseEvent, id: string, init: number) => {
+    e.stopPropagation()
+    setEditingId(id)
+    setEditValue(String(init))
+  }
+
+  const commitEditInit = () => {
+    if (!editingId) return
+    const v = parseInt(editValue)
+    if (!isNaN(v)) onEditInit(editingId, v)
+    setEditingId(null)
+  }
 
   const activeIdx = activeId ? order.findIndex(o => o.id === activeId) : -1
 
@@ -2245,7 +2301,35 @@ function TurnOrderPanel({
                 {o.title}
                 {o.extra && <span style={{ fontFamily: 'var(--font-mono)', fontSize: 8, letterSpacing: '0.08em',
                   textTransform: 'uppercase', color: isActive ? 'var(--paper)' : 'var(--gold)', fontWeight: 700 }}>+T</span>}
-                <span style={{ fontFamily: 'var(--font-mono)', fontSize: 9, opacity: 0.7 }}>{o.init}</span>
+                {canEdit && editingId === o.id ? (
+                  <input
+                    ref={editRef}
+                    type="number"
+                    value={editValue}
+                    onChange={e => setEditValue(e.target.value)}
+                    onBlur={commitEditInit}
+                    onKeyDown={e => {
+                      e.stopPropagation()
+                      if (e.key === 'Enter') commitEditInit()
+                      if (e.key === 'Escape') setEditingId(null)
+                    }}
+                    onClick={e => e.stopPropagation()}
+                    style={{ width: 36, fontSize: 9, fontFamily: 'var(--font-mono)', textAlign: 'center',
+                      background: isActive ? 'rgba(255,255,255,0.15)' : 'var(--paper)',
+                      border: '1px solid var(--teal)', borderRadius: 4,
+                      color: isActive ? 'var(--paper)' : 'var(--ink)', padding: '1px 3px',
+                      MozAppearance: 'textfield' }}
+                  />
+                ) : (
+                  <span
+                    onClick={canEdit ? e => startEditInit(e, o.id, o.init) : undefined}
+                    title={canEdit ? 'Clique para editar iniciativa' : undefined}
+                    style={{ fontFamily: 'var(--font-mono)', fontSize: 9, opacity: 0.7,
+                      cursor: canEdit ? 'text' : 'default',
+                      borderBottom: canEdit ? '1px dashed currentColor' : 'none' }}>
+                    {o.init}
+                  </span>
+                )}
                 {canEdit && o.extra && (
                   <span onClick={e => { e.stopPropagation(); onRemoveEntry(o.id) }}
                     style={{ cursor: 'pointer', fontFamily: 'var(--font-mono)', fontSize: 11,
@@ -2290,6 +2374,15 @@ function TurnOrderPanel({
               fontFamily: 'var(--font-mono)', fontSize: 10, letterSpacing: '0.08em', textTransform: 'uppercase' }}>
             + Turno extra
           </button>
+          <button onClick={openInsert} disabled={actors.length === 0}
+            title="Inserir valores de iniciativa manualmente"
+            style={{ padding: '4px 12px', borderRadius: 999, cursor: actors.length === 0 ? 'not-allowed' : 'pointer',
+              border: '1px solid var(--indigo)', background: insertOpen ? 'var(--indigo)' : 'transparent',
+              color: insertOpen ? 'var(--paper)' : 'var(--indigo)',
+              opacity: actors.length === 0 ? 0.5 : 1,
+              fontFamily: 'var(--font-mono)', fontSize: 10, letterSpacing: '0.08em', textTransform: 'uppercase' }}>
+            ✏ Inserir
+          </button>
           <button onClick={onClear} disabled={order.length === 0}
             title="Limpar fila de iniciativa (volta à ordenação automática por status)"
             style={{ padding: '4px 12px', borderRadius: 999, cursor: order.length === 0 ? 'not-allowed' : 'pointer',
@@ -2298,6 +2391,52 @@ function TurnOrderPanel({
               fontFamily: 'var(--font-mono)', fontSize: 10, letterSpacing: '0.08em', textTransform: 'uppercase' }}>
             🗑 Limpar
           </button>
+          {insertOpen && (
+            <div style={{ width: '100%', marginTop: 4, padding: '12px 14px', borderRadius: 10,
+              background: 'var(--paper-deep)', border: '1px solid var(--indigo)' }}>
+              <div style={{ fontFamily: 'var(--font-mono)', fontSize: 9, letterSpacing: '0.14em',
+                textTransform: 'uppercase', color: 'var(--indigo)', marginBottom: 10 }}>
+                Inserir valores de iniciativa
+              </div>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                {order.map(o => (
+                  <div key={o.id} style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                    <span style={{ width: 12, height: 12, borderRadius: 3, overflow: 'hidden',
+                      position: 'relative', flexShrink: 0 }}>
+                      <span className={`fill-${o.portrait}`} style={{ position: 'absolute', inset: 0 }} />
+                    </span>
+                    <span style={{ flex: 1, fontFamily: 'var(--font-body)', fontSize: 12,
+                      color: 'var(--ink-soft)', minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                      {o.title}{o.extra && <span style={{ fontFamily: 'var(--font-mono)', fontSize: 8,
+                        color: 'var(--gold)', marginLeft: 4 }}>+T</span>}
+                    </span>
+                    <input
+                      type="number"
+                      value={insertValues[o.id] ?? ''}
+                      onChange={e => setInsertValues(v => ({ ...v, [o.id]: e.target.value }))}
+                      onKeyDown={e => { if (e.key === 'Enter') commitInsert() }}
+                      style={{ width: 64, padding: '3px 8px', borderRadius: 6,
+                        border: '1px solid var(--line)', background: 'var(--paper)',
+                        color: 'var(--ink)', fontFamily: 'var(--font-mono)', fontSize: 12,
+                        textAlign: 'right' }}
+                    />
+                  </div>
+                ))}
+              </div>
+              <div style={{ display: 'flex', gap: 6, marginTop: 10 }}>
+                <button onClick={commitInsert}
+                  style={{ padding: '4px 14px', borderRadius: 999, cursor: 'pointer',
+                    border: '1px solid var(--indigo)', background: 'var(--indigo)', color: 'var(--paper)',
+                    fontFamily: 'var(--font-mono)', fontSize: 10, letterSpacing: '0.08em', textTransform: 'uppercase' }}>
+                  ✓ Aplicar e ordenar
+                </button>
+                <button onClick={() => setInsertOpen(false)}
+                  style={{ padding: '4px 12px', borderRadius: 999, cursor: 'pointer',
+                    border: '1px solid var(--line)', background: 'transparent', color: 'var(--ink-mute)',
+                    fontFamily: 'var(--font-mono)', fontSize: 10 }}>× Cancelar</button>
+              </div>
+            </div>
+          )}
           {extraOpen && (
             <div style={{ display: 'flex', gap: 6, alignItems: 'center', flexWrap: 'wrap',
               padding: '4px 10px', borderRadius: 8, background: 'var(--paper-deep)',
@@ -2340,6 +2479,7 @@ function PalcoView({ stage, state, onUpdate, onBack, isGM = false }: {
   const [openSide, setOpenSide]     = useState<'allies'|'enemies'>('allies')
   const [pickerSide, setPickerSide] = useState<'allies'|'enemies'|null>(null)
   const [roundPopupNum, setRoundPopupNum] = useState<number | null>(null)
+  const [showRules, setShowRules]   = useState(false)
   const prevRoundRef = useRef<number | null>(null)
   const undoStack = useRef<Stage[]>([])
   const [undoDepth, setUndoDepth] = useState(0)
@@ -2559,7 +2699,7 @@ function PalcoView({ stage, state, onUpdate, onBack, isGM = false }: {
       const alreadyHasTamer = stage.sides[side].some(
         x => x.kind === 'human' && x.id === a.tamerId
       )
-      const digiRefs: ActorRef[] = Array.from({ length: qty }, () => ({ ...a }))
+      const digiRefs: ActorRef[] = Array.from({ length: qty }, () => ({ ...a, instanceId: mkInstId() }))
       mutateStage(s => ({
         ...s,
         sides: {
@@ -2572,7 +2712,7 @@ function PalcoView({ stage, state, onUpdate, onBack, isGM = false }: {
         },
       }))
     } else {
-      const toAdd: ActorRef[] = Array.from({ length: qty }, () => ({ ...a }))
+      const toAdd: ActorRef[] = Array.from({ length: qty }, () => ({ ...a, instanceId: mkInstId() }))
       mutateStage(s => ({ ...s, sides: { ...s.sides, [side]: [...s.sides[side], ...toAdd] } }))
     }
     setPickerSide(null)
@@ -2609,7 +2749,62 @@ function PalcoView({ stage, state, onUpdate, onBack, isGM = false }: {
     mutateStage(s => ({ ...s, sides: { ...s.sides, allies: [...s.sides.allies, ...toAdd] } }))
   }
 
+  // Atribui instanceId retroativamente a atores legados (sem instanceId),
+  // duplica o actorState compartilhado para cada instância e limpa a iniciativa.
+  const retroactivelyAssignIds = () => {
+    mutateStage(s => {
+      const allActors = [...s.sides.allies, ...s.sides.enemies]
+      if (!allActors.some(a => !a.instanceId)) return s
+
+      const oldStates = s.actorStates ?? {}
+      const newStates: Record<string, ActorState> = {}
+
+      const migrateList = (actors: ActorRef[]) =>
+        actors.map(a => {
+          if (a.instanceId) {
+            const k = actorKey(a)
+            if (oldStates[k]) newStates[k] = oldStates[k]
+            return a
+          }
+          const oldKey = actorKey(a)
+          const migrated = { ...a, instanceId: mkInstId() }
+          const newKey = actorKey(migrated)
+          if (oldStates[oldKey]) newStates[newKey] = { ...oldStates[oldKey] }
+          return migrated
+        })
+
+      const { initiativeOrder: _i, activeInitiativeId: _a, ...rest } = s
+      return {
+        ...rest,
+        sides: {
+          allies:  migrateList(s.sides.allies),
+          enemies: migrateList(s.sides.enemies),
+        },
+        actorStates: newStates,
+      } as Stage
+    })
+  }
+
   const domainTamers = useMemo(() => getDomainTamers(stage, state), [stage, state])
+
+  // Mapa de sufixos A/B/C para atores com o mesmo tipo base na cena
+  const instanceLetterMap = useMemo(() => {
+    const all = [...stage.sides.allies, ...stage.sides.enemies]
+    const baseId = (a: ActorRef) =>
+      a.kind === 'pair' ? `digi:${a.digimonId}:${a.stage}` : `${a.kind}:${a.id}`
+    const counts = new Map<string, number>()
+    all.forEach(a => { const b = baseId(a); counts.set(b, (counts.get(b) ?? 0) + 1) })
+    const idx = new Map<string, number>()
+    const map = new Map<string, string>()
+    all.forEach(a => {
+      const b = baseId(a)
+      if ((counts.get(b) ?? 0) > 1) {
+        const i = idx.get(b) ?? 0; idx.set(b, i + 1)
+        map.set(actorKey(a), String.fromCharCode(65 + i))
+      }
+    })
+    return map
+  }, [stage.sides])
 
   // Ordem de iniciativa.
   // Quando stage.initiativeOrder existe (após o GM rolar), usa a ordem persistida.
@@ -2617,7 +2812,10 @@ function PalcoView({ stage, state, onUpdate, onBack, isGM = false }: {
   const turnOrder = useMemo(() => {
     const mk = (a: ActorRef, side: 'allies' | 'enemies') => {
       const r = resolveActor(state, a, rt.tokenMeta)
-      return { actorKey: actorKey(a), title: r.title, baseInit: getInitiative(state, a), portrait: r.portrait, side }
+      const key = actorKey(a)
+      const letter = instanceLetterMap.get(key)
+      const title = letter ? `${r.title} ${letter}` : r.title
+      return { actorKey: key, title, baseInit: getInitiative(state, a), portrait: r.portrait, side }
     }
     const allActors = [
       ...stage.sides.allies.map(a => mk(a, 'allies' as const)),
@@ -2644,7 +2842,7 @@ function PalcoView({ stage, state, onUpdate, onBack, isGM = false }: {
         title: info.title, portrait: info.portrait, side: info.side, extra: false,
       }))
       .sort((x, y) => y.init - x.init || x.key.localeCompare(y.key))
-  }, [stage.sides, stage.initiativeOrder, state, rt.tokenMeta])
+  }, [stage.sides, stage.initiativeOrder, state, rt.tokenMeta, instanceLetterMap])
 
   const activeId = stage.activeInitiativeId ?? stage.activeActorKey ?? turnOrder[0]?.id
   const setActiveActor = (id: string) => mutateStage(s => ({ ...s, activeInitiativeId: id }))
@@ -2714,6 +2912,28 @@ function PalcoView({ stage, state, onUpdate, onBack, isGM = false }: {
     })
   }
 
+  const editInitiativeEntry = (entryId: string, newInit: number) => {
+    mutateStage(s => {
+      const snapshot: InitiativeEntry[] = s.initiativeOrder ?? turnOrder.map(o => ({
+        id: o.id, actorKey: o.key, init: o.init, ...(o.extra ? { extra: true } : {}),
+      }))
+      const next = snapshot.map(e => e.id === entryId ? { ...e, init: newInit } : e)
+      next.sort((a, b) => b.init - a.init)
+      return { ...s, initiativeOrder: next }
+    })
+  }
+
+  const editAllInitiative = (updates: Record<string, number>) => {
+    mutateStage(s => {
+      const snapshot: InitiativeEntry[] = s.initiativeOrder ?? turnOrder.map(o => ({
+        id: o.id, actorKey: o.key, init: o.init, ...(o.extra ? { extra: true } : {}),
+      }))
+      const next = snapshot.map(e => updates[e.id] !== undefined ? { ...e, init: updates[e.id] } : e)
+      next.sort((a, b) => b.init - a.init)
+      return { ...s, initiativeOrder: next, activeInitiativeId: next[0]?.id }
+    })
+  }
+
   const removeInitiativeEntry = (entryId: string) => {
     mutateStage(s => {
       if (!s.initiativeOrder) return s
@@ -2754,13 +2974,14 @@ function PalcoView({ stage, state, onUpdate, onBack, isGM = false }: {
   const actorList = useMemo(() =>
     [...stage.sides.allies, ...stage.sides.enemies].map(a => {
       const r = resolveActor(state, a, rt.tokenMeta)
-      const tamerName = a.kind === 'pair'
-        ? findTamer(state, a.tamerId)?.name
-        : null
-      const label = tamerName ? `${r.title} (${tamerName})` : r.title
-      return { key: actorKey(a), title: label }
+      const key = actorKey(a)
+      const tamerName = a.kind === 'pair' ? findTamer(state, a.tamerId)?.name : null
+      const letter = instanceLetterMap.get(key)
+      const baseTitle = letter ? `${r.title} ${letter}` : r.title
+      const label = tamerName ? `${baseTitle} (${tamerName})` : baseTitle
+      return { key, title: label }
     }),
-    [stage.sides, state, rt.tokenMeta]
+    [stage.sides, state, rt.tokenMeta, instanceLetterMap]
   )
 
   const exportStage = () => {
@@ -2835,6 +3056,16 @@ function PalcoView({ stage, state, onUpdate, onBack, isGM = false }: {
           <button className={styles.btnGhost} onClick={undo} disabled={undoDepth === 0}
             title="Desfazer a última alteração no palco">↩ Desfazer{undoDepth > 0 ? ` (${undoDepth})` : ''}</button>
           <button className={styles.btnGhost} onClick={addAllPCs}>+ Adicionar PCs</button>
+          {isGM && [...stage.sides.allies, ...stage.sides.enemies].some(a => !a.instanceId) && (
+            <button className={styles.btnGhost}
+              onClick={retroactivelyAssignIds}
+              title="Atribui IDs únicos a atores legados, separando estados compartilhados. Limpa a ordem de iniciativa."
+              style={{ borderColor: 'var(--gold)', color: 'var(--gold)' }}>
+              ⚙ Separar instâncias
+            </button>
+          )}
+          <button className={styles.btnGhost} onClick={() => setShowRules(true)}
+            title="Abrir regras do sistema">📖 Regras</button>
           <button className={styles.btnGhost} onClick={exportStage}>↓ Exportar</button>
           <button className={styles.btnGhost} onClick={importStage}>↑ Importar</button>
         </div>
@@ -2856,6 +3087,8 @@ function PalcoView({ stage, state, onUpdate, onBack, isGM = false }: {
         onAddExtraTurn={addExtraTurn}
         onRemoveEntry={removeInitiativeEntry}
         onClear={clearInitiative}
+        onEditInit={editInitiativeEntry}
+        onEditAllInit={editAllInitiative}
       />
 
       <ClimaPanel
@@ -2890,6 +3123,7 @@ function PalcoView({ stage, state, onUpdate, onBack, isGM = false }: {
                   onSpawnToken={spawnToken}
                   targets={actorList}
                   onApplyTarget={applyConditionsToTarget}
+                  instanceLabel={instanceLetterMap.get(actorKey(a))}
                   isGM={isGM} />
               ))}
               <div className={styles.addActor} onClick={() => setPickerSide(side)}>+ adicionar ator</div>
@@ -2919,6 +3153,7 @@ function PalcoView({ stage, state, onUpdate, onBack, isGM = false }: {
 
       {pickerSide && <Picker state={state} onPick={(a, qty) => addActor(pickerSide, a, qty)} onClose={() => setPickerSide(null)} onSpawnToken={spawnToken} onSpawnTokenDef={spawnTokenDef} />}
       {open && <SheetModal subject={open} state={state} onSaveState={onUpdate} onClose={() => setOpen(null)} isGM={isGM} onSpawnToken={spawnToken} />}
+      {showRules && <RulesModal state={state} onClose={() => setShowRules(false)} />}
     </div>
   )
 }
@@ -2964,7 +3199,7 @@ export default function TeatroPage({ state, onUpdate, isGM = false }: Props) {
       ...makeStage(`stage-${Date.now().toString(36)}`),
       title:    tmpl.title.replace(/\s*\(modelo\)\s*$/i, ''),
       subtitle: tmpl.subtitle,
-      sides:    { allies: tmpl.sides.allies.map(a => ({ ...a })), enemies: tmpl.sides.enemies.map(a => ({ ...a })) },
+      sides:    { allies: tmpl.sides.allies.map(a => ({ ...a, instanceId: mkInstId() })), enemies: tmpl.sides.enemies.map(a => ({ ...a, instanceId: mkInstId() })) },
       notes:    tmpl.notes,
       isTemplate: false,
     }

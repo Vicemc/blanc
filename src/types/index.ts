@@ -340,12 +340,12 @@ export interface Bug {
 // ---------- Stage (Teatro) ----------
 
 export type ActorRef =
-  | { kind: 'human';    id: string }
-  | { kind: 'pair';     tamerId: string; digimonId: string; stage: number }
-  | { kind: 'wild';     id: string }
-  | { kind: 'bug';      id: string }
-  | { kind: 'survivor'; id: string }
-  | { kind: 'sign';     id: string };
+  | { kind: 'human';    id: string; instanceId?: string }
+  | { kind: 'pair';     tamerId: string; digimonId: string; stage: number; instanceId?: string }
+  | { kind: 'wild';     id: string; instanceId?: string }
+  | { kind: 'bug';      id: string; instanceId?: string }
+  | { kind: 'survivor'; id: string; instanceId?: string }
+  | { kind: 'sign';     id: string; instanceId?: string };
 
 // ── Runtime de combate (anexado ao Stage durante o Palco) ───────
 export interface StageConditionBar {
