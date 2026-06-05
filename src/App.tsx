@@ -44,6 +44,7 @@ const DigivicePage  = lazyLoad(() => import('./pages/DigivicePage'))
 const DigiZapPage   = lazyLoad(() => import('./pages/DigiZapPage'))
 const ViewerPage    = lazyLoad(() => import('./pages/ViewerPage'))
 const SettingsPage  = lazyLoad(() => import('./pages/SettingsPage'))
+const WikiPage      = lazyLoad(() => import('./pages/WikiPage'))
 
 // ── Avatar pixel art do personagem do jogador ────────────────────────────────
 
@@ -291,6 +292,7 @@ function AppInner() {
             )}
           </NavLink>
         )}
+        <NavLink to="/wiki"          className={({ isActive }) => isActive ? styles.active : ''}>Wiki</NavLink>
         <NavLink to="/configuracoes" className={({ isActive }) => isActive ? styles.active : ''}>Config</NavLink>
         {isGM && (
           <NavLink to="/backstage"  className={({ isActive }) => isActive ? styles.active : ''}>Backstage</NavLink>
@@ -396,6 +398,7 @@ function AppInner() {
             <Route path="/backstage" element={<BackstagePage state={state} onUpdate={onUpdateLocal} />} />
             <Route path="/digivice"  element={<DigivicePage  state={state} onUpdate={onUpdateLocal} profile={profile} isGM={isGM} />} />
             <Route path="/digizap"   element={<DigiZapPage   state={state} profile={profile} isGM={isGM} onUnreadChange={setDigizapUnread} />} />
+            <Route path="/wiki"          element={<WikiPage      state={state} isGM={isGM} />} />
             <Route path="/view"          element={<ViewerPage    state={state} />} />
             <Route path="/configuracoes" element={<SettingsPage />} />
           </Routes>

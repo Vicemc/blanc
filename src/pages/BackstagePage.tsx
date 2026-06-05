@@ -17,6 +17,7 @@ import type { SheetSubject } from '../components/Sheet'
 import { BASE_KEYWORDS, BASE_CONDITIONS, getEffectiveClimas, groupBy } from '../data/rulesData'
 import { findTamer, findDigimon, findBug, DIGIMON_DEFAULT_IMAGES, getVisLevel, setVisibility } from '../data/store'
 import { findSurvivor } from '../data/domain'
+import WikiSection from '../components/wiki/WikiSection'
 
 interface Props {
   state:    AppState
@@ -1882,7 +1883,7 @@ function DashboardSection({ state, onUpdate }: { state: AppState; onUpdate: (s: 
 
 // ── BackstagePage ─────────────────────────────────────────────────────────────
 
-type Tab = 'dashboard' | 'usuarios' | 'fichas' | 'skilltree' | 'regras' | 'visibilidade' | 'gm'
+type Tab = 'dashboard' | 'usuarios' | 'fichas' | 'skilltree' | 'regras' | 'visibilidade' | 'gm' | 'wiki'
 
 export default function BackstagePage({ state, onUpdate }: Props) {
   const { isGM } = useAuth()
@@ -1907,6 +1908,7 @@ export default function BackstagePage({ state, onUpdate }: Props) {
     { id: 'regras',      label: 'Regras'       },
     { id: 'visibilidade', label: 'Visibilidade' },
     { id: 'gm',          label: 'GM'           },
+    { id: 'wiki',        label: 'Wiki'         },
   ]
 
   return (
@@ -1950,6 +1952,7 @@ export default function BackstagePage({ state, onUpdate }: Props) {
         {tab === 'regras'       && <RulesSection      state={state} onUpdate={onUpdate} />}
         {tab === 'visibilidade' && <VisibilitySection state={state} onUpdate={onUpdate} />}
         {tab === 'gm'           && <GMSection         state={state} />}
+        {tab === 'wiki'         && <WikiSection       state={state} onUpdate={onUpdate} />}
       </div>
     </div>
   )
