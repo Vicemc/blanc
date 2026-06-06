@@ -254,21 +254,31 @@ export async function seedWikiPages(state: AppState): Promise<{ created: number;
 
   for (const line of state.bestiary) {
     if (!line.tamerId) continue
-    if (existingMap.has(`digimon:${line.id}`)) continue
-    const stageName = line.stages[line.currentStage]?.stageName ?? line.name
-    toInsert.push({
-      campaign_id:    CAMPAIGN,
-      title:          stageName,
-      category:       'digimons',
-      body:           '',
-      avatar_url:     null,
-      visibility:     'full',
-      linked_type:    'digimon',
-      linked_id:      line.id,
-      status:         'approved',
-      author_id:      null,
-      owner_tamer_id: null,
-    })
+    const key = `digimon:${line.id}`
+    const stage = line.stages[line.currentStage]
+    const stageName = stage?.stageName ?? line.name
+    const rawImage = stage?.image ?? line.image ?? null
+    const avatarUrl = rawImage && !rawImage.startsWith('data:') ? rawImage : null
+    const row = existingMap.get(key)
+    if (!row) {
+      toInsert.push({
+        campaign_id:    CAMPAIGN,
+        title:          stageName,
+        category:       'digimons',
+        body:           '',
+        avatar_url:     avatarUrl,
+        visibility:     'full',
+        linked_type:    'digimon',
+        linked_id:      line.id,
+        status:         'approved',
+        author_id:      null,
+        owner_tamer_id: null,
+      })
+    } else if (avatarUrl && !row.avatar_url) {
+      avatarUpdates.push(
+        supabase.from('wiki_pages').update({ avatar_url: avatarUrl }).eq('id', row.id)
+      )
+    }
   }
 
   for (const survivor of (state.survivors ?? [])) {
