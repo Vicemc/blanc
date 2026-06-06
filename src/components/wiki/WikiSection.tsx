@@ -11,14 +11,14 @@ import {
 import { uploadImage } from '../../lib/db/storage'
 import { SheetModal } from '../Sheet'
 import type { SheetSubject } from '../Sheet'
-import WikiGraph from './WikiGraph'
+// import WikiGraph from './WikiGraph'
 
 interface Props {
   state:    AppState
   onUpdate: (s: AppState) => void
 }
 
-type WikiTab = 'paginas' | 'aprovacoes' | 'grafo'
+type WikiTab = 'paginas' | 'aprovacoes'
 
 const VISIBILITY_LABELS: Record<WikiVisibility, string> = {
   hidden: 'Oculto',
@@ -443,7 +443,6 @@ export default function WikiSection({ state, onUpdate }: Props) {
   const SUB_TABS: { id: WikiTab; label: string; badge?: number }[] = [
     { id: 'paginas',    label: 'Páginas' },
     { id: 'aprovacoes', label: 'Aprovações', badge: pendingCount || undefined },
-    { id: 'grafo',      label: 'Grafo' },
   ]
 
   return (
@@ -771,17 +770,6 @@ export default function WikiSection({ state, onUpdate }: Props) {
         </div>
       )}
 
-      {/* ── Grafo ── */}
-      {wikiTab === 'grafo' && (
-        <WikiGraph
-          pages={pages}
-          relations={relations}
-          isGM
-          onNodeClick={page => {
-            if (editing !== page) setEditing(page)
-          }}
-        />
-      )}
 
       {/* SheetModal para fichas vinculadas */}
       {sheetOpen && (
