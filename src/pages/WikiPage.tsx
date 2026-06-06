@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react'
+import { useSettings } from '../lib/settings'
 import { useAuth } from '../components/AuthProvider'
 import type { AppState } from '../types'
 import type { WikiPage as WikiPageType, WikiPageEdit, WikiRelation, WikiCategory, WikiVisibility } from '../types/wiki'
@@ -159,6 +160,7 @@ function PlayerContribModal({ mode, onSubmitEdit, onSubmitNew, onClose, submitte
 
 export default function WikiPage({ state, isGM }: Props) {
   const { session, profile } = useAuth()
+  const { isTaglineHidden } = useSettings()
   const [pages,        setPages]        = useState<WikiPageType[]>([])
   const [relations,    setRelations]    = useState<WikiRelation[]>([])
   const [catFilter,    setCatFilter]    = useState<WikiCategory | 'all'>('all')
@@ -242,15 +244,17 @@ export default function WikiPage({ state, isGM }: Props) {
     <div style={{ maxWidth: 960, margin: '0 auto', paddingBottom: 80 }}>
       {/* Header */}
       <div style={{ padding: '28px 56px 0', display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between' }}>
-        <div>
+        <div style={{ marginBottom: isTaglineHidden('wiki') ? 24 : 0 }}>
           <h1 style={{ fontFamily: 'var(--font-display)', fontSize: 42,
             textTransform: 'uppercase', letterSpacing: '-0.02em', margin: '0 0 4px' }}>
             Wiki
           </h1>
-          <div style={{ fontFamily: 'var(--font-serif)', fontStyle: 'italic',
-            fontSize: 18, color: 'var(--ink-soft)', marginBottom: 24 }}>
-            ~ enciclopédia do mundo ~
-          </div>
+          {!isTaglineHidden('wiki') && (
+            <div style={{ fontFamily: 'var(--font-serif)', fontStyle: 'italic',
+              fontSize: 18, color: 'var(--ink-soft)', marginBottom: 24 }}>
+              ~ enciclopédia do mundo ~
+            </div>
+          )}
         </div>
         {!isGM && userId && (
           <button onClick={() => { setPlayerModal({ kind: 'new' }); setSubmitted(false) }}

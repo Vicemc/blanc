@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
+import { useSettings } from '../lib/settings'
 import type { GameMap, MapLayer, MapPin, MapVisibility } from '../types/map'
 import type { WikiPage } from '../types/wiki'
 import { listMaps, saveMap, deleteMap, listLayers, listPins } from '../lib/db/maps'
@@ -142,6 +143,7 @@ function MapViewer({ map, allMaps, wikiPages, isGM, onBack, onOpenMap, onMapChan
 // ── MapPage principal ─────────────────────────────────────────────────────────
 
 export default function MapPage({ isGM }: Props) {
+  const { isTaglineHidden } = useSettings()
   const [maps,       setMaps]       = useState<GameMap[]>([])
   const [wikiPages,  setWikiPages]  = useState<WikiPage[]>([])
   const [openMapId,  setOpenMapId]  = useState<string | null>(null)
@@ -224,7 +226,7 @@ export default function MapPage({ isGM }: Props) {
           textTransform: 'uppercase', letterSpacing: '-0.02em', margin: '0 0 4px' }}>
           Mapas
         </h1>
-        {!openMap && (
+        {!openMap && !isTaglineHidden('mapas') && (
           <div style={{ fontFamily: 'var(--font-serif)', fontStyle: 'italic',
             fontSize: 18, color: 'var(--ink-soft)', marginBottom: 24 }}>
             ~ mapas interativos do mundo ~

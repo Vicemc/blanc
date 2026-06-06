@@ -8,6 +8,8 @@ const PAGE_OPTIONS = [
   { id: 'teatro',    label: 'Teatro'      },
   { id: 'sistema',   label: 'Sistema'     },
   { id: 'backstage', label: 'Backstage'   },
+  { id: 'wiki',      label: 'Wiki'        },
+  { id: 'mapas',     label: 'Mapas'       },
 ]
 
 const row: React.CSSProperties = {
