@@ -2,12 +2,14 @@
 // Interface do Digivice por usuário: ficha, inventário, records, mapas.
 // GM vê todos os Digivices; player vê só o próprio.
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, lazy, Suspense } from 'react'
 import type { AppState } from '../types'
 import type { UserProfile } from '../lib/auth'
 import { supabase } from '../lib/supabase'
 import { SheetModal } from '../components/Sheet'
 import { GrainFill } from '../components/GrainFill'
+
+const MapPage = lazy(() => import('./MapPage'))
 
 interface Props {
   state:   AppState
@@ -657,6 +659,7 @@ function MapsTab({ maps, isGM, onSave }: {
   isGM:   boolean
   onSave: (maps: DigiMap[]) => void
 }) {
+  const [mapMode, setMapMode] = useState<'pessoal' | 'mundo'>('pessoal')
   const [adding, setAdding] = useState(false)
   const [draft, setDraft]   = useState({ title: '', notes: '', image_path: '' })
   const [viewing, setViewing] = useState<DigiMap | null>(null)
@@ -676,6 +679,35 @@ function MapsTab({ maps, isGM, onSave }: {
 
   return (
     <div>
+      {/* Toggle Pessoal / Mundo */}
+      <div style={{ display: 'flex', gap: 6, marginBottom: 18 }}>
+        {(['pessoal', 'mundo'] as const).map(mode => (
+          <button key={mode} onClick={() => setMapMode(mode)}
+            style={{ padding: '7px 18px', borderRadius: 999, border: 'none',
+              background: mapMode === mode ? 'var(--ink)' : 'var(--paper-deep)',
+              color: mapMode === mode ? 'var(--paper)' : 'var(--ink-soft)',
+              fontFamily: 'var(--font-mono)', fontSize: 11, cursor: 'pointer',
+              letterSpacing: '0.1em', textTransform: 'uppercase' }}>
+            {mode === 'pessoal' ? 'Pessoal' : 'Mundo'}
+          </button>
+        ))}
+      </div>
+
+      {/* ── Mundo: MapPage embarcado ── */}
+      {mapMode === 'mundo' && (
+        <Suspense fallback={
+          <div style={{ padding: '40px 0', textAlign: 'center',
+            fontFamily: 'var(--font-mono)', fontSize: 12, color: 'var(--ink-mute)',
+            letterSpacing: '0.12em' }}>
+            Carregando...
+          </div>
+        }>
+          <MapPage isGM={isGM} />
+        </Suspense>
+      )}
+
+      {/* ── Pessoal: galeria original ── */}
+      {mapMode === 'pessoal' && (<>
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(180px,1fr))',
         gap: 10, marginBottom: 16 }}>
         {maps.map(m => (
@@ -783,6 +815,7 @@ function MapsTab({ maps, isGM, onSave }: {
           </div>
         </div>
       )}
+      </>)} {/* fim mapMode === 'pessoal' */}
     </div>
   )
 }
