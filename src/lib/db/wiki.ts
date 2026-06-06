@@ -206,35 +206,55 @@ export async function seedWikiPages(state: AppState): Promise<{ created: number;
 
   const { data: existing } = await supabase
     .from('wiki_pages')
-    .select('linked_type, linked_id')
+    .select('id, linked_type, linked_id, avatar_url')
     .eq('campaign_id', CAMPAIGN)
 
-  const existingSet = new Set(
-    (existing ?? []).map((r: any) => `${r.linked_type}:${r.linked_id}`)
-  )
+  type ExistingRow = { id: string; linked_type: string; linked_id: string; avatar_url: string | null }
+  const existingRows: ExistingRow[] = (existing ?? []) as ExistingRow[]
+  const existingMap = new Map(existingRows.map(r => [`${r.linked_type}:${r.linked_id}`, r]))
+
+  // Build lookup: linkedKey → avatar URL from current state
+  const avatarByKey = new Map<string, string | null>()
+  for (const tamer of state.tamers) {
+    const url = tamer.image && !tamer.image.startsWith('data:') ? tamer.image : null
+    avatarByKey.set(`tamer:${tamer.id}`, url)
+  }
+  for (const sv of (state.survivors ?? [])) {
+    const url = sv.image && !sv.image.startsWith('data:') ? sv.image : null
+    avatarByKey.set(`survivor:${sv.id}`, url)
+  }
 
   const toInsert: Record<string, unknown>[] = []
+  const avatarUpdates: PromiseLike<unknown>[] = []
 
   for (const tamer of state.tamers) {
-    if (existingSet.has(`tamer:${tamer.id}`)) continue
-    toInsert.push({
-      campaign_id:    CAMPAIGN,
-      title:          `${tamer.name} ${tamer.surname}`.trim(),
-      category:       'humanos',
-      body:           '',
-      avatar_url:     null,
-      visibility:     'full',
-      linked_type:    'tamer',
-      linked_id:      tamer.id,
-      status:         'approved',
-      author_id:      null,
-      owner_tamer_id: PC_TAMER_IDS.has(tamer.id) ? tamer.id : null,
-    })
+    const key = `tamer:${tamer.id}`
+    const row = existingMap.get(key)
+    const avatarUrl = avatarByKey.get(key) ?? null
+    if (!row) {
+      toInsert.push({
+        campaign_id:    CAMPAIGN,
+        title:          `${tamer.name} ${tamer.surname}`.trim(),
+        category:       'humanos',
+        body:           '',
+        avatar_url:     avatarUrl,
+        visibility:     'full',
+        linked_type:    'tamer',
+        linked_id:      tamer.id,
+        status:         'approved',
+        author_id:      null,
+        owner_tamer_id: PC_TAMER_IDS.has(tamer.id) ? tamer.id : null,
+      })
+    } else if (avatarUrl && !row.avatar_url) {
+      avatarUpdates.push(
+        supabase.from('wiki_pages').update({ avatar_url: avatarUrl }).eq('id', row.id)
+      )
+    }
   }
 
   for (const line of state.bestiary) {
     if (!line.tamerId) continue
-    if (existingSet.has(`digimon:${line.id}`)) continue
+    if (existingMap.has(`digimon:${line.id}`)) continue
     const stageName = line.stages[line.currentStage]?.stageName ?? line.name
     toInsert.push({
       campaign_id:    CAMPAIGN,
@@ -251,15 +271,44 @@ export async function seedWikiPages(state: AppState): Promise<{ created: number;
     })
   }
 
+  for (const survivor of (state.survivors ?? [])) {
+    const key = `survivor:${survivor.id}`
+    const row = existingMap.get(key)
+    const avatarUrl = avatarByKey.get(key) ?? null
+    if (!row) {
+      toInsert.push({
+        campaign_id:    CAMPAIGN,
+        title:          `${survivor.name}${survivor.surname ? ' ' + survivor.surname : ''}`.trim(),
+        category:       'humanos',
+        body:           '',
+        avatar_url:     avatarUrl,
+        visibility:     'full',
+        linked_type:    'survivor',
+        linked_id:      survivor.id,
+        status:         'approved',
+        author_id:      null,
+        owner_tamer_id: null,
+      })
+    } else if (avatarUrl && !row.avatar_url) {
+      avatarUpdates.push(
+        supabase.from('wiki_pages').update({ avatar_url: avatarUrl }).eq('id', row.id)
+      )
+    }
+  }
+
+  if (avatarUpdates.length > 0) await Promise.all(avatarUpdates)
+
+  const partnerCount = state.bestiary.filter(l => !!l.tamerId).length
+  const survivorCount = (state.survivors ?? []).length
+  const totalExpected = state.tamers.length + partnerCount + survivorCount
+
   if (toInsert.length === 0) {
-    const partnerCount = state.bestiary.filter(l => !!l.tamerId).length
-    return { created: 0, skipped: state.tamers.length + partnerCount }
+    return { created: 0, skipped: totalExpected }
   }
 
   const { data } = await supabase.from('wiki_pages').insert(toInsert).select('id')
   const created = (data ?? []).length
-  const partnerCount = state.bestiary.filter(l => !!l.tamerId).length
-  const skipped = (state.tamers.length + partnerCount) - created
+  const skipped = totalExpected - created
 
   return { created, skipped }
 }
