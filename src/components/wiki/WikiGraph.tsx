@@ -1,4 +1,4 @@
-import { useEffect, useRef, useMemo, useCallback } from 'react'
+import { useEffect, useLayoutEffect, useRef, useMemo, useCallback, useState } from 'react'
 import ForceGraph2D from 'react-force-graph-2d'
 import type { ForceGraphMethods } from 'react-force-graph-2d'
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
@@ -112,14 +112,23 @@ export default function WikiGraph({ pages, relations, isGM, onNodeClick }: Props
     return { nodes, links }
   }, [visiblePages, relations, visibleIds])
 
-  // Aplica forças D3 sempre que os dados mudam
+  // Aplica forças D3 na montagem — antes do warmup não é possível via ref,
+  // então aplicamos após e reaquecemos manualmente.
   useEffect(() => {
     const fg = graphRef.current
     if (!fg) return
-    fg.d3Force('charge')?.strength?.(-120)
+    fg.d3Force('charge')?.strength?.(-250)
+    fg.d3Force('link')?.distance?.(80)
     fg.d3Force('collide', forceCollide(
-      (node: any) => Math.sqrt(node.val ?? 4) * 4 + 12
+      (node: any) => Math.sqrt((node as GraphNode).val ?? 4) * 4 + 24
     ))
+    fg.d3ReheatSimulation()
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []) // só na montagem — graphData inicial já está pronto neste ponto
+
+  // Reaquecer quando dados mudam (novo nó/relação adicionado)
+  useEffect(() => {
+    graphRef.current?.d3ReheatSimulation()
   }, [graphData])
 
   const getNodeColor = useCallback((node: GraphNode) => {
@@ -235,8 +244,18 @@ export default function WikiGraph({ pages, relations, isGM, onNodeClick }: Props
     }
   }, [])
 
-  const width  = containerRef.current?.clientWidth  ?? 800
-  const height = containerRef.current?.clientHeight ?? 640
+  const [dims, setDims] = useState({ width: 800, height: 640 })
+  useLayoutEffect(() => {
+    const el = containerRef.current
+    if (!el) return
+    setDims({ width: el.clientWidth, height: el.clientHeight })
+    const ro = new ResizeObserver(() => {
+      setDims({ width: el.clientWidth, height: el.clientHeight })
+    })
+    ro.observe(el)
+    return () => ro.disconnect()
+  }, [])
+  const { width, height } = dims
 
   return (
     <div
@@ -254,10 +273,10 @@ export default function WikiGraph({ pages, relations, isGM, onNodeClick }: Props
         linkCanvasObjectMode={() => 'replace'}
         onNodeClick={handleNodeClick as any}
         nodeLabel={(n: any) => (n as GraphNode).name}
-        cooldownTicks={200}
-        warmupTicks={50}
-        d3AlphaDecay={0.02}
-        d3VelocityDecay={0.25}
+        cooldownTicks={300}
+        d3AlphaDecay={0.015}
+        d3VelocityDecay={0.2}
+        d3AlphaMin={0.001}
       />
     </div>
   )
