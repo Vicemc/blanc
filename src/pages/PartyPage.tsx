@@ -3,7 +3,7 @@ import type { AppState, Tamer, Survivor, VisibilityLevel } from '../types'
 import { PORTRAIT_LIST } from '../types'
 import { findDigimon, makeTamer, makeSlimLine, getVisLevel, setVisibility } from '../data/store'
 import { makeSurvivor } from '../data/domain'
-import { uploadImage, saveStateToDB } from '../lib/db'
+import { uploadImage } from '../lib/db'
 import { PageHead } from '../components/PageHead'
 import { GrainFill } from '../components/GrainFill'
 import { SheetModal } from '../components/Sheet'
@@ -339,20 +339,16 @@ export default function PartyPage({ state, onUpdate, canEdit, isGM }: Props) {
 
   const handleImageUpload = useCallback(async (tamerId: string, dataUrl: string) => {
     const url = await uploadImage(dataUrl, tamerId)
-    const uploadedToStorage = url != null && !url.startsWith('data:')
-    const imageKey = uploadedToStorage ? (url!.split('/').pop() ?? null) : null
+    const imageKey = url != null && !url.startsWith('data:') ? (url!.split('/').pop() ?? null) : null
     const newState = { ...state, tamers: state.tamers.map(t => t.id === tamerId ? { ...t, image: url ?? dataUrl, imageKey } : t) }
     onUpdate(newState)
-    if (uploadedToStorage) void saveStateToDB(newState)
   }, [state, onUpdate])
 
   const handleSurvivorImageUpload = useCallback(async (svId: string, dataUrl: string) => {
     const url = await uploadImage(dataUrl, svId)
-    const uploadedToStorage = url != null && !url.startsWith('data:')
-    const imageKey = uploadedToStorage ? (url!.split('/').pop() ?? null) : null
+    const imageKey = url != null && !url.startsWith('data:') ? (url!.split('/').pop() ?? null) : null
     const newState = { ...state, survivors: (state.survivors ?? []).map(sv => sv.id === svId ? { ...sv, image: url ?? dataUrl, imageKey } : sv) }
     onUpdate(newState)
-    if (uploadedToStorage) void saveStateToDB(newState)
   }, [state, onUpdate])
 
   const renderTamerCard = (t: Tamer) => {

@@ -6,7 +6,7 @@ import {
   makeEmptyStage, DIGIMON_DEFAULT_IMAGES, getVisLevel,
 } from '../data/store'
 import { findSurvivor } from '../data/domain'
-import { uploadImage, saveStateToDB } from '../lib/db'
+import { uploadImage } from '../lib/db'
 import { useSettings } from '../lib/settings'
 import { GrainFill } from './GrainFill'
 import styles from './Sheet.module.css'
@@ -141,7 +141,6 @@ export function FullSheet({ subject, state, onSaveState, onClose, editable = fal
       const newTamer = { ...tamer, image: url ?? dataUrl, imageKey }
       const newState = { ...state, tamers: state.tamers.map(x => x.id === newTamer.id ? newTamer : x) }
       onSaveState?.(newState)
-      if (toStorage) void saveStateToDB(newState)
     } else if (line) {
       const displayIdx = stageIdx ?? line.currentStage
       const stId = `${line.id}-stage-${displayIdx}`
@@ -154,7 +153,6 @@ export function FullSheet({ subject, state, onSaveState, onClose, editable = fal
       const newLine = { ...line, stages: newStages }
       const newState = { ...state, bestiary: state.bestiary.map(x => x.id === newLine.id ? newLine : x) }
       onSaveState?.(newState)
-      if (toStorage) void saveStateToDB(newState)
     }
     else if (survivor) {
       const url = await uploadImage(dataUrl, survivor.id)
@@ -163,7 +161,6 @@ export function FullSheet({ subject, state, onSaveState, onClose, editable = fal
       const newSurvivor = { ...survivor, image: url ?? dataUrl, imageKey }
       const newState = { ...state, survivors: (state.survivors ?? []).map(x => x.id === newSurvivor.id ? newSurvivor : x) }
       onSaveState?.(newState)
-      if (toStorage) void saveStateToDB(newState)
     }
     else if (bug)  saveBug({ ...bug, image: dataUrl })
     else if (sign) saveSign({ ...sign, image: dataUrl })

@@ -171,17 +171,21 @@ function AppInner() {
     if (saveDebounceRef.current) clearTimeout(saveDebounceRef.current)
     saveDebounceRef.current = setTimeout(() => {
       lastSaveRef.current = Date.now()
-      if (!localMode && !isGM && profile?.tamer_id) {
-        const tamer = s.tamers.find(t => t.id === profile.tamer_id)
-        if (tamer) {
-          const line = s.bestiary.find(l => l.tamerId === profile.tamer_id) ?? null
-          void updateMyTamerAndLine(tamer, line).then(({ ok, error }) => {
-            if (ok) setIsDirty(false)
-            else console.warn('[player save] updateMyTamerAndLine falhou:', error)
-            // Sem fallback para saveStateToDB — write atômico é a única opção segura
-          })
-          return
+      if (!localMode && !isGM) {
+        // Player: só salva via RPC atômico. Sem fallback para saveStateToDB.
+        if (profile?.tamer_id) {
+          const tamer = s.tamers.find(t => t.id === profile.tamer_id)
+          if (tamer) {
+            const line = s.bestiary.find(l => l.tamerId === profile.tamer_id) ?? null
+            void updateMyTamerAndLine(tamer, line).then(({ ok, error }) => {
+              if (ok) setIsDirty(false)
+              else console.warn('[player save] updateMyTamerAndLine falhou:', error)
+            })
+          }
         }
+        // Sem tamer_id ou tamer não encontrado: não persiste no DB.
+        // O GM é a fonte autoritativa do estado global.
+        return
       }
       void saveStateToDB(s).then(() => setIsDirty(false))
     }, 1500)
@@ -190,16 +194,19 @@ function AppInner() {
   const handleSave = useCallback(async () => {
     if (!isDirty) return
     setIsSaving(true)
-    if (!localMode && !isGM && profile?.tamer_id) {
-      const tamer = state.tamers.find(t => t.id === profile.tamer_id)
-      if (tamer) {
-        const line = state.bestiary.find(l => l.tamerId === profile.tamer_id) ?? null
-        const { ok, error } = await updateMyTamerAndLine(tamer, line)
-        if (ok) setIsDirty(false)
-        else console.warn('[player save] handleSave updateMyTamerAndLine falhou:', error)
-        setIsSaving(false)
-        return
+    if (!localMode && !isGM) {
+      // Player: só salva via RPC atômico. Sem fallback para saveStateToDB.
+      if (profile?.tamer_id) {
+        const tamer = state.tamers.find(t => t.id === profile.tamer_id)
+        if (tamer) {
+          const line = state.bestiary.find(l => l.tamerId === profile.tamer_id) ?? null
+          const { ok, error } = await updateMyTamerAndLine(tamer, line)
+          if (ok) setIsDirty(false)
+          else console.warn('[player save] handleSave updateMyTamerAndLine falhou:', error)
+        }
       }
+      setIsSaving(false)
+      return
     }
     await saveStateToDB(state)
     setIsDirty(false)
