@@ -15,6 +15,8 @@ export type WikiVisibility = 'hidden' | 'name' | 'full'
 
 export type WikiLinkedType = 'tamer' | 'digimon' | 'survivor' | 'bug' | 'sign' | 'item'
 
+export type WikiPageStatus = 'approved' | 'pending'
+
 export interface WikiPage {
   id: string
   campaign_id: string
@@ -25,8 +27,22 @@ export interface WikiPage {
   visibility: WikiVisibility
   linked_type: WikiLinkedType | null
   linked_id: string | null
+  status: WikiPageStatus
+  author_id: string | null
   created_at: string
   updated_at: string
+}
+
+export interface WikiPageEdit {
+  id: string
+  page_id: string
+  campaign_id: string
+  author_id: string | null
+  title: string
+  body: string
+  category: WikiCategory
+  status: 'pending' | 'approved' | 'rejected'
+  created_at: string
 }
 
 export interface WikiRelation {

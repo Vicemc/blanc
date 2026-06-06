@@ -1,10 +1,11 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react'
 import type { AppState } from '../../types'
-import type { WikiPage, WikiRelation, WikiCategory, WikiVisibility } from '../../types/wiki'
+import type { WikiPage, WikiPageEdit, WikiRelation, WikiCategory, WikiVisibility } from '../../types/wiki'
 import { WIKI_CATEGORIES } from '../../types/wiki'
 import {
   listWikiPages, saveWikiPage, deleteWikiPage, setWikiPageVisibility,
   listWikiRelations, saveWikiRelation, deleteWikiRelation,
+  listPendingEdits, approveWikiEdit, rejectWikiEdit, approveWikiPage, rejectWikiPage,
 } from '../../lib/db/wiki'
 import { uploadImage } from '../../lib/db/storage'
 import { SheetModal } from '../Sheet'
@@ -16,7 +17,7 @@ interface Props {
   onUpdate: (s: AppState) => void
 }
 
-type WikiTab = 'paginas' | 'grafo'
+type WikiTab = 'paginas' | 'aprovacoes' | 'grafo'
 
 const VISIBILITY_LABELS: Record<WikiVisibility, string> = {
   hidden: 'Oculto',
@@ -319,17 +320,21 @@ function RelationManager({ pages, relations, onAdd, onDelete }: RelationManagerP
 // ── WikiSection principal ─────────────────────────────────────────────────────
 
 export default function WikiSection({ state, onUpdate }: Props) {
-  const [pages,     setPages]     = useState<WikiPage[]>([])
-  const [relations, setRelations] = useState<WikiRelation[]>([])
-  const [wikiTab,   setWikiTab]   = useState<WikiTab>('paginas')
-  const [catFilter, setCatFilter] = useState<WikiCategory | 'all'>('all')
-  const [editing,   setEditing]   = useState<WikiPage | null | 'new'>(null)
-  const [sheetOpen, setSheetOpen] = useState<SheetSubject | null>(null)
-  const [loading,   setLoading]   = useState(true)
+  const [pages,        setPages]        = useState<WikiPage[]>([])
+  const [relations,    setRelations]    = useState<WikiRelation[]>([])
+  const [pendingEdits, setPendingEdits] = useState<WikiPageEdit[]>([])
+  const [wikiTab,      setWikiTab]      = useState<WikiTab>('paginas')
+  const [catFilter,    setCatFilter]    = useState<WikiCategory | 'all'>('all')
+  const [editing,      setEditing]      = useState<WikiPage | null | 'new'>(null)
+  const [sheetOpen,    setSheetOpen]    = useState<SheetSubject | null>(null)
+  const [loading,      setLoading]      = useState(true)
 
   useEffect(() => {
-    Promise.all([listWikiPages(), listWikiRelations()]).then(([p, r]) => {
-      setPages(p); setRelations(r); setLoading(false)
+    Promise.all([listWikiPages(), listWikiRelations(), listPendingEdits()]).then(([p, r, edits]) => {
+      setPages(p as WikiPage[])
+      setRelations(r as WikiRelation[])
+      setPendingEdits(edits as WikiPageEdit[])
+      setLoading(false)
     })
   }, [])
 
@@ -361,6 +366,32 @@ export default function WikiSection({ state, onUpdate }: Props) {
     setRelations(prev => prev.filter(r => r.id !== id))
   }
 
+  const handleApproveEdit = async (edit: WikiPageEdit) => {
+    const updated = await approveWikiEdit(edit)
+    if (updated) {
+      setPages(prev => prev.map(p => p.id === updated.id ? updated : p))
+      setPendingEdits(prev => prev.filter(e => e.id !== edit.id))
+    }
+  }
+
+  const handleRejectEdit = async (editId: string) => {
+    await rejectWikiEdit(editId)
+    setPendingEdits(prev => prev.filter(e => e.id !== editId))
+  }
+
+  const handleApprovePage = async (pageId: string) => {
+    await approveWikiPage(pageId)
+    setPages(prev => prev.map(p => p.id === pageId ? { ...p, status: 'approved' } : p))
+  }
+
+  const handleRejectPage = async (pageId: string) => {
+    await rejectWikiPage(pageId)
+    setPages(prev => prev.filter(p => p.id !== pageId))
+  }
+
+  const pendingPages = pages.filter(p => p.status === 'pending')
+  const pendingCount = pendingPages.length + pendingEdits.length
+
   const openSheet = (page: WikiPage) => {
     if (!page.linked_type || !page.linked_id) return
     const kind = page.linked_type === 'tamer'    ? 'tamer'
@@ -376,9 +407,10 @@ export default function WikiSection({ state, onUpdate }: Props) {
     </div>
   )
 
-  const SUB_TABS: { id: WikiTab; label: string }[] = [
-    { id: 'paginas', label: 'Páginas' },
-    { id: 'grafo',   label: 'Grafo' },
+  const SUB_TABS: { id: WikiTab; label: string; badge?: number }[] = [
+    { id: 'paginas',    label: 'Páginas' },
+    { id: 'aprovacoes', label: 'Aprovações', badge: pendingCount || undefined },
+    { id: 'grafo',      label: 'Grafo' },
   ]
 
   return (
@@ -391,8 +423,15 @@ export default function WikiSection({ state, onUpdate }: Props) {
               background: wikiTab === t.id ? 'var(--ink)' : 'var(--paper-deep)',
               color: wikiTab === t.id ? 'var(--paper)' : 'var(--ink-soft)',
               fontFamily: 'var(--font-mono)', fontSize: 11, cursor: 'pointer',
-              letterSpacing: '0.1em', textTransform: 'uppercase' }}>
+              letterSpacing: '0.1em', textTransform: 'uppercase',
+              display: 'flex', alignItems: 'center', gap: 6 }}>
             {t.label}
+            {t.badge ? (
+              <span style={{ background: 'var(--coral)', color: '#fff', borderRadius: 999,
+                padding: '1px 6px', fontSize: 10, fontFamily: 'var(--font-mono)' }}>
+                {t.badge}
+              </span>
+            ) : null}
           </button>
         ))}
         <div style={{ flex: 1 }} />
@@ -549,6 +588,138 @@ export default function WikiSection({ state, onUpdate }: Props) {
             </div>
           )}
         </>
+      )}
+
+      {/* ── Aprovações ── */}
+      {wikiTab === 'aprovacoes' && (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 28 }}>
+          {pendingCount === 0 && (
+            <div style={{ fontFamily: 'var(--font-serif)', fontStyle: 'italic',
+              color: 'var(--ink-mute)', textAlign: 'center', padding: '40px 0' }}>
+              ~ nenhuma contribuição aguardando aprovação ~
+            </div>
+          )}
+
+          {/* Novas páginas pendentes */}
+          {pendingPages.length > 0 && (
+            <div>
+              <div style={{ fontFamily: 'var(--font-mono)', fontSize: 10, letterSpacing: '0.14em',
+                textTransform: 'uppercase', color: 'var(--ink-mute)', marginBottom: 14 }}>
+                Novas páginas ({pendingPages.length})
+              </div>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+                {pendingPages.map(page => (
+                  <div key={page.id} style={{ padding: '16px 20px', background: 'var(--paper-deep)',
+                    border: '1px solid var(--wheat)', borderRadius: 10 }}>
+                    <div style={{ display: 'flex', alignItems: 'flex-start', gap: 16 }}>
+                      <div style={{ flex: 1 }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4 }}>
+                          <strong style={{ fontFamily: 'var(--font-display)', fontSize: 14,
+                            textTransform: 'uppercase', letterSpacing: '0.02em' }}>
+                            {page.title}
+                          </strong>
+                          <span style={{ fontFamily: 'var(--font-mono)', fontSize: 10, color: 'var(--ink-mute)',
+                            background: 'var(--paper)', border: '1px solid var(--line-soft)',
+                            borderRadius: 4, padding: '1px 6px' }}>
+                            {WIKI_CATEGORIES.find(c => c.value === page.category)?.label ?? page.category}
+                          </span>
+                        </div>
+                        {page.body && (
+                          <div style={{ fontFamily: 'var(--font-body)', fontSize: 13,
+                            color: 'var(--ink-soft)', lineHeight: 1.6,
+                            maxHeight: 120, overflow: 'hidden' }}>
+                            {page.body.replace(/[#*_]/g, '').slice(0, 300)}
+                            {page.body.length > 300 ? '…' : ''}
+                          </div>
+                        )}
+                      </div>
+                      <div style={{ display: 'flex', gap: 8, flexShrink: 0 }}>
+                        <button onClick={() => handleApprovePage(page.id)}
+                          style={{ padding: '6px 16px', borderRadius: 999, border: 'none',
+                            background: 'var(--teal)', color: '#fff',
+                            fontFamily: 'var(--font-mono)', fontSize: 11, cursor: 'pointer',
+                            letterSpacing: '0.08em' }}>
+                          Aprovar
+                        </button>
+                        <button onClick={() => handleRejectPage(page.id)}
+                          style={{ padding: '6px 16px', borderRadius: 999,
+                            border: '1px solid var(--coral)', background: 'transparent', color: 'var(--coral)',
+                            fontFamily: 'var(--font-mono)', fontSize: 11, cursor: 'pointer',
+                            letterSpacing: '0.08em' }}>
+                          Rejeitar
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Edições pendentes */}
+          {pendingEdits.length > 0 && (
+            <div>
+              <div style={{ fontFamily: 'var(--font-mono)', fontSize: 10, letterSpacing: '0.14em',
+                textTransform: 'uppercase', color: 'var(--ink-mute)', marginBottom: 14 }}>
+                Edições de páginas existentes ({pendingEdits.length})
+              </div>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+                {pendingEdits.map(edit => {
+                  const originalPage = pages.find(p => p.id === edit.page_id)
+                  return (
+                    <div key={edit.id} style={{ padding: '16px 20px', background: 'var(--paper-deep)',
+                      border: '1px solid var(--wheat)', borderRadius: 10 }}>
+                      <div style={{ fontFamily: 'var(--font-mono)', fontSize: 10, color: 'var(--wheat)',
+                        letterSpacing: '0.1em', marginBottom: 10 }}>
+                        edição de: {originalPage?.title ?? edit.page_id}
+                      </div>
+                      <div style={{ display: 'flex', alignItems: 'flex-start', gap: 16 }}>
+                        <div style={{ flex: 1, display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+                          <div>
+                            <div style={{ fontFamily: 'var(--font-mono)', fontSize: 9,
+                              color: 'var(--ink-mute)', letterSpacing: '0.1em', marginBottom: 6 }}>
+                              ORIGINAL
+                            </div>
+                            <div style={{ fontFamily: 'var(--font-body)', fontSize: 12,
+                              color: 'var(--ink-mute)', lineHeight: 1.5, maxHeight: 100, overflow: 'hidden' }}>
+                              {originalPage?.body?.replace(/[#*_]/g, '').slice(0, 200) ?? '—'}
+                            </div>
+                          </div>
+                          <div>
+                            <div style={{ fontFamily: 'var(--font-mono)', fontSize: 9,
+                              color: 'var(--teal)', letterSpacing: '0.1em', marginBottom: 6 }}>
+                              PROPOSTA
+                            </div>
+                            <div style={{ fontFamily: 'var(--font-body)', fontSize: 12,
+                              color: 'var(--ink-soft)', lineHeight: 1.5, maxHeight: 100, overflow: 'hidden' }}>
+                              {edit.body.replace(/[#*_]/g, '').slice(0, 200)}
+                            </div>
+                          </div>
+                        </div>
+                        <div style={{ display: 'flex', gap: 8, flexShrink: 0 }}>
+                          <button onClick={() => handleApproveEdit(edit)}
+                            style={{ padding: '6px 16px', borderRadius: 999, border: 'none',
+                              background: 'var(--teal)', color: '#fff',
+                              fontFamily: 'var(--font-mono)', fontSize: 11, cursor: 'pointer',
+                              letterSpacing: '0.08em' }}>
+                            Aplicar
+                          </button>
+                          <button onClick={() => handleRejectEdit(edit.id)}
+                            style={{ padding: '6px 16px', borderRadius: 999,
+                              border: '1px solid var(--coral)', background: 'transparent', color: 'var(--coral)',
+                              fontFamily: 'var(--font-mono)', fontSize: 11, cursor: 'pointer',
+                              letterSpacing: '0.08em' }}>
+                            Rejeitar
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                  )
+                })}
+              </div>
+            </div>
+          )}
+        </div>
       )}
 
       {/* ── Grafo ── */}
