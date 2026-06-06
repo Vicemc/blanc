@@ -1,5 +1,6 @@
 import { supabase, isSupabaseReady } from '../supabase'
 import type { WikiPage, WikiPageEdit, WikiRelation, WikiCategory, WikiVisibility, WikiLinkedType } from '../../types/wiki'
+import type { AppState } from '../../types'
 
 const CAMPAIGN = 'midnight-summer'
 
@@ -25,10 +26,11 @@ export async function saveWikiPage(page: Partial<WikiPage> & { title: string; ca
     body:        page.body ?? '',
     avatar_url:  page.avatar_url ?? null,
     visibility:  page.visibility ?? 'hidden',
-    linked_type: page.linked_type ?? null,
-    linked_id:   page.linked_id ?? null,
-    status:      page.status ?? 'approved',
-    updated_at:  new Date().toISOString(),
+    linked_type:    page.linked_type ?? null,
+    linked_id:      page.linked_id ?? null,
+    status:         page.status ?? 'approved',
+    owner_tamer_id: page.owner_tamer_id ?? null,
+    updated_at:     new Date().toISOString(),
   }
 
   if (page.id) {
@@ -193,4 +195,71 @@ export async function saveWikiRelation(relation: Omit<WikiRelation, 'id' | 'camp
 export async function deleteWikiRelation(id: string): Promise<void> {
   if (!isSupabaseReady || !supabase) return
   await supabase.from('wiki_relations').delete().eq('id', id)
+}
+
+// ── Seed de páginas de personagens ────────────────────────────────────────────
+
+const PC_TAMER_IDS = new Set(['t-naoki', 't-mori', 't-miki', 't-yuri', 't-eisuke', 't-sachi'])
+
+export async function seedWikiPages(state: AppState): Promise<{ created: number; skipped: number }> {
+  if (!isSupabaseReady || !supabase) return { created: 0, skipped: 0 }
+
+  const { data: existing } = await supabase
+    .from('wiki_pages')
+    .select('linked_type, linked_id')
+    .eq('campaign_id', CAMPAIGN)
+
+  const existingSet = new Set(
+    (existing ?? []).map((r: any) => `${r.linked_type}:${r.linked_id}`)
+  )
+
+  const toInsert: Record<string, unknown>[] = []
+
+  for (const tamer of state.tamers) {
+    if (existingSet.has(`tamer:${tamer.id}`)) continue
+    toInsert.push({
+      campaign_id:    CAMPAIGN,
+      title:          `${tamer.name} ${tamer.surname}`.trim(),
+      category:       'humanos',
+      body:           '',
+      avatar_url:     null,
+      visibility:     'full',
+      linked_type:    'tamer',
+      linked_id:      tamer.id,
+      status:         'approved',
+      author_id:      null,
+      owner_tamer_id: PC_TAMER_IDS.has(tamer.id) ? tamer.id : null,
+    })
+  }
+
+  for (const line of state.bestiary) {
+    if (!line.tamerId) continue
+    if (existingSet.has(`digimon:${line.id}`)) continue
+    const stageName = line.stages[line.currentStage]?.stageName ?? line.name
+    toInsert.push({
+      campaign_id:    CAMPAIGN,
+      title:          stageName,
+      category:       'digimons',
+      body:           '',
+      avatar_url:     null,
+      visibility:     'full',
+      linked_type:    'digimon',
+      linked_id:      line.id,
+      status:         'approved',
+      author_id:      null,
+      owner_tamer_id: null,
+    })
+  }
+
+  if (toInsert.length === 0) {
+    const partnerCount = state.bestiary.filter(l => !!l.tamerId).length
+    return { created: 0, skipped: state.tamers.length + partnerCount }
+  }
+
+  const { data } = await supabase.from('wiki_pages').insert(toInsert).select('id')
+  const created = (data ?? []).length
+  const partnerCount = state.bestiary.filter(l => !!l.tamerId).length
+  const skipped = (state.tamers.length + partnerCount) - created
+
+  return { created, skipped }
 }

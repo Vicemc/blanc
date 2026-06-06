@@ -6,6 +6,7 @@ import {
   listWikiPages, saveWikiPage, deleteWikiPage, setWikiPageVisibility,
   listWikiRelations, saveWikiRelation, deleteWikiRelation,
   listPendingEdits, approveWikiEdit, rejectWikiEdit, approveWikiPage, rejectWikiPage,
+  seedWikiPages,
 } from '../../lib/db/wiki'
 import { uploadImage } from '../../lib/db/storage'
 import { SheetModal } from '../Sheet'
@@ -64,8 +65,9 @@ function WikiPageForm({ initial, onSave, onCancel, state }: EditFormProps) {
   const [body,       setBody]       = useState(initial?.body       ?? '')
   const [avatarUrl,  setAvatarUrl]  = useState(initial?.avatar_url ?? null as string | null)
   const [visibility, setVisibility] = useState<WikiVisibility>(initial?.visibility ?? 'hidden')
-  const [linkedType, setLinkedType] = useState(initial?.linked_type ?? null as string | null)
-  const [linkedId,   setLinkedId]   = useState(initial?.linked_id  ?? null as string | null)
+  const [linkedType,   setLinkedType]   = useState(initial?.linked_type   ?? null as string | null)
+  const [linkedId,     setLinkedId]     = useState(initial?.linked_id    ?? null as string | null)
+  const [ownerTamerId, setOwnerTamerId] = useState(initial?.owner_tamer_id ?? null as string | null)
   const [saving, setSaving] = useState(false)
   const fileRef = useRef<HTMLInputElement>(null)
 
@@ -92,13 +94,14 @@ function WikiPageForm({ initial, onSave, onCancel, state }: EditFormProps) {
     setSaving(true)
     const result = await saveWikiPage({
       ...(initial ?? {}),
-      title: title.trim(),
+      title:          title.trim(),
       category,
       body,
-      avatar_url:  avatarUrl,
+      avatar_url:     avatarUrl,
       visibility,
-      linked_type: (linkedType as any) ?? null,
-      linked_id:   linkedId ?? null,
+      linked_type:    (linkedType as any) ?? null,
+      linked_id:      linkedId ?? null,
+      owner_tamer_id: ownerTamerId ?? null,
     })
     setSaving(false)
     if (result) onSave(result)
@@ -210,6 +213,24 @@ function WikiPageForm({ initial, onSave, onCancel, state }: EditFormProps) {
             {allSigns.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
           </select>
         )}
+      </div>
+
+      {/* Dono da página (restrição de edição) */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+        <span style={{ fontFamily: 'var(--font-mono)', fontSize: 11, color: 'var(--ink-mute)',
+          letterSpacing: '0.1em', whiteSpace: 'nowrap' }}>
+          EDIÇÃO RESTRITA A
+        </span>
+        <select value={ownerTamerId ?? ''} onChange={e => setOwnerTamerId(e.target.value || null)}
+          style={{ ...fieldStyle, flex: 1 }}>
+          <option value="">— qualquer player —</option>
+          <option value="t-naoki">Naoki</option>
+          <option value="t-mori">Mori</option>
+          <option value="t-miki">Miki</option>
+          <option value="t-yuri">Yuri</option>
+          <option value="t-eisuke">Eisuke</option>
+          <option value="t-sachi">Sachi</option>
+        </select>
       </div>
 
       {/* Ações */}
@@ -328,6 +349,8 @@ export default function WikiSection({ state, onUpdate }: Props) {
   const [editing,      setEditing]      = useState<WikiPage | null | 'new'>(null)
   const [sheetOpen,    setSheetOpen]    = useState<SheetSubject | null>(null)
   const [loading,      setLoading]      = useState(true)
+  const [seeding,      setSeeding]      = useState(false)
+  const [seedResult,   setSeedResult]   = useState<{ created: number; skipped: number } | null>(null)
 
   useEffect(() => {
     Promise.all([listWikiPages(), listWikiRelations(), listPendingEdits()]).then(([p, r, edits]) => {
@@ -389,6 +412,16 @@ export default function WikiSection({ state, onUpdate }: Props) {
     setPages(prev => prev.filter(p => p.id !== pageId))
   }
 
+  const handleSeed = async () => {
+    if (!confirm('Inicializar páginas de personagens? Páginas existentes não serão duplicadas.')) return
+    setSeeding(true)
+    const result = await seedWikiPages(state)
+    setSeedResult(result)
+    setSeeding(false)
+    const freshPages = await listWikiPages()
+    setPages(freshPages as WikiPage[])
+  }
+
   const pendingPages = pages.filter(p => p.status === 'pending')
   const pendingCount = pendingPages.length + pendingEdits.length
 
@@ -436,13 +469,29 @@ export default function WikiSection({ state, onUpdate }: Props) {
         ))}
         <div style={{ flex: 1 }} />
         {wikiTab === 'paginas' && editing === null && (
-          <button onClick={() => setEditing('new')}
-            style={{ padding: '8px 20px', borderRadius: 999, border: 'none',
-              background: 'var(--coral)', color: '#fff',
-              fontFamily: 'var(--font-mono)', fontSize: 11, cursor: 'pointer',
-              letterSpacing: '0.1em' }}>
-            + Nova Página
-          </button>
+          <>
+            {seedResult && (
+              <span style={{ fontFamily: 'var(--font-mono)', fontSize: 10, color: 'var(--ink-mute)',
+                letterSpacing: '0.08em', alignSelf: 'center' }}>
+                {seedResult.created} criadas · {seedResult.skipped} já existiam
+              </span>
+            )}
+            <button onClick={handleSeed} disabled={seeding}
+              style={{ padding: '8px 18px', borderRadius: 999, border: 'none',
+                background: 'var(--teal)', color: '#fff',
+                fontFamily: 'var(--font-mono)', fontSize: 11,
+                cursor: seeding ? 'wait' : 'pointer', letterSpacing: '0.1em',
+                opacity: seeding ? 0.6 : 1 }}>
+              {seeding ? 'Inicializando...' : 'Inicializar páginas'}
+            </button>
+            <button onClick={() => setEditing('new')}
+              style={{ padding: '8px 20px', borderRadius: 999, border: 'none',
+                background: 'var(--coral)', color: '#fff',
+                fontFamily: 'var(--font-mono)', fontSize: 11, cursor: 'pointer',
+                letterSpacing: '0.1em' }}>
+              + Nova Página
+            </button>
+          </>
         )}
       </div>
 

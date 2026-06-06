@@ -158,7 +158,7 @@ function PlayerContribModal({ mode, onSubmitEdit, onSubmitNew, onClose, submitte
 }
 
 export default function WikiPage({ state, isGM }: Props) {
-  const { session } = useAuth()
+  const { session, profile } = useAuth()
   const [pages,        setPages]        = useState<WikiPageType[]>([])
   const [relations,    setRelations]    = useState<WikiRelation[]>([])
   const [catFilter,    setCatFilter]    = useState<WikiCategory | 'all'>('all')
@@ -316,7 +316,10 @@ export default function WikiPage({ state, isGM }: Props) {
                   const isFull = page.visibility === 'full' || isGM
                   const isPending = page.status === 'pending'
                   const hasPendingEdit = !isGM && hasPendingEditFor(page.id)
-                  const canEdit = !isGM && userId && !isPending && isFull && !hasPendingEdit
+                  const ownerOk = page.owner_tamer_id
+                    ? profile?.tamer_id === page.owner_tamer_id
+                    : true
+                  const canEdit = !isGM && userId && !isPending && isFull && !hasPendingEdit && ownerOk
                   return (
                     <div key={page.id}
                       style={{ display: 'flex', flexDirection: 'column', gap: 12,

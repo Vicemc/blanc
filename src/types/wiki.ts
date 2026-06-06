@@ -29,6 +29,7 @@ export interface WikiPage {
   linked_id: string | null
   status: WikiPageStatus
   author_id: string | null
+  owner_tamer_id: string | null
   created_at: string
   updated_at: string
 }
