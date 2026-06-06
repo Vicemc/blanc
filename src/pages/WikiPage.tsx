@@ -2,19 +2,17 @@ import React, { useState, useEffect } from 'react'
 import { useSettings } from '../lib/settings'
 import { useAuth } from '../components/AuthProvider'
 import type { AppState } from '../types'
-import type { WikiPage as WikiPageType, WikiPageEdit, WikiRelation, WikiCategory, WikiVisibility } from '../types/wiki'
+import type { WikiPage as WikiPageType, WikiPageEdit, WikiCategory, WikiVisibility } from '../types/wiki'
 import { WIKI_CATEGORIES } from '../types/wiki'
-import { listWikiPages, listWikiRelations, submitWikiPage, submitWikiPageEdit, listMyPendingEdits } from '../lib/db/wiki'
+import { listWikiPages, submitWikiPage, submitWikiPageEdit, listMyPendingEdits } from '../lib/db/wiki'
 import { SheetModal } from '../components/Sheet'
 import type { SheetSubject } from '../components/Sheet'
-import WikiGraph from '../components/wiki/WikiGraph'
 
 interface Props {
   state:  AppState
   isGM:   boolean
 }
 
-type ViewMode = 'lista' | 'grafo'
 type PlayerModal = { kind: 'new' } | { kind: 'edit'; page: WikiPageType }
 
 function parseMarkdown(text: string): string {
@@ -162,9 +160,7 @@ export default function WikiPage({ state, isGM }: Props) {
   const { session, profile } = useAuth()
   const { isTaglineHidden } = useSettings()
   const [pages,        setPages]        = useState<WikiPageType[]>([])
-  const [relations,    setRelations]    = useState<WikiRelation[]>([])
   const [catFilter,    setCatFilter]    = useState<WikiCategory | 'all'>('all')
-  const [viewMode,     setViewMode]     = useState<ViewMode>('lista')
   const [selected,     setSelected]     = useState<WikiPageType | null>(null)
   const [sheetOpen,    setSheetOpen]    = useState<SheetSubject | null>(null)
   const [loading,      setLoading]      = useState(true)
@@ -175,11 +171,10 @@ export default function WikiPage({ state, isGM }: Props) {
   const userId = session?.user?.id ?? null
 
   useEffect(() => {
-    const loads: Promise<unknown>[] = [listWikiPages(), listWikiRelations()]
+    const loads: Promise<unknown>[] = [listWikiPages()]
     if (userId && !isGM) loads.push(listMyPendingEdits(userId))
-    Promise.all(loads).then(([p, r, edits]) => {
+    Promise.all(loads).then(([p, edits]) => {
       setPages(p as WikiPageType[])
-      setRelations(r as WikiRelation[])
       if (edits) setPendingEdits(edits as WikiPageEdit[])
       setLoading(false)
     })
@@ -270,17 +265,6 @@ export default function WikiPage({ state, isGM }: Props) {
       {/* Controles */}
       <div style={{ display: 'flex', alignItems: 'center', gap: 8,
         padding: '0 56px', marginBottom: 24, flexWrap: 'wrap' }}>
-        {/* View toggles */}
-        {(['lista', 'grafo'] as ViewMode[]).map(v => (
-          <button key={v} onClick={() => setViewMode(v)}
-            style={{ padding: '7px 16px', borderRadius: 999, border: 'none',
-              background: viewMode === v ? 'var(--ink)' : 'var(--paper-deep)',
-              color: viewMode === v ? 'var(--paper)' : 'var(--ink-soft)',
-              fontFamily: 'var(--font-mono)', fontSize: 11, cursor: 'pointer',
-              letterSpacing: '0.1em', textTransform: 'uppercase' }}>
-            {v}
-          </button>
-        ))}
 
         <div style={{ width: 1, height: 20, background: 'var(--line)', margin: '0 4px' }} />
 
@@ -307,8 +291,7 @@ export default function WikiPage({ state, isGM }: Props) {
 
       <div style={{ padding: '0 56px' }}>
         {/* ── Lista ── */}
-        {viewMode === 'lista' && (
-          <>
+        <>
             {visible.length === 0 ? (
               <div style={{ fontFamily: 'var(--font-serif)', fontStyle: 'italic',
                 color: 'var(--ink-mute)', textAlign: 'center', padding: '60px 0' }}>
@@ -436,20 +419,8 @@ export default function WikiPage({ state, isGM }: Props) {
                 )}
               </div>
             )}
-          </>
-        )}
+        </>
 
-        {/* ── Grafo ── */}
-        {viewMode === 'grafo' && (
-          <WikiGraph
-            pages={visible}
-            relations={relations}
-            isGM={isGM}
-            onNodeClick={page => {
-              if (page.visibility === 'full' || isGM) setSelected(page)
-            }}
-          />
-        )}
       </div>
 
       {/* Modal de contribuição do player */}
