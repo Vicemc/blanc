@@ -217,9 +217,18 @@ export async function updateMyTamerAndLine(
   return res?.ok ? { ok: true } : { ok: false, error: res?.reason }
 }
 
-// ÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇ
-// Imagens ÔÇö Supabase Storage
-// ÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇ
+// Atualiza atomicamente só a linha de digimon (sem tamer) — para wilds e digimons de guests.
+// Só o GM pode chamar (verificado no SQL via is_gm()).
+export async function updateDigimonLine(
+  line: import('../../types').DigimonLine,
+): Promise<{ ok: boolean; error?: string }> {
+  if (!isSupabaseReady || !supabase) return { ok: false, error: 'Supabase não configurado' }
+  const slimLine = { ...line, image: null, stages: line.stages.map(st => ({ ...st, image: null })) }
+  const { data, error } = await supabase.rpc('update_digimon_line', { p_line: slimLine })
+  if (error) return { ok: false, error: error.message }
+  const res = data as { ok: boolean; reason?: string }
+  return res?.ok ? { ok: true } : { ok: false, error: res?.reason }
+}
 
 const BUCKET_PORTRAITS = 'portraits'
 
