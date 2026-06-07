@@ -6,7 +6,7 @@ import {
   makeEmptyStage, DIGIMON_DEFAULT_IMAGES, getVisLevel,
 } from '../data/store'
 import { findSurvivor } from '../data/domain'
-import { uploadImage } from '../lib/db'
+import { uploadImage, updateMyTamerAndLine } from '../lib/db'
 import { useSettings } from '../lib/settings'
 import { GrainFill } from './GrainFill'
 import styles from './Sheet.module.css'
@@ -139,8 +139,11 @@ export function FullSheet({ subject, state, onSaveState, onClose, editable = fal
       const toStorage = url != null && !url.startsWith('data:')
       const imageKey = toStorage ? (url!.split('/').pop() ?? null) : null
       const newTamer = { ...tamer, image: url ?? dataUrl, imageKey }
+      // Atualiza UI local via onSaveState
       const newState = { ...state, tamers: state.tamers.map(x => x.id === newTamer.id ? newTamer : x) }
       onSaveState?.(newState)
+      // Persiste atomicamente no JSONB — evita sobrescrever stages do Palco com state stale
+      if (toStorage) void updateMyTamerAndLine(newTamer, line ?? null)
     } else if (line) {
       const displayIdx = stageIdx ?? line.currentStage
       const stId = `${line.id}-stage-${displayIdx}`
@@ -153,6 +156,8 @@ export function FullSheet({ subject, state, onSaveState, onClose, editable = fal
       const newLine = { ...line, stages: newStages }
       const newState = { ...state, bestiary: state.bestiary.map(x => x.id === newLine.id ? newLine : x) }
       onSaveState?.(newState)
+      // Se há tamer vinculado, persiste atomicamente para não sobrescrever stages do Palco
+      if (toStorage && tamer) void updateMyTamerAndLine(tamer, newLine)
     }
     else if (survivor) {
       const url = await uploadImage(dataUrl, survivor.id)
