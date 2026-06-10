@@ -1,0 +1,1081 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Bestiary Builder</title>
+<style>
+  :root {
+    --bg: #0f1117;
+    --surface: #1a1d27;
+    --surface2: #22263a;
+    --border: #2e3348;
+    --text: #e2e8f0;
+    --text-muted: #7a8299;
+    --accent: #6366f1;
+    --accent-hover: #818cf8;
+    --danger: #ef4444;
+    --success: #22c55e;
+    --json-key: #93c5fd;
+    --json-str: #86efac;
+    --json-num: #fbbf24;
+    --json-bool: #f472b6;
+    --json-null: #94a3b8;
+    --radius: 6px;
+    --gap: 12px;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { background: var(--bg); color: var(--text); font-family: 'Segoe UI', system-ui, sans-serif; font-size: 14px; height: 100vh; display: flex; flex-direction: column; overflow: hidden; }
+
+  /* ── HEADER ── */
+  #header { background: var(--surface); border-bottom: 1px solid var(--border); padding: 0 16px; display: flex; align-items: center; gap: 8px; min-height: 48px; flex-shrink: 0; }
+  #header h1 { font-size: 15px; font-weight: 700; color: var(--accent); letter-spacing: .5px; margin-right: 8px; white-space: nowrap; }
+  #tabs { display: flex; gap: 4px; flex: 1; overflow-x: auto; align-items: center; padding: 6px 0; }
+  #tabs::-webkit-scrollbar { height: 4px; } #tabs::-webkit-scrollbar-thumb { background: var(--border); border-radius: 2px; }
+  .tab { display: flex; align-items: center; gap: 6px; background: var(--surface2); border: 1px solid var(--border); border-radius: var(--radius); padding: 4px 10px; cursor: pointer; white-space: nowrap; font-size: 13px; color: var(--text-muted); transition: all .15s; user-select: none; }
+  .tab:hover { border-color: var(--accent); color: var(--text); }
+  .tab.active { background: var(--accent); border-color: var(--accent); color: #fff; font-weight: 600; }
+  .tab .type-badge { font-size: 10px; opacity: .75; text-transform: uppercase; letter-spacing: .5px; }
+  .tab .remove-tab { background: none; border: none; color: inherit; cursor: pointer; font-size: 14px; padding: 0 2px; opacity: .6; line-height: 1; }
+  .tab .remove-tab:hover { opacity: 1; color: var(--danger); }
+  #btn-new { background: var(--surface2); border: 1px dashed var(--border); border-radius: var(--radius); padding: 4px 12px; color: var(--text-muted); cursor: pointer; font-size: 13px; white-space: nowrap; transition: all .15s; }
+  #btn-new:hover { border-color: var(--accent); color: var(--accent); }
+  #btn-download { background: var(--success); border: none; border-radius: var(--radius); padding: 6px 14px; color: #fff; font-weight: 600; cursor: pointer; font-size: 13px; white-space: nowrap; transition: opacity .15s; }
+  #btn-download:hover { opacity: .85; }
+
+  /* ── MAIN SPLIT ── */
+  #main { display: grid; grid-template-columns: 1fr 1fr; flex: 1; overflow: hidden; }
+  #form-pane { overflow-y: auto; padding: 20px; border-right: 1px solid var(--border); }
+  #form-pane::-webkit-scrollbar { width: 6px; } #form-pane::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+  #json-pane { overflow-y: auto; background: #0d0f18; display: flex; flex-direction: column; }
+  #json-pane::-webkit-scrollbar { width: 6px; } #json-pane::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+  #json-header { padding: 10px 16px; border-bottom: 1px solid var(--border); display: flex; align-items: center; justify-content: space-between; flex-shrink: 0; }
+  #json-header span { font-size: 12px; color: var(--text-muted); text-transform: uppercase; letter-spacing: 1px; }
+  #btn-copy { background: var(--surface2); border: 1px solid var(--border); border-radius: var(--radius); padding: 4px 10px; color: var(--text-muted); cursor: pointer; font-size: 12px; transition: all .15s; }
+  #btn-copy:hover { border-color: var(--accent); color: var(--accent); }
+  #json-output { flex: 1; padding: 16px; font-family: 'Cascadia Code', 'Consolas', monospace; font-size: 12.5px; line-height: 1.7; white-space: pre; overflow-x: auto; }
+
+  /* ── EMPTY STATE ── */
+  #empty-state { display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100%; gap: 12px; color: var(--text-muted); }
+  #empty-state .big { font-size: 40px; }
+  #empty-state p { font-size: 14px; }
+
+  /* ── FORM ELEMENTS ── */
+  .section { margin-bottom: 24px; }
+  .section-title { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 1px; color: var(--accent); border-bottom: 1px solid var(--border); padding-bottom: 6px; margin-bottom: 12px; }
+  .field { margin-bottom: 10px; }
+  .field label { display: block; font-size: 12px; color: var(--text-muted); margin-bottom: 4px; }
+  .field input, .field select, .field textarea { width: 100%; background: var(--surface2); border: 1px solid var(--border); border-radius: var(--radius); color: var(--text); padding: 6px 9px; font-size: 13px; font-family: inherit; transition: border-color .15s; outline: none; }
+  .field input:focus, .field select:focus, .field textarea:focus { border-color: var(--accent); }
+  .field textarea { resize: vertical; min-height: 60px; }
+  .field select option { background: var(--surface2); }
+  .field input[type=checkbox] { width: auto; transform: scale(1.2); accent-color: var(--accent); cursor: pointer; }
+  .field-row { display: grid; gap: var(--gap); }
+  .field-row.col2 { grid-template-columns: 1fr 1fr; }
+  .field-row.col3 { grid-template-columns: 1fr 1fr 1fr; }
+  .field-row.col4 { grid-template-columns: 1fr 1fr 1fr 1fr; }
+  .field-row.col5 { grid-template-columns: repeat(5, 1fr); }
+  .checkbox-row { display: flex; align-items: center; gap: 8px; margin-bottom: 10px; }
+  .checkbox-row label { font-size: 13px; color: var(--text); cursor: pointer; }
+
+  /* ── SECTORS ── */
+  .sectors-row { display: flex; gap: 8px; flex-wrap: wrap; }
+  .sector-cb { display: flex; align-items: center; gap: 4px; background: var(--surface2); border: 1px solid var(--border); border-radius: var(--radius); padding: 4px 8px; cursor: pointer; transition: border-color .15s; }
+  .sector-cb:has(input:checked) { border-color: var(--accent); background: #1e2244; }
+  .sector-cb label { font-size: 13px; cursor: pointer; }
+  .sector-cb input { accent-color: var(--accent); }
+
+  /* ── GRID ATTRS ── */
+  .attrs-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
+  .affinity-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; }
+  .attr-field { display: flex; flex-direction: column; gap: 3px; }
+  .attr-field label { font-size: 11px; color: var(--text-muted); }
+  .attr-field input { background: var(--surface2); border: 1px solid var(--border); border-radius: var(--radius); color: var(--text); padding: 5px 7px; font-size: 13px; text-align: center; outline: none; transition: border-color .15s; }
+  .attr-field input:focus { border-color: var(--accent); }
+
+  /* ── DYNAMIC LISTS ── */
+  .list-container { display: flex; flex-direction: column; gap: 8px; }
+  .list-item { background: var(--surface2); border: 1px solid var(--border); border-radius: var(--radius); padding: 12px; position: relative; }
+  .list-item-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 10px; cursor: pointer; user-select: none; }
+  .list-item-header .item-title { font-weight: 600; font-size: 13px; }
+  .list-item-header .item-controls { display: flex; gap: 6px; align-items: center; }
+  .btn-remove { background: none; border: 1px solid var(--border); border-radius: var(--radius); color: var(--text-muted); cursor: pointer; padding: 2px 8px; font-size: 12px; transition: all .15s; }
+  .btn-remove:hover { border-color: var(--danger); color: var(--danger); }
+  .btn-collapse { background: none; border: none; color: var(--text-muted); cursor: pointer; font-size: 16px; padding: 0 4px; transition: transform .15s; }
+  .btn-collapse.collapsed { transform: rotate(-90deg); }
+  .collapsible { transition: none; }
+  .collapsible.hidden { display: none; }
+  .btn-add { background: var(--surface2); border: 1px dashed var(--border); border-radius: var(--radius); color: var(--text-muted); cursor: pointer; padding: 6px 12px; font-size: 13px; width: 100%; text-align: center; transition: all .15s; margin-top: 6px; }
+  .btn-add:hover { border-color: var(--accent); color: var(--accent); }
+
+  /* ── STAGE ── */
+  .stage-item { border-left: 3px solid var(--accent); }
+  .skill-item { border-left: 3px solid #6b7280; }
+  .skill-item[data-type="action"] { border-left-color: #f59e0b; }
+  .skill-item[data-type="reaction"] { border-left-color: #3b82f6; }
+  .skill-item[data-type="passive"] { border-left-color: #8b5cf6; }
+  .weakness-item, .condition-item { border-left: 3px solid #6b7280; }
+
+  /* ── SYNTAX HIGHLIGHT ── */
+  .jk { color: var(--json-key); }
+  .js { color: var(--json-str); }
+  .jn { color: var(--json-num); }
+  .jb { color: var(--json-bool); }
+  .jl { color: var(--json-null); }
+
+  /* ── TYPE SELECTOR ── */
+  .type-selector { display: flex; gap: 8px; margin-bottom: 20px; }
+  .type-btn { flex: 1; padding: 10px; background: var(--surface2); border: 2px solid var(--border); border-radius: var(--radius); color: var(--text-muted); cursor: pointer; font-size: 13px; font-weight: 600; text-align: center; transition: all .15s; }
+  .type-btn:hover { border-color: var(--accent); color: var(--text); }
+  .type-btn.active { border-color: var(--accent); background: #1e2244; color: var(--accent); }
+</style>
+</head>
+<body>
+
+<div id="header">
+  <h1>⚔ Bestiary Builder</h1>
+  <div id="tabs"></div>
+  <button id="btn-new">＋ Novo</button>
+  <button id="btn-download">⬇ Baixar Todos</button>
+</div>
+
+<div id="main">
+  <div id="form-pane">
+    <div id="empty-state">
+      <div class="big">📋</div>
+      <p>Clique em <strong>＋ Novo</strong> para criar um personagem</p>
+    </div>
+    <div id="form-root" style="display:none"></div>
+  </div>
+  <div id="json-pane">
+    <div id="json-header">
+      <span>JSON Preview</span>
+      <button id="btn-copy">Copiar</button>
+    </div>
+    <div id="json-output"></div>
+  </div>
+</div>
+
+<script>
+// ─────────────────────────────────────────────
+// CONSTANTS
+// ─────────────────────────────────────────────
+const PORTRAITS = ['sage','wheat','rose','indigo','gold','coral','orange','red','pink','green','blue','purple','teal','black','butter','mint','lavender','mauve','mallow','white','gray','thistle','amber','forest','slate'];
+const LEVELS = ['Fresh (Lvl 1)','In-Training (Lvl 2)','Child (Lvl 3)','Adult (Lvl 4)','Armor (Lvl 4)','Perfect (Lvl 5)','Ultimate (Lvl 6)'];
+const BUG_COLORS = ['red','green','blue','white','purple','yellow'];
+const WEAKNESS_KEYS = ['Letal (+2)','Agravado (+3)','Resistente (-2)','Imune','Inefetivo (-3)'];
+const AFFINITIES = ['Fogo','Vento','Madeira','Gelo','Terra','Luz','Metal','Trevas','Água','Trovão','Físico','Enfraquecer','Resistência','Cura'];
+const ATTRIBUTES = ['Vigor','Força','Destreza','Presença','Raciocínio','Autocontrole','Inteligência','Manipulação','Perseverança'];
+const SKILL_TYPES = ['action','reaction','passive'];
+const SKILL_KEYWORDS = ['Ataque','Efeito','Efeito-Reação','Passiva','Reação'];
+const CONDITION_COLORS = ['coral','orange','blue','purple','teal','green','gold','indigo'];
+const ENTITY_TYPES = ['digimon','bug','sign','token'];
+
+// ─────────────────────────────────────────────
+// STATE
+// ─────────────────────────────────────────────
+let entities = []; // array of {id, type, data}
+let activeIdx = -1;
+
+function ts36() { return Date.now().toString(36); }
+
+function defaultAttrs() {
+  const a = {};
+  ATTRIBUTES.forEach(k => a[k] = 2);
+  return a;
+}
+
+function defaultStatus() {
+  return { HP: 0, Defesa: 0, Armadura: 0, Iniciativa: 0, Deslocamento: 0 };
+}
+
+function defaultStage(name = '') {
+  return {
+    stageName: name,
+    level: 'Adult (Lvl 4)',
+    type: '',
+    cost: '—',
+    portrait: 'sage',
+    size: 3,
+    speed: 5,
+    locked: false,
+    status: defaultStatus(),
+    attributes: defaultAttrs(),
+    affinity: {},
+    weakness: {},
+    skills: [],
+    image: null,
+    imageKey: null,
+  };
+}
+
+function newEntity(type) {
+  const t = ts36();
+  if (type === 'digimon') return {
+    id: 'd-novo-line',
+    name: '',
+    line: '',
+    lore: '',
+    sectors: [],
+    currentStage: 0,
+    tamerId: null,
+    stages: [defaultStage()],
+    image: null,
+    imageKey: null,
+  };
+  if (type === 'bug') return {
+    id: `b-ledo-${t}`,
+    name: '',
+    class: 'ledo',
+    color: 'red',
+    lore: '',
+    sectors: [],
+    status: defaultStatus(),
+    attributes: defaultAttrs(),
+    affinity: {},
+    weakness: {},
+    skills: [],
+    image: null,
+    imageKey: null,
+  };
+  if (type === 'sign') return {
+    id: `sign-sign-01-${t}`,
+    code: 'SIGN 01',
+    name: '',
+    lore: '',
+    status: defaultStatus(),
+    attributes: defaultAttrs(),
+    affinity: {},
+    weakness: {},
+    skills: [],
+    image: null,
+    imageKey: null,
+  };
+  if (type === 'token') return {
+    id: `token-${t}`,
+    name: '',
+    level: '',
+    origin: '',
+    hp: 1,
+    defesa: 0,
+    armadura: 0,
+    deslocamento: '5',
+    type: 'Digimon',
+    attribute: 'No Data',
+    alcance: '',
+    dados: '',
+    dano: 0,
+    securityAttack: 0,
+    effect: '',
+    autoConditions: [],
+    visible: true,
+  };
+}
+
+// ─────────────────────────────────────────────
+// RENDER TABS
+// ─────────────────────────────────────────────
+function renderTabs() {
+  const container = document.getElementById('tabs');
+  container.innerHTML = '';
+  entities.forEach((e, i) => {
+    const tab = document.createElement('div');
+    tab.className = 'tab' + (i === activeIdx ? ' active' : '');
+    const label = (e.data.name || e.data.stageName || 'Sem nome');
+    tab.innerHTML = `<span class="type-badge">${e.type}</span><span>${label}</span><button class="remove-tab" title="Remover">✕</button>`;
+    tab.addEventListener('click', ev => {
+      if (!ev.target.classList.contains('remove-tab')) selectEntity(i);
+    });
+    tab.querySelector('.remove-tab').addEventListener('click', () => removeEntity(i));
+    container.appendChild(tab);
+  });
+
+  const isEmpty = entities.length === 0;
+  document.getElementById('empty-state').style.display = isEmpty ? '' : 'none';
+  document.getElementById('form-root').style.display = isEmpty ? 'none' : '';
+}
+
+function selectEntity(i) {
+  activeIdx = i;
+  renderTabs();
+  renderForm();
+  renderJSON();
+}
+
+function removeEntity(i) {
+  entities.splice(i, 1);
+  if (activeIdx >= entities.length) activeIdx = entities.length - 1;
+  renderTabs();
+  if (activeIdx >= 0) { renderForm(); renderJSON(); }
+  else { document.getElementById('form-root').innerHTML = ''; document.getElementById('json-output').innerHTML = ''; }
+}
+
+// ─────────────────────────────────────────────
+// HELPERS: build form elements
+// ─────────────────────────────────────────────
+function field(label, child) {
+  const d = document.createElement('div');
+  d.className = 'field';
+  const l = document.createElement('label');
+  l.textContent = label;
+  d.appendChild(l);
+  d.appendChild(child);
+  return d;
+}
+
+function input(type, val, onChange, attrs = {}) {
+  const el = document.createElement('input');
+  el.type = type;
+  if (type === 'checkbox') el.checked = !!val;
+  else el.value = val ?? '';
+  Object.entries(attrs).forEach(([k, v]) => el.setAttribute(k, v));
+  el.addEventListener(type === 'checkbox' ? 'change' : 'input', () => onChange(type === 'checkbox' ? el.checked : (type === 'number' ? (el.value === '' ? 0 : Number(el.value)) : el.value)));
+  return el;
+}
+
+function select(options, val, onChange) {
+  const el = document.createElement('select');
+  options.forEach(o => {
+    const opt = document.createElement('option');
+    const [v, t] = Array.isArray(o) ? o : [o, o];
+    opt.value = v; opt.textContent = t;
+    if (v === val) opt.selected = true;
+    el.appendChild(opt);
+  });
+  el.addEventListener('change', () => onChange(el.value));
+  return el;
+}
+
+function textarea(val, onChange) {
+  const el = document.createElement('textarea');
+  el.value = val ?? '';
+  el.addEventListener('input', () => onChange(el.value));
+  return el;
+}
+
+function sectionTitle(text) {
+  const d = document.createElement('div');
+  d.className = 'section-title';
+  d.textContent = text;
+  return d;
+}
+
+function row(...children) {
+  const d = document.createElement('div');
+  d.className = `field-row col${children.length}`;
+  children.forEach(c => d.appendChild(c));
+  return d;
+}
+
+// ─────────────────────────────────────────────
+// SHARED SUB-FORMS
+// ─────────────────────────────────────────────
+function buildStatusForm(status, onChange) {
+  const wrap = document.createElement('div');
+  wrap.appendChild(sectionTitle('Status'));
+  const keys = ['HP','Defesa','Armadura','Iniciativa','Deslocamento'];
+  const grid = document.createElement('div');
+  grid.className = 'field-row col5';
+  keys.forEach(k => {
+    const af = document.createElement('div');
+    af.className = 'attr-field';
+    const lbl = document.createElement('label');
+    lbl.textContent = k;
+    const inp = input('number', status[k] ?? 0, v => { status[k] = v; onChange(); });
+    af.appendChild(lbl);
+    af.appendChild(inp);
+    grid.appendChild(af);
+  });
+  wrap.appendChild(grid);
+  return wrap;
+}
+
+function buildAttrsForm(attrs, onChange) {
+  const wrap = document.createElement('div');
+  wrap.appendChild(sectionTitle('Atributos'));
+  const grid = document.createElement('div');
+  grid.className = 'attrs-grid';
+  ATTRIBUTES.forEach(k => {
+    const af = document.createElement('div');
+    af.className = 'attr-field';
+    const lbl = document.createElement('label');
+    lbl.textContent = k;
+    const inp = input('number', attrs[k] ?? 0, v => { attrs[k] = v; onChange(); });
+    af.appendChild(lbl);
+    af.appendChild(inp);
+    grid.appendChild(af);
+  });
+  wrap.appendChild(grid);
+  return wrap;
+}
+
+function buildAffinityForm(affinity, onChange) {
+  const wrap = document.createElement('div');
+  wrap.appendChild(sectionTitle('Afinidade (0 = omitido)'));
+  const grid = document.createElement('div');
+  grid.className = 'affinity-grid';
+  AFFINITIES.forEach(k => {
+    const af = document.createElement('div');
+    af.className = 'attr-field';
+    const lbl = document.createElement('label');
+    lbl.textContent = k;
+    const inp = input('number', affinity[k] ?? 0, v => {
+      if (v === 0 || v === '') delete affinity[k];
+      else affinity[k] = v;
+      onChange();
+    });
+    af.appendChild(lbl);
+    af.appendChild(inp);
+    grid.appendChild(af);
+  });
+  wrap.appendChild(grid);
+  return wrap;
+}
+
+function buildWeaknessForm(weakness, onChange) {
+  const wrap = document.createElement('div');
+  wrap.appendChild(sectionTitle('Fraquezas'));
+  const list = document.createElement('div');
+  list.className = 'list-container';
+
+  // Convert weakness object to editable array
+  let items = Object.entries(weakness).map(([k, v]) => ({ key: k, val: v }));
+
+  function sync() {
+    // Rebuild weakness object from items
+    Object.keys(weakness).forEach(k => delete weakness[k]);
+    items.forEach(it => { if (it.key && it.val) weakness[it.key] = it.val; });
+    onChange();
+  }
+
+  function renderItems() {
+    list.innerHTML = '';
+    items.forEach((item, i) => {
+      const row = document.createElement('div');
+      row.className = 'list-item weakness-item';
+      row.style.display = 'flex'; row.style.gap = '8px'; row.style.alignItems = 'center';
+
+      const sel = select(WEAKNESS_KEYS, item.key, v => { items[i].key = v; sync(); });
+      sel.style.flex = '0 0 auto'; sel.style.width = '160px';
+
+      const inp = document.createElement('input');
+      inp.type = 'text'; inp.value = item.val;
+      inp.placeholder = 'ex: Vacina';
+      inp.style.flex = '1'; inp.style.background = 'var(--surface2)'; inp.style.border = '1px solid var(--border)';
+      inp.style.borderRadius = 'var(--radius)'; inp.style.color = 'var(--text)'; inp.style.padding = '5px 8px';
+      inp.addEventListener('input', () => { items[i].val = inp.value; sync(); });
+
+      const btn = document.createElement('button');
+      btn.className = 'btn-remove'; btn.textContent = '✕';
+      btn.addEventListener('click', () => { items.splice(i, 1); sync(); renderItems(); });
+
+      row.appendChild(sel); row.appendChild(inp); row.appendChild(btn);
+      list.appendChild(row);
+    });
+
+    const addBtn = document.createElement('button');
+    addBtn.className = 'btn-add'; addBtn.textContent = '＋ Fraqueza';
+    addBtn.addEventListener('click', () => {
+      items.push({ key: WEAKNESS_KEYS[0], val: '' });
+      sync(); renderItems();
+    });
+    list.appendChild(addBtn);
+  }
+
+  renderItems();
+  wrap.appendChild(list);
+  return wrap;
+}
+
+function buildSkillsForm(skills, onChange) {
+  const wrap = document.createElement('div');
+  wrap.appendChild(sectionTitle('Skills'));
+  const list = document.createElement('div');
+  list.className = 'list-container';
+
+  function renderSkills() {
+    list.innerHTML = '';
+    skills.forEach((skill, i) => {
+      const item = document.createElement('div');
+      item.className = 'list-item skill-item';
+      item.dataset.type = skill.type;
+
+      // Header
+      const hdr = document.createElement('div');
+      hdr.className = 'list-item-header';
+      const title = document.createElement('span');
+      title.className = 'item-title';
+      title.textContent = skill.title || `Skill ${i + 1}`;
+
+      const controls = document.createElement('div');
+      controls.className = 'item-controls';
+
+      // Move up/down
+      const btnUp = document.createElement('button');
+      btnUp.className = 'btn-remove'; btnUp.textContent = '↑'; btnUp.title = 'Mover para cima';
+      btnUp.addEventListener('click', () => { if (i > 0) { [skills[i], skills[i-1]] = [skills[i-1], skills[i]]; onChange(); renderSkills(); }});
+      const btnDown = document.createElement('button');
+      btnDown.className = 'btn-remove'; btnDown.textContent = '↓'; btnDown.title = 'Mover para baixo';
+      btnDown.addEventListener('click', () => { if (i < skills.length-1) { [skills[i], skills[i+1]] = [skills[i+1], skills[i]]; onChange(); renderSkills(); }});
+
+      const btnCollapse = document.createElement('button');
+      btnCollapse.className = 'btn-collapse'; btnCollapse.textContent = '▼';
+      const btnRemove = document.createElement('button');
+      btnRemove.className = 'btn-remove'; btnRemove.textContent = '✕';
+      btnRemove.addEventListener('click', () => { skills.splice(i, 1); onChange(); renderSkills(); });
+
+      controls.appendChild(btnUp); controls.appendChild(btnDown);
+      controls.appendChild(btnCollapse); controls.appendChild(btnRemove);
+      hdr.appendChild(title); hdr.appendChild(controls);
+
+      // Body
+      const body = document.createElement('div');
+      body.className = 'collapsible';
+
+      btnCollapse.addEventListener('click', () => {
+        body.classList.toggle('hidden');
+        btnCollapse.classList.toggle('collapsed');
+      });
+
+      // Type
+      body.appendChild(field('Tipo', select(SKILL_TYPES, skill.type, v => {
+        skill.type = v; item.dataset.type = v; onChange(); title.textContent = skill.title || `Skill ${i+1}`;
+        // Show/hide fields based on type
+        updateVisibility();
+      })));
+
+      // Keyword
+      const kwInput = document.createElement('input');
+      kwInput.type = 'text'; kwInput.value = skill.keyword || '';
+      kwInput.placeholder = 'ex: Ataque';
+      kwInput.list = 'kw-suggestions';
+      kwInput.className = '';
+      kwInput.addEventListener('input', () => { skill.keyword = kwInput.value; onChange(); });
+      const kwField = field('Keyword', kwInput);
+      kwField.querySelector('input').style.background = 'var(--surface2)';
+      kwField.querySelector('input').style.border = '1px solid var(--border)';
+      kwField.querySelector('input').style.borderRadius = 'var(--radius)';
+      kwField.querySelector('input').style.color = 'var(--text)';
+      kwField.querySelector('input').style.padding = '6px 9px';
+      body.appendChild(kwField);
+
+      // Title
+      const titleInp = input('text', skill.title, v => { skill.title = v; title.textContent = v || `Skill ${i+1}`; onChange(); });
+      body.appendChild(field('Nome da Skill', titleInp));
+
+      // Custo, Alcance, Dados — hidden for passive
+      const custoField = field('Custo', input('text', skill.custo, v => { skill.custo = v; onChange(); }, { placeholder: 'ex: -2 Memory' }));
+      const alcanceField = field('Alcance', input('text', skill.alcance, v => { skill.alcance = v; onChange(); }, { placeholder: 'ex: projétil 8m' }));
+      const dadosField = field('Dados', input('text', skill.dados, v => { skill.dados = v; onChange(); }, { placeholder: 'ex: Vigor + Fogo + 2d10' }));
+      body.appendChild(row(custoField, alcanceField, dadosField));
+
+      const effectField = field('Efeito', textarea(skill.effect, v => { skill.effect = v; onChange(); }));
+      body.appendChild(effectField);
+
+      function updateVisibility() {
+        const isPassive = skill.type === 'passive';
+        [custoField, alcanceField, dadosField].forEach(f => f.style.display = isPassive ? 'none' : '');
+      }
+      updateVisibility();
+
+      item.appendChild(hdr);
+      item.appendChild(body);
+      list.appendChild(item);
+    });
+
+    const addBtn = document.createElement('button');
+    addBtn.className = 'btn-add'; addBtn.textContent = '＋ Skill';
+    addBtn.addEventListener('click', () => {
+      skills.push({ type: 'action', keyword: 'Ataque', title: '', custo: '', alcance: '', dados: '', effect: '' });
+      onChange(); renderSkills();
+    });
+    list.appendChild(addBtn);
+  }
+
+  renderSkills();
+  wrap.appendChild(list);
+  return wrap;
+}
+
+// Datalist for keyword suggestions
+const dl = document.createElement('datalist');
+dl.id = 'kw-suggestions';
+SKILL_KEYWORDS.forEach(k => { const o = document.createElement('option'); o.value = k; dl.appendChild(o); });
+document.body.appendChild(dl);
+
+// ─────────────────────────────────────────────
+// FORM RENDERERS BY TYPE
+// ─────────────────────────────────────────────
+function buildDigimonForm(data, onChange) {
+  const root = document.createElement('div');
+
+  // ── Global fields
+  const sec = document.createElement('div'); sec.className = 'section';
+  sec.appendChild(sectionTitle('Digimon (Linha)'));
+
+  const idInp = input('text', data.id, v => { data.id = v; onChange(); });
+  sec.appendChild(field('ID', idInp));
+  sec.appendChild(row(
+    field('Nome', input('text', data.name, v => { data.id = `d-${v.toLowerCase().replace(/\s+/g,'-')}-line`; idInp.value = data.id; data.name = v; onChange(); })),
+    field('TamerID (vazio = nulo)', input('text', data.tamerId || '', v => { data.tamerId = v.trim() || null; onChange(); }))
+  ));
+  sec.appendChild(field('Linha de Evolução', input('text', data.line, v => { data.line = v; onChange(); }, { placeholder: 'ex: Koromon → Agumon → Greymon' })));
+  sec.appendChild(field('Lore', textarea(data.lore, v => { data.lore = v; onChange(); })));
+
+  sec.appendChild(sectionTitle('Setores'));
+  const sectorsRow = document.createElement('div'); sectorsRow.className = 'sectors-row';
+  [1,2,3,4,5].forEach(n => {
+    const wrap = document.createElement('label'); wrap.className = 'sector-cb';
+    const cb = document.createElement('input'); cb.type = 'checkbox'; cb.checked = data.sectors.includes(n);
+    cb.addEventListener('change', () => {
+      if (cb.checked) data.sectors.push(n); else data.sectors = data.sectors.filter(s => s !== n);
+      data.sectors.sort();
+      onChange();
+    });
+    wrap.appendChild(cb);
+    const lbl = document.createElement('span'); lbl.textContent = `Setor ${n}`; wrap.appendChild(lbl);
+    sectorsRow.appendChild(wrap);
+  });
+  sec.appendChild(sectorsRow);
+
+  sec.appendChild(row(
+    field('Stage Atual (índice)', input('number', data.currentStage, v => { data.currentStage = v; onChange(); }))
+  ));
+
+  root.appendChild(sec);
+
+  // ── Stages
+  const stagesSec = document.createElement('div'); stagesSec.className = 'section';
+  stagesSec.appendChild(sectionTitle('Stages de Evolução'));
+  const stageList = document.createElement('div'); stageList.className = 'list-container';
+
+  function renderStages() {
+    stageList.innerHTML = '';
+    data.stages.forEach((stage, si) => {
+      const item = document.createElement('div');
+      item.className = 'list-item stage-item';
+
+      const hdr = document.createElement('div');
+      hdr.className = 'list-item-header';
+      const stageTitle = document.createElement('span');
+      stageTitle.className = 'item-title';
+      stageTitle.textContent = stage.stageName || `Stage ${si + 1}`;
+
+      const controls = document.createElement('div'); controls.className = 'item-controls';
+      const btnCollapse = document.createElement('button'); btnCollapse.className = 'btn-collapse'; btnCollapse.textContent = '▼';
+      const btnRemove = document.createElement('button'); btnRemove.className = 'btn-remove'; btnRemove.textContent = '✕';
+      btnRemove.addEventListener('click', () => {
+        if (data.stages.length <= 1) return alert('Um Digimon precisa ter ao menos 1 stage.');
+        data.stages.splice(si, 1);
+        if (data.currentStage >= data.stages.length) data.currentStage = data.stages.length - 1;
+        onChange(); renderStages();
+      });
+      controls.appendChild(btnCollapse); controls.appendChild(btnRemove);
+      hdr.appendChild(stageTitle); hdr.appendChild(controls);
+
+      const body = document.createElement('div'); body.className = 'collapsible';
+      btnCollapse.addEventListener('click', () => { body.classList.toggle('hidden'); btnCollapse.classList.toggle('collapsed'); });
+
+      // Stage fields
+      body.appendChild(row(
+        field('Nome do Stage', (() => {
+          const inp = input('text', stage.stageName, v => { stage.stageName = v; stageTitle.textContent = v || `Stage ${si+1}`; onChange(); });
+          return inp;
+        })()),
+        field('Nível', select(LEVELS, stage.level, v => { stage.level = v; onChange(); }))
+      ));
+      body.appendChild(row(
+        field('Tipo', input('text', stage.type, v => { stage.type = v; onChange(); }, { placeholder: 'ex: Dinosaur' })),
+        field('Custo de Evolução', input('text', stage.cost, v => { stage.cost = v; onChange(); }, { placeholder: 'ex: -2 Memory' })),
+        field('Portrait', select(PORTRAITS, stage.portrait, v => { stage.portrait = v; onChange(); }))
+      ));
+      body.appendChild(row(
+        field('Size (1–10)', input('number', stage.size, v => { stage.size = v; onChange(); }, { min:1, max:10 })),
+        field('Speed (1–20)', input('number', stage.speed, v => { stage.speed = v; onChange(); }, { min:1, max:20 }))
+      ));
+      const lockedRow = document.createElement('div'); lockedRow.className = 'checkbox-row';
+      const lockedCb = input('checkbox', stage.locked, v => { stage.locked = v; onChange(); });
+      const lockedLbl = document.createElement('label'); lockedLbl.textContent = 'Locked (stage não revelado)';
+      lockedRow.appendChild(lockedCb); lockedRow.appendChild(lockedLbl);
+      body.appendChild(lockedRow);
+
+      body.appendChild(buildStatusForm(stage.status, onChange));
+      body.appendChild(buildAttrsForm(stage.attributes, onChange));
+      body.appendChild(buildAffinityForm(stage.affinity, onChange));
+      body.appendChild(buildWeaknessForm(stage.weakness, onChange));
+      body.appendChild(buildSkillsForm(stage.skills, onChange));
+
+      item.appendChild(hdr); item.appendChild(body);
+      stageList.appendChild(item);
+    });
+
+    const addStageBtn = document.createElement('button');
+    addStageBtn.className = 'btn-add'; addStageBtn.textContent = '＋ Adicionar Stage';
+    addStageBtn.addEventListener('click', () => {
+      data.stages.push(defaultStage());
+      onChange(); renderStages();
+    });
+    stageList.appendChild(addStageBtn);
+  }
+
+  renderStages();
+  stagesSec.appendChild(stageList);
+  root.appendChild(stagesSec);
+  return root;
+}
+
+function buildBugForm(data, onChange) {
+  const root = document.createElement('div');
+  const sec = document.createElement('div'); sec.className = 'section';
+  sec.appendChild(sectionTitle('Bug'));
+
+  const idInp = input('text', data.id, v => { data.id = v; onChange(); });
+  sec.appendChild(field('ID', idInp));
+  sec.appendChild(row(
+    field('Nome', input('text', data.name, v => { data.name = v; onChange(); })),
+    field('Classe', input('text', data.class, v => { data.class = v; data.id = `b-${v.toLowerCase().replace(/\s+/g,'-')}-${ts36()}`; idInp.value = data.id; onChange(); }, { placeholder: 'ex: ledo' })),
+    field('Cor', select(BUG_COLORS, data.color, v => { data.color = v; onChange(); }))
+  ));
+  sec.appendChild(field('Lore', textarea(data.lore, v => { data.lore = v; onChange(); })));
+
+  sec.appendChild(sectionTitle('Setores'));
+  const sectorsRow = document.createElement('div'); sectorsRow.className = 'sectors-row';
+  [1,2,3,4,5].forEach(n => {
+    const wrap = document.createElement('label'); wrap.className = 'sector-cb';
+    const cb = document.createElement('input'); cb.type = 'checkbox'; cb.checked = data.sectors.includes(n);
+    cb.addEventListener('change', () => {
+      if (cb.checked) data.sectors.push(n); else data.sectors = data.sectors.filter(s => s !== n);
+      data.sectors.sort(); onChange();
+    });
+    wrap.appendChild(cb);
+    const lbl = document.createElement('span'); lbl.textContent = `Setor ${n}`; wrap.appendChild(lbl);
+    sectorsRow.appendChild(wrap);
+  });
+  sec.appendChild(sectorsRow);
+
+  root.appendChild(sec);
+  root.appendChild(buildStatusForm(data.status, onChange));
+  root.appendChild(buildAttrsForm(data.attributes, onChange));
+  root.appendChild(buildAffinityForm(data.affinity, onChange));
+  root.appendChild(buildWeaknessForm(data.weakness, onChange));
+  root.appendChild(buildSkillsForm(data.skills, onChange));
+  return root;
+}
+
+function buildSignForm(data, onChange) {
+  const root = document.createElement('div');
+  const sec = document.createElement('div'); sec.className = 'section';
+  sec.appendChild(sectionTitle('Sign'));
+
+  const idInp = input('text', data.id, v => { data.id = v; onChange(); });
+  sec.appendChild(field('ID', idInp));
+  sec.appendChild(row(
+    field('Código', input('text', data.code, v => {
+      data.code = v;
+      data.id = `sign-${v.toLowerCase().replace(/\s+/g,'-')}-${ts36()}`;
+      idInp.value = data.id;
+      onChange();
+    }, { placeholder: 'ex: SIGN 01' })),
+    field('Nome', input('text', data.name, v => { data.name = v; onChange(); }))
+  ));
+  sec.appendChild(field('Lore', textarea(data.lore, v => { data.lore = v; onChange(); })));
+
+  root.appendChild(sec);
+  root.appendChild(buildStatusForm(data.status, onChange));
+  root.appendChild(buildAttrsForm(data.attributes, onChange));
+  root.appendChild(buildAffinityForm(data.affinity, onChange));
+  root.appendChild(buildWeaknessForm(data.weakness, onChange));
+  root.appendChild(buildSkillsForm(data.skills, onChange));
+  return root;
+}
+
+function buildTokenForm(data, onChange) {
+  const root = document.createElement('div');
+  const sec = document.createElement('div'); sec.className = 'section';
+  sec.appendChild(sectionTitle('Token'));
+
+  const idInp = input('text', data.id, v => { data.id = v; onChange(); });
+  sec.appendChild(field('ID', idInp));
+  sec.appendChild(row(
+    field('Nome', input('text', data.name, v => { data.name = v; onChange(); })),
+    field('Nível', input('text', data.level, v => { data.level = v; onChange(); }, { placeholder: 'ex: Lv.3' }))
+  ));
+  sec.appendChild(field('Origem', input('text', data.origin, v => { data.origin = v; onChange(); }, { placeholder: 'ex: Sachi — Puppet Theater' })));
+
+  sec.appendChild(sectionTitle('Stats'));
+  sec.appendChild(row(
+    field('HP', input('number', data.hp, v => { data.hp = v; onChange(); })),
+    field('Defesa', input('number', data.defesa, v => { data.defesa = v; onChange(); })),
+    field('Armadura', input('number', data.armadura, v => { data.armadura = v; onChange(); })),
+    field('Dano', input('number', data.dano, v => { data.dano = v; onChange(); })),
+    field('Security Attack', input('number', data.securityAttack, v => { data.securityAttack = v; onChange(); }))
+  ));
+  sec.appendChild(row(
+    field('Deslocamento', input('text', data.deslocamento, v => { data.deslocamento = v; onChange(); }, { placeholder: 'ex: 10' })),
+    field('Alcance', input('text', data.alcance, v => { data.alcance = v; onChange(); }, { placeholder: 'ex: corpo a corpo 1m' })),
+    field('Dados', input('text', data.dados, v => { data.dados = v; onChange(); }, { placeholder: 'ex: Força + Físico' }))
+  ));
+  sec.appendChild(row(
+    field('Tipo', input('text', data.type, v => { data.type = v; onChange(); }, { placeholder: 'ex: Digimon' })),
+    field('Atributo', input('text', data.attribute, v => { data.attribute = v; onChange(); }, { placeholder: 'ex: No Data' }))
+  ));
+  sec.appendChild(field('Efeito', textarea(data.effect, v => { data.effect = v; onChange(); })));
+
+  const visRow = document.createElement('div'); visRow.className = 'checkbox-row';
+  const visCb = input('checkbox', data.visible, v => { data.visible = v; onChange(); });
+  const visLbl = document.createElement('label'); visLbl.textContent = 'Visível para jogadores';
+  visRow.appendChild(visCb); visRow.appendChild(visLbl);
+  sec.appendChild(visRow);
+
+  root.appendChild(sec);
+
+  // AutoConditions
+  const condSec = document.createElement('div'); condSec.className = 'section';
+  condSec.appendChild(sectionTitle('Auto Conditions'));
+  const condList = document.createElement('div'); condList.className = 'list-container';
+
+  function renderConditions() {
+    condList.innerHTML = '';
+    data.autoConditions.forEach((cond, i) => {
+      const item = document.createElement('div');
+      item.className = 'list-item condition-item';
+      item.style.display = 'grid'; item.style.gridTemplateColumns = '1fr 70px 70px 120px 36px'; item.style.gap = '8px'; item.style.alignItems = 'center';
+
+      const lblInp = input('text', cond.label, v => { cond.label = v; onChange(); }, { placeholder: 'Burn' });
+      lblInp.style.cssText = 'background:var(--surface2);border:1px solid var(--border);border-radius:var(--radius);color:var(--text);padding:5px 8px;';
+
+      const filledInp = input('number', cond.filled, v => { cond.filled = v; onChange(); });
+      const maxInp = input('number', cond.max, v => { cond.max = v; onChange(); });
+      const colorSel = select(CONDITION_COLORS, cond.color, v => { cond.color = v; onChange(); });
+
+      const btnRm = document.createElement('button'); btnRm.className = 'btn-remove'; btnRm.textContent = '✕';
+      btnRm.addEventListener('click', () => { data.autoConditions.splice(i, 1); onChange(); renderConditions(); });
+
+      [lblInp, filledInp, maxInp, colorSel, btnRm].forEach(el => {
+        el.style.width = '100%';
+        item.appendChild(el);
+      });
+      condList.appendChild(item);
+    });
+    const addBtn = document.createElement('button');
+    addBtn.className = 'btn-add'; addBtn.textContent = '＋ Condition';
+    addBtn.addEventListener('click', () => {
+      data.autoConditions.push({ label: '', filled: 1, max: 1, color: 'coral' });
+      onChange(); renderConditions();
+    });
+    condList.appendChild(addBtn);
+  }
+  renderConditions();
+  condSec.appendChild(condList);
+  root.appendChild(condSec);
+  return root;
+}
+
+// ─────────────────────────────────────────────
+// MAIN FORM RENDER
+// ─────────────────────────────────────────────
+function renderForm() {
+  const root = document.getElementById('form-root');
+  root.innerHTML = '';
+  if (activeIdx < 0) return;
+
+  const entity = entities[activeIdx];
+
+  // Type selector
+  const typeRow = document.createElement('div');
+  typeRow.className = 'type-selector';
+  ENTITY_TYPES.forEach(t => {
+    const btn = document.createElement('button');
+    btn.className = 'type-btn' + (entity.type === t ? ' active' : '');
+    btn.textContent = t.charAt(0).toUpperCase() + t.slice(1);
+    btn.addEventListener('click', () => {
+      if (entity.type !== t) {
+        entity.type = t;
+        entity.data = newEntity(t);
+        renderForm();
+        renderJSON();
+        renderTabs();
+      }
+    });
+    typeRow.appendChild(btn);
+  });
+  root.appendChild(typeRow);
+
+  const onChange = () => { renderJSON(); renderTabs(); };
+
+  let formEl;
+  if (entity.type === 'digimon') formEl = buildDigimonForm(entity.data, onChange);
+  else if (entity.type === 'bug') formEl = buildBugForm(entity.data, onChange);
+  else if (entity.type === 'sign') formEl = buildSignForm(entity.data, onChange);
+  else if (entity.type === 'token') formEl = buildTokenForm(entity.data, onChange);
+
+  if (formEl) root.appendChild(formEl);
+}
+
+// ─────────────────────────────────────────────
+// JSON GENERATION & HIGHLIGHTING
+// ─────────────────────────────────────────────
+function buildJSON(entity) {
+  // Clean up skill objects: remove empty optional fields
+  function cleanSkill(sk) {
+    const out = { type: sk.type, keyword: sk.keyword, title: sk.title, effect: sk.effect };
+    if (sk.type !== 'passive') {
+      if (sk.custo) out.custo = sk.custo;
+      if (sk.alcance) out.alcance = sk.alcance;
+      if (sk.dados) out.dados = sk.dados;
+    }
+    return out;
+  }
+
+  if (entity.type === 'digimon') {
+    return {
+      id: entity.data.id,
+      name: entity.data.name,
+      line: entity.data.line,
+      lore: entity.data.lore,
+      image: null,
+      imageKey: null,
+      sectors: entity.data.sectors,
+      currentStage: entity.data.currentStage,
+      tamerId: entity.data.tamerId,
+      stages: entity.data.stages.map(s => ({
+        stageName: s.stageName,
+        level: s.level,
+        type: s.type,
+        cost: s.cost,
+        portrait: s.portrait,
+        size: s.size,
+        speed: s.speed,
+        locked: s.locked,
+        image: null,
+        imageKey: null,
+        status: s.status,
+        attributes: s.attributes,
+        affinity: s.affinity,
+        weakness: s.weakness,
+        skills: s.skills.map(cleanSkill),
+      })),
+    };
+  }
+  if (entity.type === 'bug') {
+    return {
+      id: entity.data.id,
+      name: entity.data.name,
+      class: entity.data.class,
+      color: entity.data.color,
+      lore: entity.data.lore,
+      image: null,
+      imageKey: null,
+      sectors: entity.data.sectors,
+      status: entity.data.status,
+      attributes: entity.data.attributes,
+      affinity: entity.data.affinity,
+      weakness: entity.data.weakness,
+      skills: entity.data.skills.map(cleanSkill),
+    };
+  }
+  if (entity.type === 'sign') {
+    return {
+      id: entity.data.id,
+      code: entity.data.code,
+      name: entity.data.name,
+      lore: entity.data.lore,
+      image: null,
+      imageKey: null,
+      status: entity.data.status,
+      attributes: entity.data.attributes,
+      affinity: entity.data.affinity,
+      weakness: entity.data.weakness,
+      skills: entity.data.skills.map(cleanSkill),
+    };
+  }
+  if (entity.type === 'token') {
+    return {
+      id: entity.data.id,
+      name: entity.data.name,
+      level: entity.data.level,
+      origin: entity.data.origin,
+      hp: entity.data.hp,
+      defesa: entity.data.defesa,
+      armadura: entity.data.armadura,
+      deslocamento: entity.data.deslocamento,
+      type: entity.data.type,
+      attribute: entity.data.attribute,
+      alcance: entity.data.alcance,
+      dados: entity.data.dados,
+      dano: entity.data.dano,
+      securityAttack: entity.data.securityAttack,
+      effect: entity.data.effect,
+      autoConditions: entity.data.autoConditions,
+      visible: entity.data.visible,
+    };
+  }
+}
+
+function highlight(json) {
+  return json
+    .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+    .replace(/("(\\u[a-zA-Z0-9]{4}|\\[^u]|[^\\"])*"(\s*:)?|\b(true|false|null)\b|-?\d+(?:\.\d*)?(?:[eE][+\-]?\d+)?)/g, match => {
+      if (/^"/.test(match)) {
+        if (/:$/.test(match)) return `<span class="jk">${match}</span>`;
+        return `<span class="js">${match}</span>`;
+      }
+      if (/true|false/.test(match)) return `<span class="jb">${match}</span>`;
+      if (/null/.test(match)) return `<span class="jl">${match}</span>`;
+      return `<span class="jn">${match}</span>`;
+    });
+}
+
+function renderJSON() {
+  const out = document.getElementById('json-output');
+  if (activeIdx < 0) { out.innerHTML = ''; return; }
+  const obj = buildJSON(entities[activeIdx]);
+  const jsonStr = JSON.stringify(obj, null, 2);
+  out.innerHTML = highlight(jsonStr);
+}
+
+// ─────────────────────────────────────────────
+// DOWNLOAD ALL
+// ─────────────────────────────────────────────
+document.getElementById('btn-download').addEventListener('click', () => {
+  if (entities.length === 0) { alert('Nenhum personagem criado ainda.'); return; }
+  const result = { digimon: [], bugs: [], signs: [], tokens: [] };
+  entities.forEach(e => {
+    const obj = buildJSON(e);
+    if (e.type === 'digimon') result.digimon.push(obj);
+    else if (e.type === 'bug') result.bugs.push(obj);
+    else if (e.type === 'sign') result.signs.push(obj);
+    else if (e.type === 'token') result.tokens.push(obj);
+  });
+  const date = new Date().toISOString().slice(0, 10);
+  const blob = new Blob([JSON.stringify(result, null, 2)], { type: 'application/json' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url; a.download = `bestiary-export-${date}.json`;
+  a.click();
+  URL.revokeObjectURL(url);
+});
+
+// Copy current JSON
+document.getElementById('btn-copy').addEventListener('click', () => {
+  if (activeIdx < 0) return;
+  const obj = buildJSON(entities[activeIdx]);
+  navigator.clipboard.writeText(JSON.stringify(obj, null, 2)).then(() => {
+    const btn = document.getElementById('btn-copy');
+    btn.textContent = 'Copiado!';
+    setTimeout(() => btn.textContent = 'Copiar', 1500);
+  });
+});
+
+// New entity
+document.getElementById('btn-new').addEventListener('click', () => {
+  const type = 'digimon';
+  entities.push({ type, data: newEntity(type) });
+  selectEntity(entities.length - 1);
+});
+
+// Init
+renderTabs();
+</script>
+</body>
+</html>

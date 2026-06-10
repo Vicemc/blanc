@@ -17,6 +17,56 @@ export type WikiLinkedType = 'tamer' | 'digimon' | 'survivor' | 'bug' | 'sign' |
 
 export type WikiPageStatus = 'approved' | 'pending'
 
+// ── Conteúdo estruturado da página detalhada ─────────────────────────────────
+export interface WikiInfoField {
+  id: string
+  label: string
+  value: string
+}
+
+export interface WikiGalleryImage {
+  url: string
+  caption?: string
+}
+
+export interface WikiSectionBlock {
+  id: string
+  heading: string
+  body: string
+}
+
+// ── Layout em blocos (grade de colunas) ──────────────────────────────────────
+export type WikiBlockWidth = 'full' | 'half'
+
+export type WikiBlock =
+  | { id: string; type: 'infobox'; width: WikiBlockWidth; title?: string; fields: WikiInfoField[] }
+  | { id: string; type: 'text';    width: WikiBlockWidth; title?: string; body: string }
+  | { id: string; type: 'image';   width: WikiBlockWidth; url: string | null; caption?: string }
+  | { id: string; type: 'gallery'; width: WikiBlockWidth; title?: string; images: WikiGalleryImage[] }
+  | { id: string; type: 'divider'; width: WikiBlockWidth }
+
+export type WikiBlockType = WikiBlock['type']
+
+// Card de música (YouTube) fixo abaixo do avatar.
+export interface WikiMusic {
+  youtubeId: string
+  title: string
+  artist?: string
+}
+
+export interface WikiContent {
+  music?:  WikiMusic | null            // card de música fixo no cabeçalho
+  blocks?: WikiBlock[]                 // layout em blocos (novo)
+  // Campos legados — mantidos para retrocompat / migração automática:
+  infobox?:  WikiInfoField[]
+  gallery?:  WikiGalleryImage[]
+  sections?: WikiSectionBlock[]
+}
+
+export const WIKI_GALLERY_MAX = 6
+
+export const EMPTY_WIKI_CONTENT: WikiContent = { infobox: [], gallery: [], sections: [] }
+
 export interface WikiPage {
   id: string
   campaign_id: string
@@ -30,6 +80,7 @@ export interface WikiPage {
   status: WikiPageStatus
   author_id: string | null
   owner_tamer_id: string | null
+  content: WikiContent | null
   created_at: string
   updated_at: string
 }
@@ -42,6 +93,7 @@ export interface WikiPageEdit {
   title: string
   body: string
   category: WikiCategory
+  content: WikiContent | null
   status: 'pending' | 'approved' | 'rejected'
   created_at: string
 }

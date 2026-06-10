@@ -90,8 +90,8 @@ export default function SettingsPage() {
   }
 
   function setPresetPalcoParty() {
-    // Oculta tudo exceto teatro e party
-    update({ hideTaglines: { enabled: true, pages: ['goggle', 'sistema', 'backstage'] } })
+    // Oculta tudo exceto party (o Palco não usa tagline via PageHead)
+    update({ hideTaglines: { enabled: true, pages: ['goggle', 'sistema', 'teatro', 'backstage', 'wiki', 'mapas', 'configuracoes'] } })
   }
 
   return (

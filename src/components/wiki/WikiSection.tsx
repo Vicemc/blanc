@@ -1,16 +1,20 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react'
 import type { AppState } from '../../types'
-import type { WikiPage, WikiPageEdit, WikiRelation, WikiCategory, WikiVisibility } from '../../types/wiki'
+import type { WikiPage, WikiPageEdit, WikiCategory, WikiVisibility } from '../../types/wiki'
 import { WIKI_CATEGORIES } from '../../types/wiki'
 import {
   listWikiPages, saveWikiPage, deleteWikiPage, setWikiPageVisibility,
-  listWikiRelations, saveWikiRelation, deleteWikiRelation,
   listPendingEdits, approveWikiEdit, rejectWikiEdit, approveWikiPage, rejectWikiPage,
   seedWikiPages,
 } from '../../lib/db/wiki'
 import { uploadImage } from '../../lib/db/storage'
 import { SheetModal } from '../Sheet'
 import type { SheetSubject } from '../Sheet'
+import WikiBlocksEditor from './WikiBlocksEditor'
+import WikiArticle from './WikiArticle'
+import type { WikiContent } from '../../types/wiki'
+import { EMPTY_WIKI_CONTENT } from '../../types/wiki'
+import { useCampaignFlags } from '../../lib/campaignFlags'
 // import WikiGraph from './WikiGraph'
 
 interface Props {
@@ -68,6 +72,7 @@ function WikiPageForm({ initial, onSave, onCancel, state }: EditFormProps) {
   const [linkedType,   setLinkedType]   = useState(initial?.linked_type   ?? null as string | null)
   const [linkedId,     setLinkedId]     = useState(initial?.linked_id    ?? null as string | null)
   const [ownerTamerId, setOwnerTamerId] = useState(initial?.owner_tamer_id ?? null as string | null)
+  const [content,    setContent]    = useState<WikiContent>(initial?.content ?? EMPTY_WIKI_CONTENT)
   const [saving, setSaving] = useState(false)
   const fileRef = useRef<HTMLInputElement>(null)
 
@@ -102,6 +107,7 @@ function WikiPageForm({ initial, onSave, onCancel, state }: EditFormProps) {
       linked_type:    (linkedType as any) ?? null,
       linked_id:      linkedId ?? null,
       owner_tamer_id: ownerTamerId ?? null,
+      content,
     })
     setSaving(false)
     if (result) onSave(result)
@@ -148,11 +154,20 @@ function WikiPageForm({ initial, onSave, onCancel, state }: EditFormProps) {
         </select>
       </div>
 
-      {/* Corpo */}
+      {/* Corpo / Sobre */}
       <textarea value={body} onChange={e => setBody(e.target.value)}
-        placeholder="Descrição (markdown suportado: **negrito**, *itálico*, ## títulos)"
-        rows={8}
+        placeholder="Sobre (markdown: **negrito**, *itálico*, ## títulos, [[Link interno]])"
+        rows={6}
         style={{ ...fieldStyle, resize: 'vertical', lineHeight: 1.5 }} />
+
+      {/* Layout em blocos (infobox, texto, imagens, galeria) */}
+      <div style={{ borderTop: '1px solid var(--line-soft)', paddingTop: 14 }}>
+        <WikiBlocksEditor
+          value={content}
+          onChange={setContent}
+          uploadKey={initial?.id ?? (title || 'page').toLowerCase().replace(/\s+/g, '-')}
+        />
+      </div>
 
       {/* Visibilidade */}
       <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
@@ -253,87 +268,102 @@ function WikiPageForm({ initial, onSave, onCancel, state }: EditFormProps) {
   )
 }
 
-// ── Gerenciador de relações ────────────────────────────────────────────────────
+// ── Revisão de edição: original vs. proposta lado a lado ─────────────────────
 
-interface RelationManagerProps {
-  pages:     WikiPage[]
-  relations: WikiRelation[]
-  onAdd:     (r: WikiRelation) => void
-  onDelete:  (id: string) => void
+interface EditReviewModalProps {
+  edit:      WikiPageEdit
+  original:  WikiPage | undefined
+  allPages:  WikiPage[]
+  busy:      boolean
+  onApprove: () => void
+  onReject:  () => void
+  onClose:   () => void
 }
 
-function RelationManager({ pages, relations, onAdd, onDelete }: RelationManagerProps) {
-  const [fromId, setFromId] = useState('')
-  const [toId,   setToId]   = useState('')
-  const [label,  setLabel]  = useState('')
-  const [saving, setSaving] = useState(false)
-
-  const fieldStyle: React.CSSProperties = {
-    padding: '7px 10px', border: '1px solid var(--line)', borderRadius: 8,
-    background: 'var(--paper)', color: 'var(--ink)',
-    fontFamily: 'var(--font-body)', fontSize: 13,
+function EditReviewModal({ edit, original, allPages, busy, onApprove, onReject, onClose }: EditReviewModalProps) {
+  // Página "proposta" = original com os campos editáveis substituídos pela proposta.
+  // Campos não editáveis (avatar, vínculos, visibilidade) são herdados do original.
+  const base: WikiPage = original ?? {
+    id: edit.page_id, campaign_id: edit.campaign_id, title: edit.title, category: edit.category,
+    body: '', avatar_url: null, visibility: 'full', linked_type: null, linked_id: null,
+    status: 'approved', author_id: null, owner_tamer_id: null, content: null,
+    created_at: edit.created_at, updated_at: edit.created_at,
+  }
+  const proposed: WikiPage = {
+    ...base,
+    title:    edit.title,
+    category: edit.category,
+    body:     edit.body,
+    content:  edit.content ?? {},
   }
 
-  const handleAdd = async () => {
-    if (!fromId || !toId || !label.trim() || fromId === toId) return
-    setSaving(true)
-    const result = await saveWikiRelation({ from_id: fromId, to_id: toId, label: label.trim() })
-    setSaving(false)
-    if (result) {
-      onAdd(result)
-      setFromId(''); setToId(''); setLabel('')
-    }
-  }
+  const colTitle = (label: string, color: string) => (
+    <div style={{ fontFamily: 'var(--font-mono)', fontSize: 10, letterSpacing: '0.14em',
+      textTransform: 'uppercase', color, padding: '12px 16px',
+      borderBottom: '1px solid var(--line)', position: 'sticky', top: 0,
+      background: 'var(--paper)', zIndex: 1 }}>
+      {label}
+    </div>
+  )
 
-  const pageById = (id: string) => pages.find(p => p.id === id)
+  const noop = () => {}
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-      <div style={{ fontFamily: 'var(--font-mono)', fontSize: 10, letterSpacing: '0.14em',
-        textTransform: 'uppercase', color: 'var(--ink-mute)', marginBottom: 4 }}>
-        Adicionar Relação
-      </div>
+    <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.6)', zIndex: 1500,
+      display: 'flex', flexDirection: 'column', padding: '32px 24px' }}
+      onClick={e => { if (e.target === e.currentTarget) onClose() }}>
+      <div style={{ flex: 1, minHeight: 0, maxWidth: 1280, width: '100%', margin: '0 auto',
+        background: 'var(--paper)', border: '1px solid var(--line)', borderRadius: 16,
+        display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
 
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 140px 1fr auto', gap: 8, alignItems: 'center' }}>
-        <select value={fromId} onChange={e => setFromId(e.target.value)} style={fieldStyle}>
-          <option value="">— origem —</option>
-          {pages.map(p => <option key={p.id} value={p.id}>{p.title}</option>)}
-        </select>
-        <input value={label} onChange={e => setLabel(e.target.value)} placeholder="relação..."
-          style={fieldStyle} />
-        <select value={toId} onChange={e => setToId(e.target.value)} style={fieldStyle}>
-          <option value="">— destino —</option>
-          {pages.map(p => <option key={p.id} value={p.id}>{p.title}</option>)}
-        </select>
-        <button onClick={handleAdd} disabled={saving || !fromId || !toId || !label.trim()}
-          style={{ padding: '7px 16px', borderRadius: 999, border: 'none',
-            background: 'var(--teal)', color: '#fff',
-            fontFamily: 'var(--font-mono)', fontSize: 11, cursor: 'pointer',
-            opacity: saving || !fromId || !toId || !label.trim() ? 0.5 : 1 }}>
-          +
-        </button>
-      </div>
-
-      {relations.length > 0 && (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginTop: 8 }}>
-          {relations.map(r => (
-            <div key={r.id} style={{ display: 'flex', alignItems: 'center', gap: 10,
-              padding: '8px 14px', background: 'var(--paper-deep)', border: '1px solid var(--line-soft)',
-              borderRadius: 8 }}>
-              <span style={{ fontFamily: 'var(--font-body)', fontSize: 13, flex: 1 }}>
-                <strong>{pageById(r.from_id)?.title ?? '?'}</strong>
-                <span style={{ color: 'var(--ink-mute)', margin: '0 8px', fontStyle: 'italic' }}>{r.label}</span>
-                <strong>{pageById(r.to_id)?.title ?? '?'}</strong>
-              </span>
-              <button onClick={() => onDelete(r.id)}
-                style={{ background: 'none', border: 'none', cursor: 'pointer',
-                  color: 'var(--coral)', fontFamily: 'var(--font-mono)', fontSize: 12, padding: '2px 6px' }}>
-                ✕
-              </button>
-            </div>
-          ))}
+        {/* Cabeçalho */}
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+          gap: 16, padding: '16px 24px', borderBottom: '1px solid var(--line)' }}>
+          <div style={{ fontFamily: 'var(--font-mono)', fontSize: 11, letterSpacing: '0.12em',
+            textTransform: 'uppercase', color: 'var(--ink)' }}>
+            Revisar edição — {original?.title ?? edit.title}
+          </div>
+          <button onClick={onClose}
+            style={{ background: 'none', border: '1px solid var(--line)', borderRadius: 999,
+              cursor: 'pointer', color: 'var(--ink-mute)', fontFamily: 'var(--font-mono)',
+              fontSize: 11, padding: '5px 14px', letterSpacing: '0.08em' }}>
+            Fechar ✕
+          </button>
         </div>
-      )}
+
+        {/* Comparação lado a lado */}
+        <div style={{ flex: 1, minHeight: 0, display: 'grid', gridTemplateColumns: '1fr 1fr' }}>
+          <div style={{ overflowY: 'auto', borderRight: '1px solid var(--line)', opacity: 0.85 }}>
+            {colTitle('Original (atual)', 'var(--ink-mute)')}
+            <WikiArticle page={base} allPages={allPages} isGM
+              onOpenPage={noop} onBack={noop} />
+          </div>
+          <div style={{ overflowY: 'auto' }}>
+            {colTitle('Proposta (pendente)', 'var(--teal)')}
+            <WikiArticle page={proposed} allPages={allPages} isGM
+              onOpenPage={noop} onBack={noop} />
+          </div>
+        </div>
+
+        {/* Ações */}
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: 10,
+          padding: '14px 24px', borderTop: '1px solid var(--line)' }}>
+          <button onClick={onReject} disabled={busy}
+            style={{ padding: '8px 22px', borderRadius: 999, border: '1px solid var(--coral)',
+              background: 'transparent', color: 'var(--coral)',
+              fontFamily: 'var(--font-mono)', fontSize: 11, cursor: busy ? 'wait' : 'pointer',
+              letterSpacing: '0.08em', opacity: busy ? 0.6 : 1 }}>
+            Rejeitar
+          </button>
+          <button onClick={onApprove} disabled={busy}
+            style={{ padding: '8px 22px', borderRadius: 999, border: 'none',
+              background: 'var(--teal)', color: '#fff',
+              fontFamily: 'var(--font-mono)', fontSize: 11, cursor: busy ? 'wait' : 'pointer',
+              letterSpacing: '0.08em', opacity: busy ? 0.6 : 1 }}>
+            {busy ? 'Aplicando...' : 'Aprovar alterações'}
+          </button>
+        </div>
+      </div>
     </div>
   )
 }
@@ -341,8 +371,8 @@ function RelationManager({ pages, relations, onAdd, onDelete }: RelationManagerP
 // ── WikiSection principal ─────────────────────────────────────────────────────
 
 export default function WikiSection({ state, onUpdate }: Props) {
+  const { flags, setFlag } = useCampaignFlags()
   const [pages,        setPages]        = useState<WikiPage[]>([])
-  const [relations,    setRelations]    = useState<WikiRelation[]>([])
   const [pendingEdits, setPendingEdits] = useState<WikiPageEdit[]>([])
   const [wikiTab,      setWikiTab]      = useState<WikiTab>('paginas')
   const [catFilter,    setCatFilter]    = useState<WikiCategory | 'all'>('all')
@@ -351,11 +381,12 @@ export default function WikiSection({ state, onUpdate }: Props) {
   const [loading,      setLoading]      = useState(true)
   const [seeding,      setSeeding]      = useState(false)
   const [seedResult,   setSeedResult]   = useState<{ created: number; skipped: number } | null>(null)
+  const [reviewEdit,   setReviewEdit]   = useState<WikiPageEdit | null>(null)
+  const [reviewBusy,   setReviewBusy]   = useState(false)
 
   useEffect(() => {
-    Promise.all([listWikiPages(), listWikiRelations(), listPendingEdits()]).then(([p, r, edits]) => {
+    Promise.all([listWikiPages(), listPendingEdits()]).then(([p, edits]) => {
       setPages(p as WikiPage[])
-      setRelations(r as WikiRelation[])
       setPendingEdits(edits as WikiPageEdit[])
       setLoading(false)
     })
@@ -375,7 +406,6 @@ export default function WikiSection({ state, onUpdate }: Props) {
     if (!confirm('Remover esta página da Wiki? Esta ação não pode ser desfeita.')) return
     await deleteWikiPage(id)
     setPages(prev => prev.filter(p => p.id !== id))
-    setRelations(prev => prev.filter(r => r.from_id !== id && r.to_id !== id))
   }
 
   const handleVisChange = async (page: WikiPage, vis: WikiVisibility) => {
@@ -383,23 +413,23 @@ export default function WikiSection({ state, onUpdate }: Props) {
     setPages(prev => prev.map(p => p.id === page.id ? { ...p, visibility: vis } : p))
   }
 
-  const handleRelationAdded = (r: WikiRelation) => setRelations(prev => [...prev, r])
-  const handleRelationDeleted = async (id: string) => {
-    await deleteWikiRelation(id)
-    setRelations(prev => prev.filter(r => r.id !== id))
-  }
-
   const handleApproveEdit = async (edit: WikiPageEdit) => {
+    setReviewBusy(true)
     const updated = await approveWikiEdit(edit)
+    setReviewBusy(false)
     if (updated) {
       setPages(prev => prev.map(p => p.id === updated.id ? updated : p))
       setPendingEdits(prev => prev.filter(e => e.id !== edit.id))
+      setReviewEdit(prev => prev?.id === edit.id ? null : prev)
     }
   }
 
   const handleRejectEdit = async (editId: string) => {
+    setReviewBusy(true)
     await rejectWikiEdit(editId)
+    setReviewBusy(false)
     setPendingEdits(prev => prev.filter(e => e.id !== editId))
+    setReviewEdit(prev => prev?.id === editId ? null : prev)
   }
 
   const handleApprovePage = async (pageId: string) => {
@@ -447,6 +477,30 @@ export default function WikiSection({ state, onUpdate }: Props) {
 
   return (
     <div>
+      {/* Toggle global: páginas detalhadas para todos */}
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+        gap: 16, padding: '12px 16px', marginBottom: 20, borderRadius: 12,
+        background: 'var(--paper-deep)', border: '1px solid var(--line)' }}>
+        <div>
+          <div style={{ fontFamily: 'var(--font-mono)', fontSize: 11, letterSpacing: '0.1em',
+            textTransform: 'uppercase', color: 'var(--ink)' }}>
+            Páginas detalhadas
+          </div>
+          <div style={{ fontFamily: 'var(--font-serif)', fontStyle: 'italic', fontSize: 12,
+            color: 'var(--ink-mute)', marginTop: 2 }}>
+            Ativa o novo layout (infobox, galeria, links) para todos os jogadores.
+          </div>
+        </div>
+        <button onClick={() => setFlag('wiki_detailed_pages', !flags.wiki_detailed_pages)}
+          style={{ flexShrink: 0, width: 52, height: 28, borderRadius: 999, border: 'none', cursor: 'pointer',
+            background: flags.wiki_detailed_pages ? 'var(--teal)' : 'var(--line)',
+            position: 'relative', transition: 'background 0.15s' }}>
+          <span style={{ position: 'absolute', top: 3, left: flags.wiki_detailed_pages ? 27 : 3,
+            width: 22, height: 22, borderRadius: '50%', background: '#fff', transition: 'left 0.15s',
+            boxShadow: '0 1px 3px rgba(0,0,0,0.3)' }} />
+        </button>
+      </div>
+
       {/* Sub-tabs */}
       <div style={{ display: 'flex', gap: 4, marginBottom: 24 }}>
         {SUB_TABS.map(t => (
@@ -618,23 +672,6 @@ export default function WikiSection({ state, onUpdate }: Props) {
               ))}
             </div>
           )}
-
-          {/* Relações */}
-          {pages.length > 1 && (
-            <div style={{ marginTop: 36, padding: '20px 24px', background: 'var(--paper-deep)',
-              border: '1px solid var(--line)', borderRadius: 12 }}>
-              <div style={{ fontFamily: 'var(--font-mono)', fontSize: 10, letterSpacing: '0.14em',
-                textTransform: 'uppercase', color: 'var(--ink-mute)', marginBottom: 16 }}>
-                Relações entre entidades
-              </div>
-              <RelationManager
-                pages={pages}
-                relations={relations}
-                onAdd={handleRelationAdded}
-                onDelete={handleRelationDeleted}
-              />
-            </div>
-          )}
         </>
       )}
 
@@ -714,53 +751,31 @@ export default function WikiSection({ state, onUpdate }: Props) {
               <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
                 {pendingEdits.map(edit => {
                   const originalPage = pages.find(p => p.id === edit.page_id)
+                  const titleChanged = !!originalPage && originalPage.title !== edit.title
+                  const catChanged   = !!originalPage && originalPage.category !== edit.category
                   return (
                     <div key={edit.id} style={{ padding: '16px 20px', background: 'var(--paper-deep)',
-                      border: '1px solid var(--wheat)', borderRadius: 10 }}>
-                      <div style={{ fontFamily: 'var(--font-mono)', fontSize: 10, color: 'var(--wheat)',
-                        letterSpacing: '0.1em', marginBottom: 10 }}>
-                        edição de: {originalPage?.title ?? edit.page_id}
-                      </div>
-                      <div style={{ display: 'flex', alignItems: 'flex-start', gap: 16 }}>
-                        <div style={{ flex: 1, display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
-                          <div>
-                            <div style={{ fontFamily: 'var(--font-mono)', fontSize: 9,
-                              color: 'var(--ink-mute)', letterSpacing: '0.1em', marginBottom: 6 }}>
-                              ORIGINAL
-                            </div>
-                            <div style={{ fontFamily: 'var(--font-body)', fontSize: 12,
-                              color: 'var(--ink-mute)', lineHeight: 1.5, maxHeight: 100, overflow: 'hidden' }}>
-                              {originalPage?.body?.replace(/[#*_]/g, '').slice(0, 200) ?? '—'}
-                            </div>
-                          </div>
-                          <div>
-                            <div style={{ fontFamily: 'var(--font-mono)', fontSize: 9,
-                              color: 'var(--teal)', letterSpacing: '0.1em', marginBottom: 6 }}>
-                              PROPOSTA
-                            </div>
-                            <div style={{ fontFamily: 'var(--font-body)', fontSize: 12,
-                              color: 'var(--ink-soft)', lineHeight: 1.5, maxHeight: 100, overflow: 'hidden' }}>
-                              {edit.body.replace(/[#*_]/g, '').slice(0, 200)}
-                            </div>
-                          </div>
+                      border: '1px solid var(--wheat)', borderRadius: 10,
+                      display: 'flex', alignItems: 'center', gap: 16 }}>
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        <div style={{ fontFamily: 'var(--font-mono)', fontSize: 10, color: 'var(--wheat)',
+                          letterSpacing: '0.1em', marginBottom: 4 }}>
+                          edição de: {originalPage?.title ?? edit.page_id}
                         </div>
-                        <div style={{ display: 'flex', gap: 8, flexShrink: 0 }}>
-                          <button onClick={() => handleApproveEdit(edit)}
-                            style={{ padding: '6px 16px', borderRadius: 999, border: 'none',
-                              background: 'var(--teal)', color: '#fff',
-                              fontFamily: 'var(--font-mono)', fontSize: 11, cursor: 'pointer',
-                              letterSpacing: '0.08em' }}>
-                            Aplicar
-                          </button>
-                          <button onClick={() => handleRejectEdit(edit.id)}
-                            style={{ padding: '6px 16px', borderRadius: 999,
-                              border: '1px solid var(--coral)', background: 'transparent', color: 'var(--coral)',
-                              fontFamily: 'var(--font-mono)', fontSize: 11, cursor: 'pointer',
-                              letterSpacing: '0.08em' }}>
-                            Rejeitar
-                          </button>
+                        <div style={{ fontFamily: 'var(--font-serif)', fontStyle: 'italic',
+                          fontSize: 12, color: 'var(--ink-mute)' }}>
+                          {titleChanged && <>título alterado · </>}
+                          {catChanged && <>categoria alterada · </>}
+                          conteúdo proposto — abra para revisar
                         </div>
                       </div>
+                      <button onClick={() => setReviewEdit(edit)}
+                        style={{ padding: '6px 16px', borderRadius: 999, border: '1px solid var(--teal)',
+                          background: 'transparent', color: 'var(--teal)',
+                          fontFamily: 'var(--font-mono)', fontSize: 11, cursor: 'pointer',
+                          letterSpacing: '0.08em', flexShrink: 0 }}>
+                        Ver alterações
+                      </button>
                     </div>
                   )
                 })}
@@ -770,6 +785,19 @@ export default function WikiSection({ state, onUpdate }: Props) {
         </div>
       )}
 
+
+      {/* Revisão de edição pendente (original vs. proposta) */}
+      {reviewEdit && (
+        <EditReviewModal
+          edit={reviewEdit}
+          original={pages.find(p => p.id === reviewEdit.page_id)}
+          allPages={pages}
+          busy={reviewBusy}
+          onApprove={() => handleApproveEdit(reviewEdit)}
+          onReject={() => handleRejectEdit(reviewEdit.id)}
+          onClose={() => setReviewEdit(null)}
+        />
+      )}
 
       {/* SheetModal para fichas vinculadas */}
       {sheetOpen && (

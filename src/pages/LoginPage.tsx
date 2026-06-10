@@ -4,9 +4,10 @@ import { signIn } from '../lib/auth'
 
 interface Props {
   onSuccess: () => void
+  onCancel?: () => void
 }
 
-export default function LoginPage({ onSuccess }: Props) {
+export default function LoginPage({ onSuccess, onCancel }: Props) {
   const [email,    setEmail]    = useState('')
   const [password, setPassword] = useState('')
   const [error,    setError]    = useState<string | null>(null)
@@ -161,6 +162,22 @@ export default function LoginPage({ onSuccess }: Props) {
         }}>
           Conta criada pelo GM · Não há cadastro público
         </p>
+
+        {onCancel && (
+          <button
+            type="button"
+            onClick={onCancel}
+            style={{
+              display: 'block', margin: '12px auto 0',
+              background: 'transparent', border: 'none', cursor: 'pointer',
+              fontFamily: 'var(--font-mono)', fontSize: 11,
+              letterSpacing: '0.08em', color: 'var(--ink-soft)',
+              textDecoration: 'underline',
+            }}
+          >
+            ← Continuar como visitante
+          </button>
+        )}
       </div>
     </div>
   )

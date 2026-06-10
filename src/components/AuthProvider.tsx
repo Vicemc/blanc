@@ -16,6 +16,11 @@ interface AuthContextValue {
   isGM:       boolean
   // Em modo local (sem Supabase), o app funciona sem login
   localMode:  boolean
+  // Visitante anônimo: Supabase ativo mas sem sessão. Acesso somente-leitura.
+  isAnon:     boolean
+  // Mostra a tela de login (visitante clicou em "Entrar")
+  showLogin:  boolean
+  setShowLogin: (v: boolean) => void
   refresh:    () => Promise<void>
 }
 
@@ -25,6 +30,9 @@ const AuthContext = createContext<AuthContextValue>({
   loading:   true,
   isGM:      true,
   localMode: true,
+  isAnon:    false,
+  showLogin: false,
+  setShowLogin: () => {},
   refresh:   async () => {},
 })
 
@@ -38,6 +46,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [session, setSession]   = useState<Session | null>(null)
   const [profile, setProfile]   = useState<UserProfile | null>(null)
   const [loading, setLoading]   = useState(true)
+  const [showLogin, setShowLogin] = useState(false)
 
   const localMode = !isSupabaseReady
 
@@ -76,12 +85,18 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     return unsub
   }, [localMode, loadProfile])
 
+  // Visitante anônimo: Supabase configurado, mas sem sessão ativa.
+  const isAnon = isSupabaseReady && !session
+
   const value: AuthContextValue = {
     session,
     profile,
     loading,
     isGM: localMode ? true : checkIsGM(profile),
     localMode,
+    isAnon,
+    showLogin,
+    setShowLogin,
     refresh,
   }
 

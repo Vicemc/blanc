@@ -1,5 +1,5 @@
 import { supabase, isSupabaseReady } from '../supabase'
-import type { WikiPage, WikiPageEdit, WikiRelation, WikiCategory, WikiVisibility, WikiLinkedType } from '../../types/wiki'
+import type { WikiPage, WikiPageEdit, WikiRelation, WikiCategory, WikiVisibility, WikiLinkedType, WikiContent } from '../../types/wiki'
 import type { AppState } from '../../types'
 
 const CAMPAIGN = 'midnight-summer'
@@ -30,6 +30,7 @@ export async function saveWikiPage(page: Partial<WikiPage> & { title: string; ca
     linked_id:      page.linked_id ?? null,
     status:         page.status ?? 'approved',
     owner_tamer_id: page.owner_tamer_id ?? null,
+    content:        page.content ?? {},
     updated_at:     new Date().toISOString(),
   }
 
@@ -54,7 +55,7 @@ export async function saveWikiPage(page: Partial<WikiPage> & { title: string; ca
 // Player cria nova página — fica como 'pending' até o GM aprovar
 export async function submitWikiPage(
   authorId: string,
-  page: { title: string; category: WikiCategory; body: string }
+  page: { title: string; category: WikiCategory; body: string; content?: WikiContent }
 ): Promise<WikiPage | null> {
   if (!isSupabaseReady || !supabase) return null
   const { data } = await supabase
@@ -64,6 +65,7 @@ export async function submitWikiPage(
       title:       page.title,
       category:    page.category,
       body:        page.body,
+      content:     page.content ?? {},
       avatar_url:  null,
       visibility:  'hidden',
       linked_type: null,
@@ -79,7 +81,7 @@ export async function submitWikiPage(
 // Player submete edição de página existente
 export async function submitWikiPageEdit(
   authorId: string,
-  edit: { page_id: string; title: string; body: string; category: WikiCategory }
+  edit: { page_id: string; title: string; body: string; category: WikiCategory; content?: WikiContent }
 ): Promise<WikiPageEdit | null> {
   if (!isSupabaseReady || !supabase) return null
   const { data } = await supabase
@@ -91,11 +93,34 @@ export async function submitWikiPageEdit(
       title:       edit.title,
       body:        edit.body,
       category:    edit.category,
+      content:     edit.content ?? {},
       status:      'pending',
     })
     .select('*')
     .single()
   return (data ?? null) as WikiPageEdit | null
+}
+
+// Dono da página edita a própria página — aplica direto, sem aprovação.
+// Atualiza APENAS a linha em wiki_pages; não toca em app_state / fichas / palco.
+export async function saveOwnWikiPageEdit(
+  pageId: string,
+  edit: { title: string; body: string; category: WikiCategory; content?: WikiContent }
+): Promise<WikiPage | null> {
+  if (!isSupabaseReady || !supabase) return null
+  const { data } = await supabase
+    .from('wiki_pages')
+    .update({
+      title:      edit.title,
+      body:       edit.body,
+      category:   edit.category,
+      content:    edit.content ?? {},
+      updated_at: new Date().toISOString(),
+    })
+    .eq('id', pageId)
+    .select('*')
+    .single()
+  return (data ?? null) as WikiPage | null
 }
 
 // GM lista edições pendentes
@@ -116,7 +141,7 @@ export async function approveWikiEdit(edit: WikiPageEdit): Promise<WikiPage | nu
   const [{ data: page }] = await Promise.all([
     supabase
       .from('wiki_pages')
-      .update({ title: edit.title, body: edit.body, category: edit.category, updated_at: new Date().toISOString() })
+      .update({ title: edit.title, body: edit.body, category: edit.category, content: edit.content ?? {}, updated_at: new Date().toISOString() })
       .eq('id', edit.page_id)
       .select('*')
       .single(),

@@ -207,6 +207,52 @@ function TeatroSVG() {
   )
 }
 
+// ===== Wiki SVG (losango dourado sobre a cor do digivice da sessão) =====
+function WikiSVG({ bg }: { bg: string }) {
+  return (
+    <svg viewBox="0 0 260 200" xmlns="http://www.w3.org/2000/svg">
+      <defs>
+        <radialGradient id="wikiVignette" cx="50%" cy="46%" r="62%">
+          <stop offset="0%"   stopColor="rgba(255,255,255,0.10)"/>
+          <stop offset="64%"  stopColor="rgba(0,0,0,0)"/>
+          <stop offset="100%" stopColor="rgba(0,0,0,0.30)"/>
+        </radialGradient>
+        {/* halo escuro radial atrás do emblema — garante contraste em fundos claros */}
+        <radialGradient id="wikiHalo" cx="50%" cy="50%" r="50%">
+          <stop offset="0%"   stopColor="rgba(0,0,0,0.55)"/>
+          <stop offset="55%"  stopColor="rgba(0,0,0,0.42)"/>
+          <stop offset="100%" stopColor="rgba(0,0,0,0)"/>
+        </radialGradient>
+        <linearGradient id="wikiGold" x1="0" y1="0" x2="1" y2="1">
+          <stop offset="0%"   stopColor="#f4d77a"/>
+          <stop offset="50%"  stopColor="#e4ba50"/>
+          <stop offset="100%" stopColor="#c8941a"/>
+        </linearGradient>
+      </defs>
+
+      {/* fundo: cor sólida do digivice da sessão + leve vinheta para profundidade */}
+      <rect width="260" height="200" fill={bg}/>
+      <rect width="260" height="200" fill="url(#wikiVignette)"/>
+
+      {/* losango dourado com círculo no meio */}
+      <g>
+        {/* halo escuro radial atrás do emblema — visível mesmo em fundos claros */}
+        <ellipse cx="130" cy="100" rx="78" ry="74" fill="url(#wikiHalo)"/>
+        {/* losango externo */}
+        <path d="M 130 50 L 184 100 L 130 150 L 76 100 Z"
+          fill="none" stroke="url(#wikiGold)" strokeWidth="4" strokeLinejoin="round"/>
+        {/* losango interno fino */}
+        <path d="M 130 64 L 170 100 L 130 136 L 90 100 Z"
+          fill="none" stroke="url(#wikiGold)" strokeWidth="1.6" opacity="0.7" strokeLinejoin="round"/>
+        {/* círculo central */}
+        <circle cx="130" cy="100" r="13" fill="url(#wikiGold)"/>
+        <circle cx="130" cy="100" r="13" fill="none" stroke="rgba(255,255,255,0.35)" strokeWidth="1"/>
+        <circle cx="126" cy="96" r="3.5" fill="rgba(255,255,255,0.45)"/>
+      </g>
+    </svg>
+  )
+}
+
 export default function HomePage() {
   // Escolhe digivice aleatório por sessão (memoizado)
   const dvIndex = useMemo(() => Math.floor(Math.random() * DIGIVICES.length), [])
@@ -247,6 +293,15 @@ export default function HomePage() {
           </div>
           <h3>Teatro</h3>
           <p>Crie palcos e adicione atores para visualização rápida em combate.</p>
+        </Link>
+
+        <Link to="/wiki" className={styles.card}>
+          <div className={`${styles.thumb} ${styles.thumbWiki}`}>
+            <WikiSVG bg={dv.body} />
+            <div className={`grain ${styles.grainSoft}`} />
+          </div>
+          <h3>Wiki</h3>
+          <p>Enciclopédia do mundo: personagens, locais, facções e entidades.</p>
         </Link>
 
       </div>

@@ -1,6 +1,6 @@
 // src/App.tsx
 import { Suspense, lazy, useState, useCallback, useEffect, useRef, type FC } from 'react'
-import { Routes, Route, NavLink } from 'react-router-dom'
+import { Routes, Route, NavLink, Navigate } from 'react-router-dom'
 import { loadState, exportStateToFile, importStateFromFile, runMigrations } from './data/store'
 import { loadStateFromDB, saveStateToDB, subscribeToState, migrateLocalToSupabase, updateMyTamerAndLine } from './lib/db'
 import { signOut, canEditTamer } from './lib/auth'
@@ -9,9 +9,11 @@ import type { Tamer } from './types'
 import { AuthProvider, useAuth } from './components/AuthProvider'
 import { SetupHealth } from './components/SetupHealth'
 import { DiceRoller } from './components/DiceRoller'
+import { ThemeToggle } from './components/ThemeToggle'
 import { GlobalSearch } from './components/GlobalSearch'
 import { usePresence } from './lib/presence'
 import { SettingsProvider } from './lib/settings'
+import { CampaignFlagsProvider } from './lib/campaignFlags'
 import { isSupabaseReady } from './lib/supabase'
 import type { AppState } from './types'
 import styles from './App.module.css'
@@ -101,7 +103,7 @@ const TamerAvatar: FC<{ profile: UserProfile; tamer: Tamer | null; isGM: boolean
 }
 
 function AppInner() {
-  const { session, profile, loading, isGM, localMode, refresh } = useAuth()
+  const { session, profile, loading, isGM, localMode, isAnon, showLogin, setShowLogin, refresh } = useAuth()
   const [state, setState] = useState<AppState>(() => loadState())
   const [appReady, setAppReady] = useState(false)
   const [migrating, setMigrating] = useState(false)
@@ -120,7 +122,8 @@ function AppInner() {
 
   useEffect(() => {
     if (loading) return
-    if (isSupabaseReady && !session && !localMode) { setAppReady(true); return }
+    // Visitante anônimo (sem sessão) ainda carrega o estado público do DB,
+    // apenas em modo leitura.
     loadStateFromDB().then(s => { setState(s); setAppReady(true) })
   }, [loading, session, localMode])
 
@@ -155,16 +158,18 @@ function AppInner() {
 
   // Auto-save para Teatro/Palco (combate em tempo real)
   const onUpdate = useCallback((s: AppState) => {
+    if (isAnon) { setState(s); return }  // visitante: só estado local, sem persistir
     setState(s)
     lastSaveRef.current = Date.now()
     saveStateToDB(s)
-  }, [])
+  }, [isAnon])
 
   // Edição local — marca dirty e auto-salva após 1.5s de inatividade.
   // Players (não-GM, não-localMode) usam updateMyTamerAndLine (RPC atômico) para evitar
   // sobrescrever o estado inteiro e causar conflitos de concorrência com outros players.
   // NUNCA há fallback para saveStateToDB para players — isso deletaria NPCs/mudanças alheias.
   const onUpdateLocal = useCallback((s: AppState) => {
+    if (isAnon) { setState(s); return }  // visitante: só estado local, sem persistir
     setState(s)
     lastSaveRef.current = Date.now()
     setIsDirty(true)
@@ -189,7 +194,7 @@ function AppInner() {
       }
       void saveStateToDB(s).then(() => setIsDirty(false))
     }, 1500)
-  }, [localMode, isGM, profile])
+  }, [isAnon, localMode, isGM, profile])
 
   const handleSave = useCallback(async () => {
     if (!isDirty) return
@@ -230,14 +235,15 @@ function AppInner() {
       : `✗ Erro: ${error}`)
   }
 
-  // GM pode editar qualquer ficha. Player só edita o próprio tamer. Guest não edita nada.
+  // GM pode editar qualquer ficha. Player só edita o próprio tamer. Guest/visitante não edita nada.
   const canEdit = useCallback((tamerId?: string) => {
+    if (isAnon) return false
     if (localMode) return true
     if (isGM) return true
     if (isGuest) return false
     if (!tamerId) return false
     return canEditTamer(profile, tamerId)
-  }, [localMode, isGM, isGuest, profile])
+  }, [isAnon, localMode, isGM, isGuest, profile])
 
   if (loading || !appReady) {
     return (
@@ -250,16 +256,21 @@ function AppInner() {
     )
   }
 
-  if (isSupabaseReady && !session && !localMode) {
-    return <LoginPage onSuccess={refresh} />
+  // Tela de login só aparece quando o visitante clica em "Entrar".
+  if (isAnon && showLogin) {
+    return <LoginPage onSuccess={() => { setShowLogin(false); refresh() }} onCancel={() => setShowLogin(false)} />
   }
 
   const showSetupBanner = isSupabaseReady && session && !profile && !localMode
 
-  // Digivice e DigiZap: apenas GM ou players com tamer vinculado (não guests)
-  const canSeeDigivice = !isGuest && (localMode || isGM || !!profile?.tamer_id)
-  const canSeeDigizap  = !isGuest && (localMode || isGM || !!profile?.tamer_id)
+  // Digivice e DigiZap: apenas GM ou players com tamer vinculado (não guests/visitantes)
+  const canSeeDigivice = !isAnon && !isGuest && (localMode || isGM || !!profile?.tamer_id)
+  const canSeeDigizap  = !isAnon && !isGuest && (localMode || isGM || !!profile?.tamer_id)
+  // Teatro é visível para visitantes (somente leitura); apenas guests logados não veem.
   const canSeeTeatro   = !isGuest
+  // Visitante anônimo: só Início, Party, Goggle, Sistema, Teatro e Wiki.
+  const canSeeMapas    = !isAnon
+  const canSeeConfig   = !isAnon
 
   const pageFallback = (
     <div style={{ minHeight: '100vh', display: 'flex', alignItems: 'center',
@@ -301,8 +312,12 @@ function AppInner() {
           </NavLink>
         )}
         <NavLink to="/wiki"          className={({ isActive }) => isActive ? styles.active : ''}>Wiki</NavLink>
-        <NavLink to="/mapas"         className={({ isActive }) => isActive ? styles.active : ''}>Mapas</NavLink>
-        <NavLink to="/configuracoes" className={({ isActive }) => isActive ? styles.active : ''}>Config</NavLink>
+        {canSeeMapas && (
+          <NavLink to="/mapas"       className={({ isActive }) => isActive ? styles.active : ''}>Mapas</NavLink>
+        )}
+        {canSeeConfig && (
+          <NavLink to="/configuracoes" className={({ isActive }) => isActive ? styles.active : ''}>Config</NavLink>
+        )}
         {isGM && (
           <NavLink to="/backstage"  className={({ isActive }) => isActive ? styles.active : ''}>Backstage</NavLink>
         )}
@@ -311,7 +326,7 @@ function AppInner() {
 
         <GlobalSearch state={state} isGM={isGM} className={styles.navBtn} />
 
-        {!localMode && presences.length > 0 && (
+        {!localMode && !isAnon && presences.length > 0 && (
           <span title={presences.map(p => p.display_name).join(', ')}
             style={{ fontFamily: 'var(--font-mono)', fontSize: 10, letterSpacing: '0.1em',
               textTransform: 'uppercase', padding: '3px 10px', borderRadius: 999,
@@ -330,8 +345,8 @@ function AppInner() {
           />
         )}
 
-        {/* Botão salvar — visível quando há mudanças não salvas (exceto guests) */}
-        {!isGuest && isSupabaseReady && (isDirty || isSaving) && (
+        {/* Botão salvar — visível quando há mudanças não salvas (exceto guests/visitantes) */}
+        {!isGuest && !isAnon && isSupabaseReady && (isDirty || isSaving) && (
           <button
             className={styles.navBtn}
             onClick={handleSave}
@@ -352,13 +367,17 @@ function AppInner() {
 
         {isGM && isSupabaseReady && <SetupHealth className={styles.navBtn} />}
 
-        {!isGuest && (
+        {!isGuest && !isAnon && (
           <>
             <button className={styles.navBtn} onClick={async () => exportStateToFile(state)}>↓ Backup</button>
             <button className={styles.navBtn} onClick={handleImport}>↑ Importar</button>
           </>
         )}
 
+        {/* Visitante anônimo: oferece login. Sessão ativa: oferece sair. */}
+        {isAnon && (
+          <button className={styles.navBtn} onClick={() => setShowLogin(true)}>Entrar</button>
+        )}
         {isSupabaseReady && session && (
           <button className={styles.navBtn} onClick={signOut}>Sair</button>
         )}
@@ -404,13 +423,21 @@ function AppInner() {
             <Route path="/goggle"    element={<GogglePage   state={state} onUpdate={onUpdateLocal} canEdit={canEdit} isGM={isGM} />} />
             <Route path="/teatro"    element={<TeatroPage   state={state} onUpdate={onUpdate}      isGM={isGM} />} />
             <Route path="/sistema"   element={<SistemaPage  state={state} onUpdate={onUpdateLocal} isGM={isGM} />} />
-            <Route path="/backstage" element={<BackstagePage state={state} onUpdate={onUpdateLocal} />} />
-            <Route path="/digivice"  element={<DigivicePage  state={state} onUpdate={onUpdateLocal} profile={profile} isGM={isGM} />} />
-            <Route path="/digizap"   element={<DigiZapPage   state={state} profile={profile} isGM={isGM} onUnreadChange={setDigizapUnread} />} />
             <Route path="/wiki"          element={<WikiPage      state={state} isGM={isGM} />} />
-            <Route path="/mapas"         element={<MapPage       isGM={isGM} />} />
+            <Route path="/wiki/:id"      element={<WikiPage      state={state} isGM={isGM} />} />
             <Route path="/view"          element={<ViewerPage    state={state} />} />
-            <Route path="/configuracoes" element={<SettingsPage />} />
+            {/* Rotas restritas a usuários logados — visitantes anônimos são redirecionados. */}
+            {!isAnon && (
+              <>
+                <Route path="/backstage" element={<BackstagePage state={state} onUpdate={onUpdateLocal} />} />
+                <Route path="/digivice"  element={<DigivicePage  state={state} onUpdate={onUpdateLocal} profile={profile} isGM={isGM} />} />
+                <Route path="/digizap"   element={<DigiZapPage   state={state} profile={profile} isGM={isGM} onUnreadChange={setDigizapUnread} />} />
+                <Route path="/mapas"         element={<MapPage       isGM={isGM} />} />
+                <Route path="/configuracoes" element={<SettingsPage />} />
+              </>
+            )}
+            {/* Qualquer outra rota (inclui restritas para anon) volta ao início. */}
+            <Route path="*" element={<Navigate to="/" replace />} />
           </Routes>
         </Suspense>
       </main>
@@ -424,7 +451,11 @@ export default function App() {
   return (
     <SettingsProvider>
       <AuthProvider>
-        <AppInner />
+        <CampaignFlagsProvider>
+          <AppInner />
+          {/* Botão de tema sempre presente, em qualquer tela (login, loading, app). */}
+          <ThemeToggle />
+        </CampaignFlagsProvider>
       </AuthProvider>
     </SettingsProvider>
   )

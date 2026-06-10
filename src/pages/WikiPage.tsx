@@ -1,12 +1,18 @@
 import React, { useState, useEffect } from 'react'
+import { useParams, useNavigate } from 'react-router-dom'
 import { useSettings } from '../lib/settings'
+import { useCampaignFlags } from '../lib/campaignFlags'
 import { useAuth } from '../components/AuthProvider'
 import type { AppState } from '../types'
-import type { WikiPage as WikiPageType, WikiPageEdit, WikiCategory, WikiVisibility } from '../types/wiki'
-import { WIKI_CATEGORIES } from '../types/wiki'
-import { listWikiPages, submitWikiPage, submitWikiPageEdit, listMyPendingEdits } from '../lib/db/wiki'
+import type { WikiPage as WikiPageType, WikiPageEdit, WikiCategory, WikiContent } from '../types/wiki'
+import { WIKI_CATEGORIES, EMPTY_WIKI_CONTENT } from '../types/wiki'
+import { listWikiPages, submitWikiPage, submitWikiPageEdit, saveOwnWikiPageEdit, listMyPendingEdits } from '../lib/db/wiki'
 import { SheetModal } from '../components/Sheet'
 import type { SheetSubject } from '../components/Sheet'
+import WikiArticle from '../components/wiki/WikiArticle'
+import WikiBlocksEditor from '../components/wiki/WikiBlocksEditor'
+import { renderWikiMarkdown } from '../components/wiki/wikiLinks'
+import { pageSlug, resolvePageParam, looksLikeUuid } from '../components/wiki/wikiSlug'
 
 interface Props {
   state:  AppState
@@ -15,14 +21,18 @@ interface Props {
 
 type PlayerModal = { kind: 'new' } | { kind: 'edit'; page: WikiPageType }
 
-function parseMarkdown(text: string): string {
-  return text
-    .replace(/^### (.+)$/gm, '<h3>$1</h3>')
-    .replace(/^## (.+)$/gm,  '<h2>$1</h2>')
-    .replace(/^# (.+)$/gm,   '<h1>$1</h1>')
-    .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
-    .replace(/\*(.+?)\*/g,     '<em>$1</em>')
-    .replace(/\n/g, '<br />')
+// Resolve a classe de fundo (fill-*) do avatar a partir da entidade vinculada,
+// para a Wiki reaproveitar a cor do retrato (imagens têm fundo transparente).
+function resolvePortrait(page: WikiPageType, state: AppState): string | null {
+  if (!page.linked_type || !page.linked_id) return null
+  let portrait: string | undefined
+  if (page.linked_type === 'tamer')         portrait = state.tamers.find(t => t.id === page.linked_id)?.portrait
+  else if (page.linked_type === 'survivor') portrait = (state.survivors ?? []).find(s => s.id === page.linked_id)?.portrait
+  else if (page.linked_type === 'digimon') {
+    const line = state.bestiary.find(d => d.id === page.linked_id)
+    portrait = line?.stages[line.currentStage]?.portrait
+  }
+  return portrait ? `fill-${portrait}` : null
 }
 
 function AvatarCircle({ url, name, size = 64 }: { url: string | null; name: string; size?: number }) {
@@ -47,18 +57,23 @@ function AvatarCircle({ url, name, size = 64 }: { url: string | null; name: stri
 
 interface PlayerContribModalProps {
   mode:          PlayerModal
-  onSubmitEdit:  (d: { title: string; body: string; category: WikiCategory }) => void
-  onSubmitNew:   (d: { title: string; body: string; category: WikiCategory }) => void
+  detailed:      boolean
+  isOwner:       boolean
+  onSubmitEdit:  (d: { title: string; body: string; category: WikiCategory; content: WikiContent }) => void
+  onSubmitNew:   (d: { title: string; body: string; category: WikiCategory; content: WikiContent }) => void
   onClose:       () => void
   submitted:     boolean
 }
 
-function PlayerContribModal({ mode, onSubmitEdit, onSubmitNew, onClose, submitted }: PlayerContribModalProps) {
+function PlayerContribModal({ mode, detailed, isOwner, onSubmitEdit, onSubmitNew, onClose, submitted }: PlayerContribModalProps) {
   const isEdit = mode.kind === 'edit'
+  // Edição direta (sem aprovação) quando o player é o dono da própria página.
+  const directEdit = isEdit && isOwner
   const initial = isEdit ? mode.page : null
   const [title,    setTitle]    = useState(initial?.title    ?? '')
   const [category, setCategory] = useState<WikiCategory>(initial?.category ?? 'humanos')
   const [body,     setBody]     = useState(initial?.body     ?? '')
+  const [content,  setContent]  = useState<WikiContent>(initial?.content ?? EMPTY_WIKI_CONTENT)
   const [saving,   setSaving]   = useState(false)
 
   const fieldStyle: React.CSSProperties = {
@@ -70,7 +85,7 @@ function PlayerContribModal({ mode, onSubmitEdit, onSubmitNew, onClose, submitte
   const handleSubmit = async () => {
     if (!title.trim()) return
     setSaving(true)
-    const data = { title: title.trim(), body, category }
+    const data = { title: title.trim(), body, category, content }
     if (isEdit) await onSubmitEdit(data)
     else        await onSubmitNew(data)
     setSaving(false)
@@ -80,7 +95,8 @@ function PlayerContribModal({ mode, onSubmitEdit, onSubmitNew, onClose, submitte
     <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.55)', zIndex: 1000,
       display: 'flex', alignItems: 'center', justifyContent: 'center' }}
       onClick={e => { if (e.target === e.currentTarget) onClose() }}>
-      <div style={{ width: '100%', maxWidth: 560, background: 'var(--paper)',
+      <div style={{ width: '100%', maxWidth: detailed ? 680 : 560, maxHeight: '88vh', overflowY: 'auto',
+        background: 'var(--paper)',
         border: '1px solid var(--line)', borderRadius: 16, padding: 28,
         display: 'flex', flexDirection: 'column', gap: 14 }}>
 
@@ -92,7 +108,9 @@ function PlayerContribModal({ mode, onSubmitEdit, onSubmitNew, onClose, submitte
         {submitted ? (
           <div style={{ textAlign: 'center', padding: '32px 0',
             fontFamily: 'var(--font-serif)', fontStyle: 'italic', fontSize: 16, color: 'var(--teal)' }}>
-            {isEdit ? 'Edição enviada para aprovação do GM!' : 'Página criada e aguardando aprovação do GM!'}
+            {directEdit ? 'Página atualizada!'
+              : isEdit ? 'Edição enviada para aprovação do GM!'
+              : 'Página criada e aguardando aprovação do GM!'}
           </div>
         ) : (
           <>
@@ -116,9 +134,19 @@ function PlayerContribModal({ mode, onSubmitEdit, onSubmitNew, onClose, submitte
             )}
 
             <textarea value={body} onChange={e => setBody(e.target.value)}
-              placeholder="Conteúdo (markdown: **negrito**, *itálico*, ## título)"
-              rows={10}
+              placeholder="Sobre (markdown: **negrito**, *itálico*, ## título, [[Link interno]])"
+              rows={detailed ? 5 : 10}
               style={{ ...fieldStyle, resize: 'vertical', lineHeight: 1.5 }} />
+
+            {detailed && (
+              <div style={{ borderTop: '1px solid var(--line-soft)', paddingTop: 12 }}>
+                <WikiBlocksEditor
+                  value={content}
+                  onChange={setContent}
+                  uploadKey={initial?.id ?? (title || 'page').toLowerCase().replace(/\s+/g, '-')}
+                />
+              </div>
+            )}
 
             {!isEdit && (
               <div style={{ fontFamily: 'var(--font-mono)', fontSize: 10, color: 'var(--ink-mute)',
@@ -126,10 +154,16 @@ function PlayerContribModal({ mode, onSubmitEdit, onSubmitNew, onClose, submitte
                 Sua contribuição será revisada pelo GM antes de aparecer na Wiki.
               </div>
             )}
-            {isEdit && (
+            {isEdit && !directEdit && (
               <div style={{ fontFamily: 'var(--font-mono)', fontSize: 10, color: 'var(--ink-mute)',
                 letterSpacing: '0.08em', lineHeight: 1.5 }}>
                 Sua edição será revisada pelo GM. O conteúdo atual será mantido até a aprovação.
+              </div>
+            )}
+            {directEdit && (
+              <div style={{ fontFamily: 'var(--font-mono)', fontSize: 10, color: 'var(--ink-mute)',
+                letterSpacing: '0.08em', lineHeight: 1.5 }}>
+                Esta é a sua página — as alterações são salvas direto, sem aprovação.
               </div>
             )}
 
@@ -146,7 +180,7 @@ function PlayerContribModal({ mode, onSubmitEdit, onSubmitNew, onClose, submitte
                   fontFamily: 'var(--font-mono)', fontSize: 11,
                   cursor: saving ? 'wait' : 'pointer', letterSpacing: '0.1em',
                   opacity: saving || !title.trim() ? 0.6 : 1 }}>
-                {saving ? 'Enviando...' : 'Enviar para aprovação'}
+                {saving ? 'Salvando...' : directEdit ? 'Salvar alterações' : 'Enviar para aprovação'}
               </button>
             </div>
           </>
@@ -159,8 +193,12 @@ function PlayerContribModal({ mode, onSubmitEdit, onSubmitNew, onClose, submitte
 export default function WikiPage({ state, isGM }: Props) {
   const { session, profile } = useAuth()
   const { isTaglineHidden } = useSettings()
+  const { flags } = useCampaignFlags()
+  const { id: routeId } = useParams()
+  const navigate = useNavigate()
+  const detailed = flags.wiki_detailed_pages
   const [pages,        setPages]        = useState<WikiPageType[]>([])
-  const [catFilter,    setCatFilter]    = useState<WikiCategory | 'all'>('all')
+  const [catFilter,    setCatFilter]    = useState<WikiCategory | null>(null)
   const [selected,     setSelected]     = useState<WikiPageType | null>(null)
   const [sheetOpen,    setSheetOpen]    = useState<SheetSubject | null>(null)
   const [loading,      setLoading]      = useState(true)
@@ -169,6 +207,10 @@ export default function WikiPage({ state, isGM }: Props) {
   const [submitted,    setSubmitted]    = useState(false)
 
   const userId = session?.user?.id ?? null
+
+  // Player é dono da própria página (ex.: o jogador do Naoki na página do Naoki).
+  const ownsPage = (p: WikiPageType | null | undefined) =>
+    !!p?.owner_tamer_id && profile?.tamer_id === p.owner_tamer_id
 
   useEffect(() => {
     const loads: Promise<unknown>[] = [listWikiPages()]
@@ -186,7 +228,30 @@ export default function WikiPage({ state, isGM }: Props) {
     return p.visibility === 'name' || p.visibility === 'full'
   })
 
-  const filtered = catFilter === 'all' ? visible : visible.filter(p => p.category === catFilter)
+  // Categorias que realmente têm páginas visíveis — únicas opções de filtro.
+  const usedCategories = WIKI_CATEGORIES.filter(c => visible.some(p => p.category === c.value))
+
+  // Sem filtro "Todas": seleciona a primeira categoria disponível por padrão e
+  // reajusta se a categoria atual deixar de existir.
+  useEffect(() => {
+    if (usedCategories.length === 0) return
+    if (!catFilter || !usedCategories.some(c => c.value === catFilter)) {
+      setCatFilter(usedCategories[0].value)
+    }
+  }, [usedCategories, catFilter])
+
+  const filtered = catFilter ? visible.filter(p => p.category === catFilter) : []
+
+  // Redireciona links antigos por UUID (ou param não-canônico) para o slug legível.
+  useEffect(() => {
+    if (!detailed || !routeId || loading) return
+    const page = resolvePageParam(routeId, visible)
+    if (!page) return
+    const canonical = pageSlug(page, visible)
+    if (routeId !== canonical && (looksLikeUuid(routeId) || routeId.toLowerCase() !== canonical)) {
+      navigate(`/wiki/${canonical}`, { replace: true })
+    }
+  }, [detailed, routeId, loading, visible, navigate])
 
   const openSheet = (page: WikiPageType) => {
     if (!page.linked_type || !page.linked_id) return
@@ -200,13 +265,43 @@ export default function WikiPage({ state, isGM }: Props) {
   const hasPendingEditFor = (pageId: string) =>
     pendingEdits.some(e => e.page_id === pageId)
 
-  const handlePlayerSubmitEdit = async (data: { title: string; body: string; category: WikiCategory }) => {
+  // Abre uma página: no modo detalhado navega para /wiki/:slug; senão painel inline.
+  const openPage = (page: WikiPageType) => {
+    if (detailed) navigate(`/wiki/${pageSlug(page, visible)}`)
+    else setSelected(page)
+  }
+  const openPageById = (pageId: string) => {
+    const p = pages.find(x => x.id === pageId)
+    if (detailed && p) { navigate(`/wiki/${pageSlug(p, visible)}`); return }
+    if (p) setSelected(p)
+  }
+
+  const handlePlayerSubmitEdit = async (data: { title: string; body: string; category: WikiCategory; content: WikiContent }) => {
     if (!userId || playerModal?.kind !== 'edit') return
+    const page = playerModal.page
+
+    // Dono da própria página edita sem aprovação — aplica direto (só na Wiki).
+    if (ownsPage(page)) {
+      const updated = await saveOwnWikiPageEdit(page.id, {
+        title:    data.title,
+        body:     data.body,
+        category: data.category,
+        content:  data.content,
+      })
+      if (updated) {
+        setPages(prev => prev.map(p => p.id === updated.id ? updated : p))
+        setSubmitted(true)
+        setTimeout(() => { setSubmitted(false); setPlayerModal(null) }, 1200)
+      }
+      return
+    }
+
     const edit = await submitWikiPageEdit(userId, {
-      page_id:  playerModal.page.id,
+      page_id:  page.id,
       title:    data.title,
       body:     data.body,
       category: data.category,
+      content:  data.content,
     })
     if (edit) {
       setPendingEdits(prev => [...prev, edit])
@@ -215,7 +310,7 @@ export default function WikiPage({ state, isGM }: Props) {
     }
   }
 
-  const handlePlayerSubmitNew = async (data: { title: string; body: string; category: WikiCategory }) => {
+  const handlePlayerSubmitNew = async (data: { title: string; body: string; category: WikiCategory; content: WikiContent }) => {
     if (!userId) return
     const page = await submitWikiPage(userId, data)
     if (page) {
@@ -233,7 +328,71 @@ export default function WikiPage({ state, isGM }: Props) {
     </div>
   )
 
-  const usedCategories = WIKI_CATEGORIES.filter(c => visible.some(p => p.category === c.value))
+  // ── Modo detalhado: rota /wiki/:id renderiza o artigo ──────────────────────
+  if (detailed && routeId) {
+    const page = resolvePageParam(routeId, visible)
+    if (!page) {
+      return (
+        <div style={{ maxWidth: 960, margin: '0 auto', padding: '60px 56px',
+          fontFamily: 'var(--font-serif)', fontStyle: 'italic', color: 'var(--ink-mute)', textAlign: 'center' }}>
+          ~ página não encontrada ~
+          <div style={{ marginTop: 16 }}>
+            <button onClick={() => navigate('/wiki')}
+              style={{ padding: '6px 14px', borderRadius: 999, border: '1px solid var(--line)',
+                background: 'transparent', color: 'var(--ink-mute)', fontFamily: 'var(--font-mono)',
+                fontSize: 11, cursor: 'pointer', letterSpacing: '0.08em' }}>
+              ← Voltar à Wiki
+            </button>
+          </div>
+        </div>
+      )
+    }
+
+    const isFull = page.visibility === 'full' || isGM
+    const isOwner = ownsPage(page)
+    const ownerOk = page.owner_tamer_id ? profile?.tamer_id === page.owner_tamer_id : true
+    const canEdit = !isGM && userId && page.status !== 'pending' && isFull
+      && !hasPendingEditFor(page.id) && ownerOk
+
+    return (
+      <>
+        <WikiArticle
+          page={page}
+          allPages={visible}
+          isGM={isGM}
+          coverFill={resolvePortrait(page, state)}
+          onOpenPage={openPageById}
+          onBack={() => navigate('/wiki')}
+          onOpenSheet={canEdit || isGM || isFull ? openSheet : undefined}
+          onEdit={canEdit ? () => { setPlayerModal({ kind: 'edit', page }); setSubmitted(false) } : undefined}
+          editLabel={isOwner ? 'Editar página' : 'Sugerir edição'}
+        />
+
+        {playerModal && (
+          <PlayerContribModal
+            mode={playerModal}
+            detailed={detailed}
+            isOwner={ownsPage(playerModal.kind === 'edit' ? playerModal.page : null)}
+            onSubmitEdit={handlePlayerSubmitEdit}
+            onSubmitNew={handlePlayerSubmitNew}
+            onClose={() => setPlayerModal(null)}
+            submitted={submitted}
+          />
+        )}
+
+        {sheetOpen && (
+          <SheetModal
+            subject={sheetOpen}
+            state={state}
+            onSaveState={() => {}}
+            onClose={() => setSheetOpen(null)}
+            editable={false}
+            isGM={isGM}
+          />
+        )}
+      </>
+    )
+  }
 
   return (
     <div style={{ maxWidth: 960, margin: '0 auto', paddingBottom: 80 }}>
@@ -262,21 +421,10 @@ export default function WikiPage({ state, isGM }: Props) {
         )}
       </div>
 
-      {/* Controles */}
+      {/* Controles — filtros de categoria (sem opção "Todas") */}
       <div style={{ display: 'flex', alignItems: 'center', gap: 8,
         padding: '0 56px', marginBottom: 24, flexWrap: 'wrap' }}>
 
-        <div style={{ width: 1, height: 20, background: 'var(--line)', margin: '0 4px' }} />
-
-        {/* Filtros de categoria */}
-        <button onClick={() => setCatFilter('all')}
-          style={{ padding: '5px 14px', borderRadius: 999,
-            border: `1.5px solid ${catFilter === 'all' ? 'var(--coral)' : 'var(--line)'}`,
-            background: catFilter === 'all' ? 'var(--coral)' : 'transparent',
-            color: catFilter === 'all' ? '#fff' : 'var(--ink-mute)',
-            fontFamily: 'var(--font-mono)', fontSize: 11, cursor: 'pointer', letterSpacing: '0.08em' }}>
-          Todas
-        </button>
         {usedCategories.map(c => (
           <button key={c.value} onClick={() => setCatFilter(c.value)}
             style={{ padding: '5px 14px', borderRadius: 999,
@@ -317,7 +465,7 @@ export default function WikiPage({ state, isGM }: Props) {
                         boxShadow: selected?.id === page.id ? '0 0 0 2px var(--coral)' : 'none' }}>
                       <div style={{ display: 'flex', gap: 12, alignItems: 'center',
                         cursor: isFull && !isPending ? 'pointer' : 'default' }}
-                        onClick={() => isFull && !isPending ? setSelected(page) : undefined}>
+                        onClick={() => isFull && !isPending ? openPage(page) : undefined}>
                         <AvatarCircle url={page.avatar_url} name={page.title} size={48} />
                         <div style={{ flex: 1, minWidth: 0 }}>
                           <div style={{ fontFamily: 'var(--font-display)', fontSize: 14,
@@ -413,9 +561,9 @@ export default function WikiPage({ state, isGM }: Props) {
                   <div
                     style={{ fontFamily: 'var(--font-body)', fontSize: 14,
                       lineHeight: 1.7, color: 'var(--ink-soft)',
-                      borderTop: '1px solid var(--line-soft)', paddingTop: 20 }}
-                    dangerouslySetInnerHTML={{ __html: parseMarkdown(selected.body) }}
-                  />
+                      borderTop: '1px solid var(--line-soft)', paddingTop: 20 }}>
+                    {renderWikiMarkdown(selected.body, visible, openPageById)}
+                  </div>
                 )}
               </div>
             )}
@@ -427,6 +575,8 @@ export default function WikiPage({ state, isGM }: Props) {
       {playerModal && (
         <PlayerContribModal
           mode={playerModal}
+          detailed={detailed}
+          isOwner={ownsPage(playerModal.kind === 'edit' ? playerModal.page : null)}
           onSubmitEdit={handlePlayerSubmitEdit}
           onSubmitNew={handlePlayerSubmitNew}
           onClose={() => setPlayerModal(null)}
