@@ -1,5 +1,5 @@
 // src/App.tsx
-import { Suspense, lazy, useState, useCallback, useEffect, useRef, type FC } from 'react'
+import { Suspense, lazy, startTransition, useState, useCallback, useEffect, useRef, type FC } from 'react'
 import { Routes, Route, NavLink, Navigate } from 'react-router-dom'
 import { loadState, exportStateToFile, importStateFromFile, runMigrations } from './data/store'
 import { loadStateFromDB, saveStateToDB, subscribeToState, migrateLocalToSupabase, updateMyTamerAndLine } from './lib/db'
@@ -257,8 +257,22 @@ function AppInner() {
   }
 
   // Tela de login só aparece quando o visitante clica em "Entrar".
+  // O LoginPage é lazy: precisa de um Suspense próprio aqui, senão o React
+  // lança o erro #426 (componente suspende durante update síncrono do clique
+  // em "Entrar", que está fora do <Suspense> das Routes).
   if (isAnon && showLogin) {
-    return <LoginPage onSuccess={() => { setShowLogin(false); refresh() }} onCancel={() => setShowLogin(false)} />
+    return (
+      <Suspense fallback={
+        <div style={{ minHeight: '100vh', display: 'flex', alignItems: 'center',
+          justifyContent: 'center', fontFamily: 'var(--font-mono)',
+          fontSize: 12, letterSpacing: '0.12em', textTransform: 'uppercase',
+          color: 'var(--ink-mute)' }}>
+          Carregando...
+        </div>
+      }>
+        <LoginPage onSuccess={() => { setShowLogin(false); refresh() }} onCancel={() => setShowLogin(false)} />
+      </Suspense>
+    )
   }
 
   const showSetupBanner = isSupabaseReady && session && !profile && !localMode
@@ -376,7 +390,7 @@ function AppInner() {
 
         {/* Visitante anônimo: oferece login. Sessão ativa: oferece sair. */}
         {isAnon && (
-          <button className={styles.navBtn} onClick={() => setShowLogin(true)}>Entrar</button>
+          <button className={styles.navBtn} onClick={() => startTransition(() => setShowLogin(true))}>Entrar</button>
         )}
         {isSupabaseReady && session && (
           <button className={styles.navBtn} onClick={signOut}>Sair</button>
