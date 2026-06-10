@@ -2,10 +2,15 @@
 .toolbar { display: flex; gap: 12px; align-items: center; padding: 18px var(--page-pad-x) 4px; flex-wrap: wrap; }
 .eyebrow { font-family: var(--font-mono); font-size: 11px; letter-spacing: 0.18em; text-transform: uppercase; color: var(--ink-mute); flex: 1; }
 
-.grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px,1fr)); gap: 18px; padding: 20px var(--page-pad-x); }
-.gridCompact { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 12px; padding: 20px var(--page-pad-x); }
+.grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 18px; padding: 20px var(--page-pad-x); }
+.gridCompact { display: grid; grid-template-columns: repeat(6, 1fr); gap: 12px; padding: 20px var(--page-pad-x); }
+@media (max-width: 768px) {
+  .grid { grid-template-columns: repeat(2, 1fr); }
+  .gridCompact { grid-template-columns: repeat(3, 1fr); }
+}
 @media (max-width: 480px) {
-  .gridCompact { grid-template-columns: repeat(auto-fill, minmax(120px, 1fr)); }
+  .grid { grid-template-columns: 1fr; }
+  .gridCompact { grid-template-columns: repeat(2, 1fr); }
 }
 
 .card { background: var(--paper); border: 1px solid var(--line); border-radius: var(--radius); overflow: hidden; cursor: pointer; transition: all 0.18s ease; display: flex; flex-direction: column; }
