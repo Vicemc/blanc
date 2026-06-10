@@ -860,7 +860,7 @@ export default function DigivicePage({ state, onUpdate, profile, isGM }: Props) 
   return (
     <div style={{ maxWidth: 900, margin: '0 auto', paddingBottom: 80 }}>
       {/* Header */}
-      <div style={{ padding: '28px 56px 0', display: 'flex', alignItems: 'flex-end',
+      <div style={{ padding: '28px var(--page-pad-x) 0', display: 'flex', alignItems: 'flex-end',
         gap: 24, flexWrap: 'wrap' }}>
         <div style={{ flex: 1 }}>
           <h1 style={{ fontFamily: 'var(--font-display)', fontSize: 42,
@@ -896,7 +896,7 @@ export default function DigivicePage({ state, onUpdate, profile, isGM }: Props) 
 
       {/* Status bar do Digivice */}
       {digivice && (
-        <div style={{ padding: '14px 56px', borderBottom: '1px solid var(--line-soft)', marginTop: 16 }}>
+        <div style={{ padding: '14px var(--page-pad-x)', borderBottom: '1px solid var(--line-soft)', marginTop: 16 }}>
           <div style={{ display: 'flex', gap: 20, flexWrap: 'wrap', alignItems: 'center' }}>
 
             {/* Memory */}
@@ -981,7 +981,7 @@ export default function DigivicePage({ state, onUpdate, profile, isGM }: Props) 
 
       {/* Sub-tabs */}
       <div style={{ display: 'flex', borderBottom: '1px solid var(--line)',
-        padding: '0 56px', marginTop: 8 }}>
+        padding: '0 var(--page-pad-x)', marginTop: 8, overflowX: 'auto' }}>
         {TABS.map(t => (
           <button key={t.id} onClick={() => setTab(t.id)}
             style={{ padding: '12px 20px', border: 'none', background: 'transparent',
@@ -995,7 +995,7 @@ export default function DigivicePage({ state, onUpdate, profile, isGM }: Props) 
       </div>
 
       {/* Conteúdo */}
-      <div style={{ padding: '24px 56px' }}>
+      <div style={{ padding: '24px var(--page-pad-x)' }}>
         {loading ? (
           <div style={{ fontFamily: 'var(--font-mono)', fontSize: 12, color: 'var(--ink-mute)' }}>
             Carregando...

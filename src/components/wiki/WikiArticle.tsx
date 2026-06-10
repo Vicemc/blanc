@@ -54,7 +54,7 @@ export default function WikiArticle({ page, allPages, isGM, coverFill, onOpenPag
     ['tamer', 'digimon', 'survivor'].includes(page.linked_type)
 
   return (
-    <div style={{ maxWidth: 960, margin: '0 auto', padding: '24px 56px 80px' }}>
+    <div style={{ maxWidth: 960, margin: '0 auto', padding: '24px var(--page-pad-x) 80px' }}>
       {/* Voltar */}
       <button onClick={onBack}
         style={{ marginBottom: 20, padding: '6px 14px', borderRadius: 999,

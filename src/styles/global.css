@@ -15,6 +15,18 @@
   --radius:      14px;
   --shadow:      0 12px 32px -18px rgba(40,30,12,0.35);
 
+  /* Espaçamento — padding lateral de página responsivo.
+     ~19px a 375px, trava em 56px a partir de ~1120px. */
+  --page-pad-x:    clamp(16px, 5vw, 56px);
+  --page-pad-x-sm: clamp(12px, 4vw, 28px);
+  /* Escala de spacing */
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 24px;
+  --space-6: 32px;
+
   /* Cores de acento / retratos */
   --sage:        #9bb89c;
   --wheat:       #d9b974;
@@ -118,15 +130,18 @@ a { color: inherit; }
 
 button { cursor: pointer; font-family: inherit; }
 
-/* ── Responsivo / mobile ─────────────────────────────────────── */
-@media (max-width: 720px) {
+/* Utilitário: padding lateral de página responsivo (substitui o 56px fixo) */
+.pagePad { padding-left: var(--page-pad-x); padding-right: var(--page-pad-x); }
+
+/* ── Responsivo / mobile ─────────────────────────────────────────
+   Breakpoints CANÔNICOS do projeto:
+     • 480px → mobile (1 coluna, drawer de nav)
+     • 768px → tablet (colunas reduzidas)
+   Custom properties NÃO funcionam dentro de @media, então os valores
+   ficam literais nas queries — este comentário é a referência única.
+   Breakpoints legados (540/720/1100) são normalizados ao tocar no arquivo. */
+@media (max-width: 768px) {
   html { font-size: 14px; }
-  /* Nav rola horizontalmente em telas pequenas */
-  nav[aria-label="Navegação principal"] {
-    flex-wrap: nowrap;
-    overflow-x: auto;
-    -webkit-overflow-scrolling: touch;
-  }
   /* Modais ocupam quase a tela toda */
   .modal { max-width: 96vw !important; max-height: 92vh; overflow-y: auto; }
   /* FAB do rolador menor para não obstruir */
@@ -138,6 +153,9 @@ button { cursor: pointer; font-family: inherit; }
 @media (max-width: 480px) {
   /* Alvos de toque maiores */
   button, [role="button"], a { min-height: 32px; }
+  /* Modais com cantos e respiro menores no celular */
+  .modal { border-radius: 12px; }
+  .modalBody { padding: var(--page-pad-x-sm); }
 }
 
 /* ── Grain texture classes ───────────────────────────────────── */

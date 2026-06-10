@@ -389,7 +389,7 @@ export function AffinityGrid({ affinity, editable, freeMode, onChange, pending, 
           ...ALL.slice(10),
         ]
         return (
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '4px 16px' }}>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(72px, 1fr))', gap: '4px 16px' }}>
             {cells.map((k, i) =>
               k ? renderCell(k) : <div key={`e-${i}`} />
             )}
@@ -496,7 +496,7 @@ export function SkillCard({ s, editable, onDelete, onChange, onToggle, toggleAct
             <input value={dt.dados ?? ''} onChange={e => setDraft(d => ({ ...d, dados: e.target.value }))} placeholder="Dados (ex: Int + Folclore)" className={styles.formInput} style={{ marginBottom: 6, width: '100%' }} />
           </>
         ) : (
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 6, marginBottom: 6 }}>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(110px, 1fr))', gap: 6, marginBottom: 6 }}>
             <input value={dd.alcance ?? ''} onChange={e => setDraft(d => ({ ...d, alcance: e.target.value }))} placeholder="Alcance" className={styles.formInput} />
             <input value={dd.custo ?? ''} onChange={e => setDraft(d => ({ ...d, custo: e.target.value }))} placeholder="Custo (ex: -2 Memory, Cooldown 3)" className={styles.formInput} />
             <input value={dd.dados ?? ''} onChange={e => setDraft(d => ({ ...d, dados: e.target.value }))} placeholder="Dados" className={styles.formInput} />
@@ -726,7 +726,7 @@ export function AddSkillForm({ isTamer, onAdd, onCancel }: {
           <input value={dados} onChange={e => setDados(e.target.value)} placeholder="Dados (ex: Int + Folclore)" className={styles.formInput} style={{ marginBottom:6, width:'100%' }} />
         </>
       ) : (
-        <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr 1fr', gap:6, marginBottom:6 }}>
+        <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fit, minmax(110px, 1fr))', gap:6, marginBottom:6 }}>
           <input value={alcance} onChange={e => setAlcance(e.target.value)} placeholder="Alcance" className={styles.formInput} />
           <input value={cost} onChange={e => setCost(e.target.value)} placeholder="Custo" className={styles.formInput} />
           <input value={dados} onChange={e => setDados(e.target.value)} placeholder="Dados" className={styles.formInput} />

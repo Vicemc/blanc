@@ -1,4 +1,4 @@
-.page { max-width: 920px; margin: 0 auto; padding: 16px 56px 80px; }
+.page { max-width: 920px; margin: 0 auto; padding: 16px var(--page-pad-x) 80px; }
 .toc { display: flex; flex-wrap: wrap; gap: 8px; padding: 14px 0 22px; border-bottom: 1px solid var(--line); margin-bottom: 28px; font-family: var(--font-mono); font-size: 11px; letter-spacing: 0.08em; text-transform: uppercase; position: sticky; top: 57px; background: var(--paper); z-index: 4; }
 .toc a { color: var(--ink-mute); text-decoration: none; padding: 4px 10px; border-radius: 999px; border: 1px solid var(--line); }
 .toc a:hover { color: var(--ink); border-color: var(--ink); }
@@ -36,7 +36,8 @@
   gap: 0;
   border-bottom: 1.5px solid var(--line);
   background: var(--paper-deep);
-  padding: 0 56px;
+  padding: 0 var(--page-pad-x);
+  overflow-x: auto;
 }
 .subTab {
   padding: 12px 22px;

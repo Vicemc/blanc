@@ -93,11 +93,11 @@ function PlayerContribModal({ mode, detailed, isOwner, onSubmitEdit, onSubmitNew
 
   return (
     <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.55)', zIndex: 1000,
-      display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+      display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16 }}
       onClick={e => { if (e.target === e.currentTarget) onClose() }}>
       <div style={{ width: '100%', maxWidth: detailed ? 680 : 560, maxHeight: '88vh', overflowY: 'auto',
         background: 'var(--paper)',
-        border: '1px solid var(--line)', borderRadius: 16, padding: 28,
+        border: '1px solid var(--line)', borderRadius: 16, padding: 'var(--page-pad-x-sm)',
         display: 'flex', flexDirection: 'column', gap: 14 }}>
 
         <div style={{ fontFamily: 'var(--font-mono)', fontSize: 10, letterSpacing: '0.14em',
@@ -321,7 +321,7 @@ export default function WikiPage({ state, isGM }: Props) {
   }
 
   if (loading) return (
-    <div style={{ maxWidth: 960, margin: '0 auto', padding: '80px 56px',
+    <div style={{ maxWidth: 960, margin: '0 auto', padding: '80px var(--page-pad-x)',
       fontFamily: 'var(--font-mono)', fontSize: 12, color: 'var(--ink-mute)',
       letterSpacing: '0.12em', textTransform: 'uppercase' }}>
       Carregando Wiki...
@@ -333,7 +333,7 @@ export default function WikiPage({ state, isGM }: Props) {
     const page = resolvePageParam(routeId, visible)
     if (!page) {
       return (
-        <div style={{ maxWidth: 960, margin: '0 auto', padding: '60px 56px',
+        <div style={{ maxWidth: 960, margin: '0 auto', padding: '60px var(--page-pad-x)',
           fontFamily: 'var(--font-serif)', fontStyle: 'italic', color: 'var(--ink-mute)', textAlign: 'center' }}>
           ~ página não encontrada ~
           <div style={{ marginTop: 16 }}>
@@ -397,7 +397,7 @@ export default function WikiPage({ state, isGM }: Props) {
   return (
     <div style={{ maxWidth: 960, margin: '0 auto', paddingBottom: 80 }}>
       {/* Header */}
-      <div style={{ padding: '28px 56px 0', display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between' }}>
+      <div style={{ padding: '28px var(--page-pad-x) 0', display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between' }}>
         <div style={{ marginBottom: isTaglineHidden('wiki') ? 24 : 0 }}>
           <h1 style={{ fontFamily: 'var(--font-display)', fontSize: 42,
             textTransform: 'uppercase', letterSpacing: '-0.02em', margin: '0 0 4px' }}>
@@ -423,7 +423,7 @@ export default function WikiPage({ state, isGM }: Props) {
 
       {/* Controles — filtros de categoria (sem opção "Todas") */}
       <div style={{ display: 'flex', alignItems: 'center', gap: 8,
-        padding: '0 56px', marginBottom: 24, flexWrap: 'wrap' }}>
+        padding: '0 var(--page-pad-x)', marginBottom: 24, flexWrap: 'wrap' }}>
 
         {usedCategories.map(c => (
           <button key={c.value} onClick={() => setCatFilter(c.value)}
@@ -437,7 +437,7 @@ export default function WikiPage({ state, isGM }: Props) {
         ))}
       </div>
 
-      <div style={{ padding: '0 56px' }}>
+      <div style={{ padding: '0 var(--page-pad-x)' }}>
         {/* ── Lista ── */}
         <>
             {visible.length === 0 ? (

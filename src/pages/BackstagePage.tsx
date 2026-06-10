@@ -814,7 +814,7 @@ function KwCondForm<T extends { category?: string; type: KwType; desc: string; r
   const nameVal = (draft as any)[nameField] as string ?? ''
   return (
     <div style={{ padding:'14px', border:'1px solid var(--teal)', borderRadius:10, background:'var(--paper-deep)' }}>
-      <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr 1fr', gap:6, marginBottom:6 }}>
+      <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fit, minmax(110px, 1fr))', gap:6, marginBottom:6 }}>
         <input value={nameVal}
           onChange={e => setDraft({ ...draft, [nameField]: e.target.value })}
           placeholder={namePlaceholder} style={fld} />
@@ -1914,7 +1914,7 @@ export default function BackstagePage({ state, onUpdate }: Props) {
   return (
     <div style={{ maxWidth: 960, margin: '0 auto', paddingBottom: 80 }}>
       {/* Header */}
-      <div style={{ padding: '28px 56px 0' }}>
+      <div style={{ padding: '28px var(--page-pad-x) 0' }}>
         <h1 style={{ fontFamily: 'var(--font-display)', fontSize: 42,
           textTransform: 'uppercase', letterSpacing: '-0.02em', margin: '0 0 4px' }}>
           Backstage
@@ -1929,7 +1929,7 @@ export default function BackstagePage({ state, onUpdate }: Props) {
 
       {/* Tabs */}
       <div style={{ display: 'flex', borderBottom: '1px solid var(--line)',
-        padding: '0 56px', marginBottom: 32 }}>
+        padding: '0 var(--page-pad-x)', marginBottom: 32, overflowX: 'auto' }}>
         {TABS.map(t => (
           <button key={t.id} onClick={() => setTab(t.id)}
             style={{ padding: '12px 22px', border: 'none', background: 'transparent',
@@ -1944,7 +1944,7 @@ export default function BackstagePage({ state, onUpdate }: Props) {
       </div>
 
       {/* Conteúdo */}
-      <div style={{ padding: '0 56px' }}>
+      <div style={{ padding: '0 var(--page-pad-x)' }}>
         {tab === 'dashboard'    && <DashboardSection  state={state} onUpdate={onUpdate} />}
         {tab === 'usuarios'     && <UsersSection      state={state} onUpdate={onUpdate} />}
         {tab === 'fichas'       && <SheetSection      state={state} onUpdate={onUpdate} />}

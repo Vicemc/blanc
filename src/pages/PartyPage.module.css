@@ -1,9 +1,12 @@
 .page { max-width: 1280px; margin: 0 auto; padding-bottom: 80px; }
-.toolbar { display: flex; gap: 12px; align-items: center; padding: 18px 56px 4px; }
+.toolbar { display: flex; gap: 12px; align-items: center; padding: 18px var(--page-pad-x) 4px; flex-wrap: wrap; }
 .eyebrow { font-family: var(--font-mono); font-size: 11px; letter-spacing: 0.18em; text-transform: uppercase; color: var(--ink-mute); flex: 1; }
 
-.grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px,1fr)); gap: 18px; padding: 20px 56px; }
-.gridCompact { display: grid; grid-template-columns: repeat(6, 1fr); gap: 12px; padding: 20px 56px; }
+.grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px,1fr)); gap: 18px; padding: 20px var(--page-pad-x); }
+.gridCompact { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 12px; padding: 20px var(--page-pad-x); }
+@media (max-width: 480px) {
+  .gridCompact { grid-template-columns: repeat(auto-fill, minmax(120px, 1fr)); }
+}
 
 .card { background: var(--paper); border: 1px solid var(--line); border-radius: var(--radius); overflow: hidden; cursor: pointer; transition: all 0.18s ease; display: flex; flex-direction: column; }
 .card:hover { transform: translateY(-3px); box-shadow: var(--shadow); border-color: var(--ink); }
@@ -98,6 +101,11 @@
 }
 .xpMemberRow:last-child { border-bottom: none; }
 .xpDigiRow { background: rgba(0,0,0,0.03); }
+/* Mobile: estreita as colunas de XP para caber sem estourar */
+@media (max-width: 480px) {
+  .xpMemberHeader, .xpMemberRow { grid-template-columns: 1fr 52px 52px; gap: 6px; }
+  .xpCustomInput { width: 48px; }
+}
 .xpCustomInput {
   width: 64px; border: 1px solid var(--line); border-radius: 6px;
   padding: 4px 8px; font-family: var(--font-mono); font-size: 12px;
@@ -108,7 +116,7 @@
 .guestSection { margin-top: 4px; }
 .guestDivider {
   display: flex; align-items: center; gap: 16px;
-  padding: 0 56px; margin-bottom: 0;
+  padding: 0 var(--page-pad-x); margin-bottom: 0;
 }
 .guestDivider::before, .guestDivider::after {
   content: ''; flex: 1; height: 1px; background: var(--line-soft);

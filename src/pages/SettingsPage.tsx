@@ -98,7 +98,7 @@ export default function SettingsPage() {
     <div style={{ maxWidth: 720, margin: '0 auto', paddingBottom: 80 }}>
       <PageHead title="Configurações" pageId="configuracoes" />
 
-      <div style={{ padding: '0 56px' }}>
+      <div style={{ padding: '0 var(--page-pad-x)' }}>
 
         {/* ── Exibição ─────────────────────────────────────────────────────── */}
         <div style={sectionHead}>Exibição</div>

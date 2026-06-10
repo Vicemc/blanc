@@ -41,7 +41,7 @@ export default function ViewerPage({ state }: Props) {
   return (
     <div style={{ maxWidth: 1100, margin: '0 auto', paddingBottom: 80 }}>
       {/* Header */}
-      <div style={{ padding: '28px 56px 0' }}>
+      <div style={{ padding: '28px var(--page-pad-x) 0' }}>
         <h1 style={{ fontFamily: 'var(--font-display)', fontSize: 42,
           textTransform: 'uppercase', letterSpacing: '-0.02em', margin: '0 0 4px' }}>
           Modo Visitante
@@ -57,7 +57,7 @@ export default function ViewerPage({ state }: Props) {
       </div>
 
       {/* Tabs */}
-      <div style={{ display: 'flex', borderBottom: '1px solid var(--line)', padding: '0 56px' }}>
+      <div style={{ display: 'flex', borderBottom: '1px solid var(--line)', padding: '0 var(--page-pad-x)', overflowX: 'auto' }}>
         {TABS.map(t => (
           <button key={t.id} onClick={() => setTab(t.id)}
             style={{ padding: '12px 22px', border: 'none', background: 'transparent',
@@ -70,7 +70,7 @@ export default function ViewerPage({ state }: Props) {
         ))}
       </div>
 
-      <div style={{ padding: '24px 56px' }}>
+      <div style={{ padding: '24px var(--page-pad-x)' }}>
 
         {/* Party */}
         {tab === 'party' && (

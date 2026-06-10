@@ -1,5 +1,5 @@
 .head {
-  padding: 16px 56px 28px;
+  padding: 16px var(--page-pad-x) 28px;
   display: grid;
   grid-template-columns: 1fr auto;
   align-items: end;

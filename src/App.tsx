@@ -1,6 +1,6 @@
 // src/App.tsx
 import { Suspense, lazy, startTransition, useState, useCallback, useEffect, useRef, type FC } from 'react'
-import { Routes, Route, NavLink, Navigate } from 'react-router-dom'
+import { Routes, Route, NavLink, Navigate, useLocation } from 'react-router-dom'
 import { loadState, exportStateToFile, importStateFromFile, runMigrations } from './data/store'
 import { loadStateFromDB, saveStateToDB, subscribeToState, migrateLocalToSupabase, updateMyTamerAndLine } from './lib/db'
 import { signOut, canEditTamer } from './lib/auth'
@@ -112,6 +112,8 @@ function AppInner() {
   const [isDirty, setIsDirty] = useState(false)
   const [isSaving, setIsSaving] = useState(false)
   const [digizapUnread, setDigizapUnread] = useState(0)
+  const [menuOpen, setMenuOpen] = useState(false)
+  const location = useLocation()
   const realtimeUnsub   = useRef<(() => void) | null>(null)
   const lastSaveRef     = useRef(0)
   const saveDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null)
@@ -119,6 +121,15 @@ function AppInner() {
 
   const isGuest = !localMode && profile?.role === 'guest'
   const presences = usePresence(profile)
+
+  // Menu mobile: fecha ao navegar e ao apertar Esc.
+  useEffect(() => { setMenuOpen(false) }, [location.pathname])
+  useEffect(() => {
+    if (!menuOpen) return
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') setMenuOpen(false) }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [menuOpen])
 
   useEffect(() => {
     if (loading) return
@@ -299,6 +310,18 @@ function AppInner() {
     <div className={styles.app}>
       <a href="#main" className="skipLink">Pular para o conteúdo</a>
       <nav className={styles.nav} aria-label="Navegação principal">
+        <button
+          type="button"
+          className={styles.hamburger}
+          aria-label={menuOpen ? 'Fechar menu' : 'Abrir menu'}
+          aria-expanded={menuOpen}
+          aria-controls="nav-inner"
+          onClick={() => setMenuOpen(o => !o)}>
+          {menuOpen ? '✕' : '☰'}
+        </button>
+        <div
+          id="nav-inner"
+          className={`${styles.navInner} ${menuOpen ? styles.navInnerOpen : ''}`}>
         <NavLink to="/"         end className={({ isActive }) => isActive ? styles.active : ''}>Início</NavLink>
         <NavLink to="/party"        className={({ isActive }) => isActive ? styles.active : ''}>Party</NavLink>
         <NavLink to="/goggle"       className={({ isActive }) => isActive ? styles.active : ''}>Goggle Girl</NavLink>
@@ -395,7 +418,12 @@ function AppInner() {
         {isSupabaseReady && session && (
           <button className={styles.navBtn} onClick={signOut}>Sair</button>
         )}
+        </div>
       </nav>
+      {/* Backdrop do menu mobile */}
+      {menuOpen && (
+        <div className={styles.navBackdrop} onClick={() => setMenuOpen(false)} aria-hidden="true" />
+      )}
 
       {showSetupBanner && (
         <div style={{ padding: '10px 24px', fontFamily: 'var(--font-mono)', fontSize: 11,

@@ -1,4 +1,4 @@
-.index { padding: 24px 56px; display: grid; grid-template-columns: repeat(auto-fill, minmax(260px,1fr)); gap: 16px; }
+.index { padding: 24px var(--page-pad-x); display: grid; grid-template-columns: repeat(auto-fill, minmax(260px,1fr)); gap: 16px; }
 
 .stageCard { border: 1px solid var(--line); border-radius: var(--radius); padding: 18px; background: var(--paper); cursor: pointer; transition: all 0.15s; position: relative; }
 .stageCard:hover { transform: translateY(-2px); box-shadow: var(--shadow); border-color: var(--ink); }
@@ -15,7 +15,7 @@
 .plus { font-family: var(--font-display); font-size: 18px; text-transform: uppercase; letter-spacing: 0.05em; }
 
 /* palco */
-.palco { max-width: 1400px; margin: 0 auto; padding: 16px 56px 80px; }
+.palco { max-width: 1400px; margin: 0 auto; padding: 16px var(--page-pad-x) 80px; }
 .backLink { background: transparent; border: none; cursor: pointer; font-family: var(--font-mono); font-size: 11px; letter-spacing: 0.12em; text-transform: uppercase; color: var(--ink-mute); padding: 8px 0; margin-bottom: 16px; display: block; }
 .backLink:hover { color: var(--ink); }
 

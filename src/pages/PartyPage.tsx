@@ -195,7 +195,7 @@ function AddTamerModal({ state, onSave, onClose }: { state: AppState; onSave: (s
             {inp('Sobrenome', surname, setSurname, 'Mochizuki')}
           </div>
           {inp('Tagline', tagline, setTagline, 'Minha alma ruge.')}
-          <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr 1fr', gap:12 }}>
+          <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fit, minmax(100px, 1fr))', gap:12 }}>
             {inp('Idade', age, setAge, '17')}
             {inp('Altura (cm)', height, setHeight, '175')}
             {inp('Signo', sign, setSign, 'Capricórnio')}
@@ -293,7 +293,7 @@ function AddSurvivorModal({ state, onSave, onClose }: { state: AppState; onSave:
             {inp('Sobrenome', surname, setSurname, 'Akugetsu')}
           </div>
           {inp('Tagline', tagline, setTagline, 'Aquela que carrega as cerejeiras')}
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr 1fr', gap: 12 }}>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(120px, 1fr))', gap: 12 }}>
             {inp('Idade', age, setAge, '17')}
             {inp('Altura (cm)', height, setHeight, '160')}
             {inp('Signo', sign, setSign, 'Áries')}
@@ -338,22 +338,28 @@ export default function PartyPage({ state, onUpdate, canEdit, isGM }: Props) {
   }
 
   const handleImageUpload = useCallback(async (tamerId: string, dataUrl: string) => {
+    // Defesa em profundidade: só edita quem tem permissão para aquela ficha.
+    if (canEdit && !canEdit(tamerId)) return
     const url = await uploadImage(dataUrl, tamerId)
     const imageKey = url != null && !url.startsWith('data:') ? (url!.split('/').pop() ?? null) : null
     const newState = { ...state, tamers: state.tamers.map(t => t.id === tamerId ? { ...t, image: url ?? dataUrl, imageKey } : t) }
     onUpdate(newState)
-  }, [state, onUpdate])
+  }, [state, onUpdate, canEdit])
 
   const handleSurvivorImageUpload = useCallback(async (svId: string, dataUrl: string) => {
+    // Survivors são geridos pelo GM; guests/visitantes não editam.
+    if (canEdit && !canEdit()) return
     const url = await uploadImage(dataUrl, svId)
     const imageKey = url != null && !url.startsWith('data:') ? (url!.split('/').pop() ?? null) : null
     const newState = { ...state, survivors: (state.survivors ?? []).map(sv => sv.id === svId ? { ...sv, image: url ?? dataUrl, imageKey } : sv) }
     onUpdate(newState)
-  }, [state, onUpdate])
+  }, [state, onUpdate, canEdit])
 
   const renderTamerCard = (t: Tamer) => {
     const digi = t.digimonId ? findDigimon(state, t.digimonId) : null
     const cur  = digi ? (digi.stages[digi.currentStage] ?? digi.stages[1] ?? digi.stages[0]) : null
+    // Permissão de edição da ficha — guests/visitantes não podem trocar imagem nem importar.
+    const canEditThis = canEdit ? canEdit(t.id) : true
     return (
       <div key={t.id} className={styles.card} onClick={() => setOpen({ kind:'tamer', id:t.id })}>
         <div className={`${styles.portrait} fill-${t.portrait}`}>
@@ -361,21 +367,25 @@ export default function PartyPage({ state, onUpdate, canEdit, isGM }: Props) {
             ? <img key={t.image} src={t.image} alt="" style={{ width:'100%', height:'100%', objectFit:'cover' }}
                 onError={e => { (e.currentTarget as HTMLImageElement).style.display = 'none' }} />
             : <div className="grain" />}
-          <label className={styles.uploadHint} onClick={e => e.stopPropagation()}>
-            trocar foto
-            <input type="file" accept="image/*" style={{ display:'none' }} onChange={e => {
-              const f = e.target.files?.[0]; if (!f) return
-              const r = new FileReader(); r.onload = ev => { handleImageUpload(t.id, ev.target?.result as string) }; r.readAsDataURL(f)
-            }} />
-          </label>
+          {canEditThis && (
+            <label className={styles.uploadHint} onClick={e => e.stopPropagation()}>
+              trocar foto
+              <input type="file" accept="image/*" style={{ display:'none' }} onChange={e => {
+                const f = e.target.files?.[0]; if (!f) return
+                const r = new FileReader(); r.onload = ev => { handleImageUpload(t.id, ev.target?.result as string) }; r.readAsDataURL(f)
+              }} />
+            </label>
+          )}
         </div>
         <div className={styles.cardActions}>
           <button className={styles.cardActionBtn} title="Exportar ficha"
             onClick={e => { e.stopPropagation(); exportJson(t, `tamer-${t.id}-${new Date().toISOString().slice(0,10)}.json`) }}>↓</button>
-          <button className={styles.cardActionBtn} title="Importar ficha"
-            onClick={e => { e.stopPropagation(); importJson<typeof t>(imported => {
-              onUpdate({ ...state, tamers: state.tamers.map(x => x.id === t.id ? { ...imported, id: t.id } : x) })
-            }) }}>↑</button>
+          {canEditThis && (
+            <button className={styles.cardActionBtn} title="Importar ficha"
+              onClick={e => { e.stopPropagation(); importJson<typeof t>(imported => {
+                onUpdate({ ...state, tamers: state.tamers.map(x => x.id === t.id ? { ...imported, id: t.id } : x) })
+              }) }}>↑</button>
+          )}
         </div>
         <div className={styles.info}>
           {t.guest && <div style={{ fontFamily:'var(--font-mono)', fontSize:9, letterSpacing:'0.14em', textTransform:'uppercase', color:'var(--ink-mute)', marginBottom:2 }}>Guest</div>}
@@ -423,7 +433,7 @@ export default function PartyPage({ state, onUpdate, canEdit, isGM }: Props) {
 
       {/* Painel XP global */}
       {isGM && (
-        <div style={{ padding:'0 56px 16px' }}>
+        <div style={{ padding:'0 var(--page-pad-x) 16px' }}>
           <XpGlobalPanel state={state} onUpdate={onUpdate} />
         </div>
       )}
@@ -468,7 +478,7 @@ export default function PartyPage({ state, onUpdate, canEdit, isGM }: Props) {
             </div>
           )}
           {guestTamers.length === 0 && isGM && (
-            <div style={{ padding: '8px 56px 0' }}>
+            <div style={{ padding: '8px var(--page-pad-x) 0' }}>
               <button className={styles.btnGhost} style={{ fontSize: 12 }} onClick={() => setShowAdd(true)}>+ Adicionar Guest</button>
             </div>
           )}

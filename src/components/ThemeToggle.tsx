@@ -15,8 +15,8 @@ export function ThemeToggle() {
       aria-label={isDark ? 'Mudar para tema claro' : 'Mudar para tema escuro'}
       style={{
         position: 'fixed',
-        left: 16,
-        bottom: 16,
+        left: 'max(16px, env(safe-area-inset-left, 0px))',
+        bottom: 'max(16px, env(safe-area-inset-bottom, 0px))',
         zIndex: 200,
         width: 44,
         height: 44,

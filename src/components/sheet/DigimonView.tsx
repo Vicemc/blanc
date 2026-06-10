@@ -51,7 +51,7 @@ function AddEvolutionForm({ onAdd, onCancel }: { onAdd: (s: DigimonStage) => voi
         </div>
       </div>
       <label className={styles.formLabel} style={{ display: 'block', marginBottom: 6 }}>Status</label>
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5,1fr)', gap: 6, marginBottom: 12 }}>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(64px, 1fr))', gap: 6, marginBottom: 12 }}>
         {(['HP','Deslocamento','Iniciativa','Defesa','Armadura'] as (keyof DigimonStageStatus)[]).map(k => (
           <div key={k}><label className={styles.formLabel} style={{ fontSize: 9 }}>{k}</label>
             <input type="number" min={0} value={status[k]} onChange={e => setStatus(p => ({ ...p, [k]: parseInt(e.target.value)||0 }))} className={styles.formInput} /></div>
@@ -91,7 +91,7 @@ function DigiInfoEditor({ line, stageIdx, onSaveLine }: {
           placeholder="??? ↔ Tinkermon (Child) / Armor ↔ Witchmon ↔ ??? ↔ ???"
           className={styles.formInput} />
       </div>
-      <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr 1fr', gap:10, marginBottom:10 }}>
+      <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fit, minmax(90px, 1fr))', gap:10, marginBottom:10 }}>
         <div><label className={styles.formLabel}>Nome</label><input value={d.stageName} onChange={e => setD(st=>({...st,stageName:e.target.value}))} className={styles.formInput}/></div>
         <div><label className={styles.formLabel}>Nível</label><input value={d.level} onChange={e => setD(st=>({...st,level:e.target.value}))} className={styles.formInput}/></div>
         <div><label className={styles.formLabel}>Tipo</label><input value={d.type} onChange={e => setD(st=>({...st,type:e.target.value}))} className={styles.formInput}/></div>

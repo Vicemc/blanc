@@ -9,10 +9,24 @@
   top: 0;
   z-index: 100;
   display: flex;
+  align-items: center;
   gap: 0;
   background: var(--paper-deep);
   border-bottom: 1.5px solid var(--line);
-  padding: 0 32px;
+  padding: 0 var(--page-pad-x);
+  /* Respeita o notch/status-bar em PWA standalone (iOS) */
+  padding-top: env(safe-area-inset-top, 0px);
+  padding-left: max(var(--page-pad-x), env(safe-area-inset-left, 0px));
+  padding-right: max(var(--page-pad-x), env(safe-area-inset-right, 0px));
+}
+
+/* Container de todo o conteúdo do nav (links + controles).
+   Desktop: linha horizontal. Mobile: vira drawer (ver media query). */
+.navInner {
+  display: flex;
+  align-items: center;
+  flex: 1;
+  min-width: 0;
 }
 
 .nav a {
@@ -26,6 +40,7 @@
   text-decoration: none;
   border-bottom: 2px solid transparent;
   transition: color 0.15s, border-color 0.15s;
+  flex-shrink: 0;
 }
 
 .nav a:hover {
@@ -55,6 +70,71 @@
 }
 .navBtn:hover { color: var(--ink); }
 
+/* Botão hambúrguer — escondido no desktop, visível no mobile */
+.hamburger {
+  display: none;
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  font-size: 22px;
+  line-height: 1;
+  color: var(--ink);
+  padding: 12px 8px;
+  margin-right: 4px;
+}
+
+.navBackdrop { display: none; }
+
 .main {
   flex: 1;
+}
+
+/* ── Mobile: nav vira menu hambúrguer (drawer) ─────────────────── */
+@media (max-width: 768px) {
+  .nav {
+    justify-content: flex-start;
+    min-height: 52px;
+  }
+  .hamburger { display: inline-flex; align-items: center; justify-content: center; }
+
+  /* Drawer: painel deslizante a partir do topo, abaixo da barra */
+  .navInner {
+    position: absolute;
+    top: 100%;
+    left: 0;
+    right: 0;
+    flex-direction: column;
+    align-items: stretch;
+    gap: 0;
+    background: var(--paper-deep);
+    border-bottom: 1.5px solid var(--line);
+    box-shadow: var(--shadow);
+    max-height: calc(100vh - 52px);
+    overflow-y: auto;
+    /* fechado por padrão */
+    display: none;
+  }
+  .navInnerOpen { display: flex; }
+
+  /* Links e botões em bloco, alinhados à esquerda, alvos de toque maiores */
+  .navInner a,
+  .navInner .navBtn {
+    width: 100%;
+    text-align: left;
+    padding: 14px var(--page-pad-x);
+    border-bottom: 1px solid var(--line-soft);
+  }
+  .nav a.active { border-bottom-color: var(--line-soft); color: var(--coral); }
+
+  /* O spacer não empurra nada no layout vertical */
+  .navSpacer { display: none; }
+
+  /* Backdrop atrás do drawer */
+  .navBackdrop {
+    display: block;
+    position: fixed;
+    inset: 52px 0 0 0;
+    background: rgba(26,24,20,0.4);
+    z-index: 99;
+  }
 }
