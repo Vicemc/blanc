@@ -11,7 +11,7 @@
 
 1. [Visão Geral](#1-visão-geral)
 2. [Stack Técnica](#2-stack-técnica)
-3. [Os Dois Modos de Execução](#3-os-dois-modos-de-execução)
+3. [Os Três Modos de Execução](#3-os-três-modos-de-execução)
 4. [Estrutura de Arquivos](#4-estrutura-de-arquivos)
 5. [Inicialização — Passo a Passo](#5-inicialização--passo-a-passo)
 6. [Autenticação e Papéis](#6-autenticação-e-papéis)
@@ -22,13 +22,18 @@
 11. [Cálculos de Regras (XP, Status, HP)](#11-cálculos-de-regras-xp-status-hp)
 12. [Páginas — Funcionamento Detalhado](#12-páginas--funcionamento-detalhado)
 13. [Componente Sheet (Ficha)](#13-componente-sheet-ficha)
-14. [Backend Supabase (Schema, RLS, Realtime)](#14-backend-supabase-schema-rls-realtime)
-15. [Design System](#15-design-system)
-16. [Assets Estáticos](#16-assets-estáticos)
-17. [Elenco Pré-Carregado](#17-elenco-pré-carregado)
-18. [Como Rodar e Fazer Deploy](#18-como-rodar-e-fazer-deploy)
-19. [Como Editar a Base de Dados](#19-como-editar-a-base-de-dados)
-20. [Decisões de Arquitetura](#20-decisões-de-arquitetura)
+14. [Wiki — Lore Colaborativa](#14-wiki--lore-colaborativa)
+15. [Mapas Interativos](#15-mapas-interativos)
+16. [Backend Supabase (Schema, RLS, Realtime)](#16-backend-supabase-schema-rls-realtime)
+17. [Flags de Campanha & Presença](#17-flags-de-campanha--presença)
+18. [PWA, Offline & Service Worker](#18-pwa-offline--service-worker)
+19. [Mobile, Responsividade & Tema](#19-mobile-responsividade--tema)
+20. [Design System](#20-design-system)
+21. [Assets Estáticos](#21-assets-estáticos)
+22. [Elenco Pré-Carregado](#22-elenco-pré-carregado)
+23. [Como Rodar e Fazer Deploy](#23-como-rodar-e-fazer-deploy)
+24. [Como Editar a Base de Dados](#24-como-editar-a-base-de-dados)
+25. [Decisões de Arquitetura](#25-decisões-de-arquitetura)
 
 ---
 
@@ -45,11 +50,13 @@ O **Digimon Survive Companion App** é uma ferramenta de mesa (*TTRPG companion*
 | **Goggle Girl** | `/goggle` | Bestiário (Setores), BUGs, SIGNs e Tokens — tudo com CRUD por pasta. |
 | **Teatro** | `/teatro` | Rastreador de combate em tempo real: rounds, HP/Defesa/Armadura, condições, relógios, Domains, Jogress, clima, log. |
 | **Sistema** | `/sistema` | Referência completa das regras: Regras, Climas e Digivice. |
+| **Wiki** | `/wiki`, `/wiki/:id` | Lore colaborativa: páginas por categoria, blocos (infobox/texto/imagem/galeria/música), links `[[ ]]` e grafo de relações. |
+| **Mapas** | `/mapas` | Mapas interativos (Leaflet) com camadas e pins vinculáveis a páginas da Wiki / outros mapas. |
 | **Digivice** | `/digivice` | Dispositivo pessoal de cada personagem: ficha resumida, inventário, records, mapas. |
 | **Digi-Zap** | `/digizap` | Chat em tempo real entre personagens (grupos e conversas bilaterais). |
 | **Config** | `/configuracoes` | Preferências locais de exibição. |
 | **Backstage** | `/backstage` | Painel exclusivo do GM: usuários, fichas, skill tree, regras (CRUD), visibilidade. |
-| **Modo Visitante** | `/view` | Visualização somente-leitura de Party, Bestiário e Palco ativo. |
+| **Modo Visitante** | `/view` | Página somente-leitura dedicada (Party, Bestiário e Palco ativo). Distinta do **visitante anônimo** (`anon`) — ver [§3](#3-os-três-modos-de-execução). |
 
 ---
 
@@ -61,22 +68,27 @@ O **Digimon Survive Companion App** é uma ferramenta de mesa (*TTRPG companion*
 | Linguagem | TypeScript | 5.5 |
 | Build | Vite | 5.4 |
 | Roteamento | React Router | 6.26 |
-| Backend (opcional) | Supabase (Auth + Postgres + Storage + Realtime) | `@supabase/supabase-js` 2.106 |
+| Backend (opcional) | Supabase (Auth + Postgres + Storage + Realtime + Presence) | `@supabase/supabase-js` 2.106 |
+| Mapas | Leaflet + React-Leaflet | `leaflet` 1.9 / `react-leaflet` 4.2 |
+| Grafo da Wiki | force-directed 2D | `react-force-graph-2d` 1.29 |
 | Estilo | CSS Modules + `global.css` + estilos inline | — |
 | Estado | `useState` / `useMemo` / `useCallback` / `createContext` | React nativo |
 | Persistência local | `localStorage` + `IndexedDB` | Browser nativo |
+| PWA | Service Worker manual + Web App Manifest | `public/sw.js` + `public/manifest.webmanifest` |
 | Hosting | Vercel (SPA com rewrites) | — |
 | Porta de dev | **5174** | — |
 
-**Dependências de produção:** `react`, `react-dom`, `react-router-dom`, `@supabase/supabase-js`.
+**Dependências de produção:** `react`, `react-dom`, `react-router-dom`, `@supabase/supabase-js`, `leaflet`, `react-leaflet`, `react-force-graph-2d`.
 
 Code-splitting: todas as páginas são carregadas via `lazy()` com auto-reload em caso de chunk obsoleto (deploy novo). O Vite agrupa `node_modules` num único chunk `vendor`.
 
+> **PWA:** o app é instalável e funciona offline (cache do Service Worker). Detalhes em [§18](#18-pwa-offline--service-worker). É também responsivo para mobile, com nav em hambúrguer e tema claro/escuro — [§19](#19-mobile-responsividade--tema).
+
 ---
 
-## 3. Os Dois Modos de Execução
+## 3. Os Três Modos de Execução
 
-A presença das variáveis de ambiente `VITE_SUPABASE_URL` e `VITE_SUPABASE_ANON_KEY` decide o modo. Isso é resolvido em [src/lib/supabase.ts](src/lib/supabase.ts) através de `isSupabaseReady`.
+A presença das variáveis de ambiente `VITE_SUPABASE_URL` e `VITE_SUPABASE_ANON_KEY` decide o modo. Isso é resolvido em [src/lib/supabase.ts](src/lib/supabase.ts) através de `isSupabaseReady`. Com Supabase configurado, a existência (ou não) de uma sessão de login separa o modo conectado do visitante anônimo.
 
 ### Modo Local (`localMode`)
 - Sem variáveis de ambiente → `supabase = null`.
@@ -84,14 +96,22 @@ A presença das variáveis de ambiente `VITE_SUPABASE_URL` e `VITE_SUPABASE_ANON
 - Persistência apenas em `localStorage` + `IndexedDB`.
 - Digivice e Digi-Zap exibem aviso "requer Supabase configurado".
 
-### Modo Conectado (Supabase)
-- Variáveis presentes → exige login ([LoginPage](src/pages/LoginPage.tsx)).
-- Papéis reais: `gm`, `player`, `guest`.
+### Modo Conectado (Supabase, com login)
+- Variáveis presentes **e** sessão ativa.
+- Papéis reais: `gm`, `player`, `guest` (ver [§6](#6-autenticação-e-papéis)).
 - Estado salvo na tabela `app_state` (JSONB) + Storage para imagens.
-- Sincronização em tempo real entre todos os clientes via `postgres_changes`.
+- Sincronização em tempo real entre todos os clientes via `postgres_changes` + **Presence** (quem está online).
 - `localStorage` passa a funcionar como **cache offline**.
 
-> Toda função de backend degrada graciosamente: se o Supabase não estiver pronto, ela cai para o equivalente local. Isso permite desenvolver e jogar offline.
+### Modo Visitante Anônimo (`isAnon`)
+- Variáveis presentes, mas **sem sessão** (ninguém logado).
+- O app **não** força login: carrega o estado público do banco em **somente-leitura** ([App.tsx:134-139](src/App.tsx#L134-L139)).
+- O visitante vê **Início, Party, Goggle Girl, Sistema, Teatro e Wiki**; não vê Mapas, Config, Digivice, Digi-Zap nem Backstage. As rotas restritas redirecionam para `/` ([App.tsx:472-482](src/App.tsx#L472-L482)).
+- Nenhuma edição persiste: `onUpdate`/`onUpdateLocal` apenas atualizam o estado local e retornam sem gravar ([App.tsx:171-208](src/App.tsx#L171-L208)).
+- Um botão **"Entrar"** na navbar abre o login sob demanda.
+- No banco, o acesso é liberado por policies de SELECT para o role `anon` ([supabase_anon_read.sql](supabase_anon_read.sql)) — ver [MIGRACAO.md §6.7](MIGRACAO.md).
+
+> Toda função de backend degrada graciosamente: se o Supabase não estiver pronto, ela cai para o equivalente local. Isso permite desenvolver e jogar offline, e expor uma vitrine pública somente-leitura sem distribuir contas.
 
 ---
 
@@ -99,29 +119,50 @@ A presença das variáveis de ambiente `VITE_SUPABASE_URL` e `VITE_SUPABASE_ANON
 
 ```
 survive/
-├── index.html                  # fontes Google, root, favicon
+├── index.html                  # fontes Google, root, favicon, meta tags PWA
 ├── package.json
 ├── vite.config.ts              # porta 5174, chunk vendor
 ├── vercel.json                 # rewrites SPA + cache headers
-├── supabase_schema.sql         # schema completo do backend
-├── supabase_guests.sql         # extensão para contas guest
-├── supabase_digizap_groups.sql # seed de grupos do Digi-Zap
-├── MIGRACAO.md / MIGRACAO_v2.md # roteiros de migração
+├── README.md
+├── MIGRACAO.md                 # setup/migração do Supabase (roteiro)
+├── REFACTOR_SHEET.md           # playbook (concluído) da refatoração do Sheet
+├── ROADMAP.md                  # análise de melhorias/expansões futuras
+│
+│   # ── Scripts SQL (ordem de execução em MIGRACAO.md §3.2 / Apêndice A) ──
+├── supabase_schema.sql         # schema completo (tabelas, RLS, RPCs, triggers, Realtime, Storage)
+├── supabase_player_writes.sql  # RPC update_my_tamer (escrita granular do player)
+├── supabase_digizap_v2.sql     # anexos, reações e replies no Digi-Zap
+├── supabase_digizap_groups.sql # seed dos grupos fixos do Digi-Zap
+├── supabase_guests.sql         # contas guest somente-leitura
+├── supabase_update_line.sql    # RPC update_digimon_line (linha de digimon atômica)
+├── wiki_migration.sql          # tabelas wiki_pages / wiki_relations
+├── wiki_collab_migration.sql   # status/author + tabela wiki_page_edits
+├── wiki_detailed_migration.sql # coluna content (blocos) em wiki_pages/_edits
+├── wiki_owner_migration.sql    # coluna owner_tamer_id (página de PC)
+├── maps_migration.sql          # tabelas maps / map_layers / map_pins
+├── campaign_config_migration.sql # tabela campaign_config (flags globais)
+├── supabase_anon_read.sql      # SELECT anônimo + endurecimento de escrita wiki/maps
 │
 ├── public/
 │   ├── Blanc_Icon.png
+│   ├── manifest.webmanifest        # Web App Manifest (PWA)
+│   ├── sw.js                       # Service Worker manual (offline)
+│   ├── icon-192.png / icon-512.png / icon-maskable-512.png  # ícones PWA
 │   ├── affinity/   # 14 ícones PNG de afinidade elemental
 │   ├── avatar/     # avatares pixel-art dos PCs (navbar)
-│   ├── tamers/     # 19 retratos de personagens
-│   ├── lvl 3/      # 13 sprites de Digimon Child
-│   └── lvl 4/      # 19 sprites de Digimon Adult/Armor
+│   ├── tamers/     # retratos de personagens
+│   ├── lvl 3/      # sprites de Digimon Child
+│   └── lvl 4/      # sprites de Digimon Adult/Armor
 │
 └── src/
-    ├── main.tsx                # bootstrap React
-    ├── App.tsx                 # roteamento, nav, auth, save/realtime
-    ├── App.module.css
+    ├── main.tsx                # bootstrap React + registro do Service Worker
+    ├── App.tsx                 # roteamento, nav, auth, save/realtime, modos
+    ├── App.module.css          # nav (incl. hambúrguer mobile) + layout
     │
-    ├── types/index.ts          # TODOS os tipos do domínio
+    ├── types/
+    │   ├── index.ts            # TODOS os tipos do domínio
+    │   ├── wiki.ts             # tipos da Wiki (página, blocos, relações, edições)
+    │   └── map.ts             # tipos de Mapas (GameMap, MapLayer, MapPin)
     │
     ├── data/
     │   ├── store.ts            # estado canônico, cálculos, factories, persistência local
@@ -133,24 +174,42 @@ survive/
     ├── lib/
     │   ├── supabase.ts         # cliente Supabase + isSupabaseReady
     │   ├── auth.ts             # login, perfis, roles
-    │   ├── settings.tsx        # preferências locais (Context)
+    │   ├── settings.tsx        # preferências locais + tema (Context)
+    │   ├── campaignFlags.tsx   # flags campaign-wide (Context + realtime)
+    │   ├── presence.ts         # Presence (usuários online) via Realtime
+    │   ├── dice.ts             # utilidades de rolagem de dados (+ testes)
     │   ├── db.ts               # fachada que re-exporta lib/db/*
     │   └── db/
     │       ├── state.ts        # load/save AppState + hidratação de imagens
     │       ├── storage.ts      # upload/URL de imagens no Storage
     │       ├── realtime.ts     # subscrições postgres_changes
     │       ├── skillTree.ts    # CRUD de fases da skill tree
+    │       ├── config.ts       # campaign_config (get/set/all)
+    │       ├── gmContent.ts    # gm_notes / gm_items
+    │       ├── snapshots.ts    # histórico de versões do app_state
+    │       ├── healthcheck.ts  # diagnóstico do Supabase
+    │       ├── wiki.ts         # CRUD da Wiki (importado direto pela página)
+    │       ├── maps.ts         # CRUD de Mapas (importado direto pela página)
     │       └── migration.ts    # migração local → Supabase
     │
     ├── components/
-    │   ├── Sheet.tsx           # ficha completa (~3600 linhas) — núcleo da UI
+    │   ├── Sheet.tsx           # orquestrador da ficha (~387 linhas) — ver §13
+    │   ├── sheet/              # views modulares da ficha (Tamer/Digimon/Survivor + shared)
+    │   ├── wiki/              # componentes da Wiki (artigo, blocos, grafo, links)
+    │   ├── map/               # componentes de Mapas (canvas Leaflet, editor, pin popup)
     │   ├── AuthProvider.tsx    # Context de sessão/perfil
+    │   ├── GlobalSearch.tsx    # busca global (atalho tecla "/")
+    │   ├── DiceRoller.tsx      # rolador de dados flutuante
+    │   ├── ThemeToggle.tsx     # alternância claro/escuro flutuante
+    │   ├── SetupHealth.tsx     # botão de healthcheck (GM)
+    │   ├── RulesModal.tsx      # popup de referência de regras
+    │   ├── ErrorBoundary.tsx   # boundary de erro React
     │   ├── GrainFill.tsx       # preenchimento de cor + textura grain
     │   ├── PageHead.tsx        # cabeçalho de página
     │   └── Toast.tsx
     │
     ├── pages/                  # uma página por rota (ver seção 12)
-    └── styles/global.css       # design tokens, fills, grain, tooltips
+    └── styles/global.css       # design tokens, fills, grain, tooltips, tema, breakpoints
 ```
 
 ---
@@ -190,17 +249,22 @@ Definido em [src/lib/auth.ts](src/lib/auth.ts) e [src/components/AuthProvider.ts
 | **gm** | tudo: editar qualquer ficha, ver Backstage, controlar visibilidade, assumir NPCs | — |
 | **player** | editar **apenas o próprio tamer** (`profile.tamer_id`), ver Digivice/Digi-Zap próprios | editar outros, ver Backstage |
 | **guest** | só leitura de Party, Goggle e Sistema | Teatro, Digivice, Digi-Zap, edição, backup |
+| **visitante anônimo** (`anon`) | leitura de Início, Party, Goggle, Sistema, **Teatro** e **Wiki** | tudo o mais; Mapas/Config/Digivice/Digi-Zap/Backstage; qualquer escrita |
+
+> O visitante anônimo (sem login) é tratado fora do sistema de papéis do `profile` — ele não tem perfil. É detectado por `isAnon` no [AuthProvider](src/components/AuthProvider.tsx) e propagado pelo `App.tsx` (ver [§3](#3-os-três-modos-de-execução)).
 
 ### Helpers de permissão
 - `isGM(profile)` → `true` em modo local; senão `role === 'gm'`.
 - `canEditTamer(profile, tamerId)` → GM sempre; player só o seu.
-- O `canEdit(tamerId?)` do `App.tsx` compõe essas regras e é passado às páginas.
+- O `canEdit(tamerId?)` do `App.tsx` compõe essas regras: visitante anônimo e guest nunca editam; em modo local tudo é editável; GM edita qualquer; player só o próprio ([App.tsx:250-257](src/App.tsx#L250-L257)).
 
 ### Visibilidade da navbar
-- Teatro: oculto para guests.
-- Digivice / Digi-Zap: visíveis para GM ou players com `tamer_id` (nunca guests).
-- Backstage: só GM.
-- Login: conta criada pelo GM, **sem cadastro público** (trigger `handle_new_user` cria o profile automaticamente).
+Controlada por flags em [App.tsx:291-298](src/App.tsx#L291-L298):
+- **Teatro:** oculto **só para guests logados** — o visitante anônimo o vê (somente leitura).
+- **Digivice / Digi-Zap:** GM ou players com `tamer_id` (nunca guests nem anônimo).
+- **Mapas / Config:** ocultos para o visitante anônimo.
+- **Backstage:** só GM.
+- Login: conta criada pelo GM, **sem cadastro público** (trigger `handle_new_user` cria o profile automaticamente). O visitante anônimo entra por demanda pelo botão **"Entrar"**.
 
 ---
 
@@ -423,16 +487,36 @@ Cinco abas:
 - **Visibilidade:** controle centralizado de `hidden`/`name`/`full` de todas as entidades.
 
 ### 12.9 SettingsPage — [src/pages/SettingsPage.tsx](src/pages/SettingsPage.tsx)
-Preferências locais (em `localStorage`, via `SettingsProvider`): esconder taglines (por página), pop-up de round, som do Digi-Zap, modo de ficha (vertical/horizontal), valores numéricos vs bolinhas, layout de atributos (Blanc/Clássica), grid compacto da Party.
+Preferências locais (em `localStorage`, via `SettingsProvider`): **tema claro/escuro**, esconder taglines (por página), pop-up de round, som do Digi-Zap, modo de ficha (vertical/horizontal), valores numéricos vs bolinhas, layout de atributos (Blanc/Clássica), grid compacto da Party. O tema também tem um botão flutuante global ([ThemeToggle](src/components/ThemeToggle.tsx)) — ver [§19](#19-mobile-responsividade--tema).
 
 ### 12.10 ViewerPage — [src/pages/ViewerPage.tsx](src/pages/ViewerPage.tsx)
-Modo visitante somente-leitura em `/view`: Party, Bestiário (respeitando visibilidade) e Palco ativo. Fichas abrem em modo não-editável.
+Página somente-leitura dedicada em `/view`: Party, Bestiário (respeitando visibilidade) e Palco ativo. Fichas abrem em modo não-editável. É independente do visitante anônimo (`isAnon`): o `/view` existe em qualquer modo, enquanto o anônimo é o estado "sem login" descrito em [§3](#3-os-três-modos-de-execução).
+
+### 12.11 WikiPage — [src/pages/WikiPage.tsx](src/pages/WikiPage.tsx)
+Wiki colaborativa de lore em `/wiki` e `/wiki/:id`. Detalhada na [§14](#14-wiki--lore-colaborativa).
+
+### 12.12 MapPage — [src/pages/MapPage.tsx](src/pages/MapPage.tsx)
+Mapas interativos (Leaflet) em `/mapas` (bloqueada para o visitante anônimo). Detalhada na [§15](#15-mapas-interativos).
 
 ---
 
 ## 13. Componente Sheet (Ficha)
 
-[src/components/Sheet.tsx](src/components/Sheet.tsx) (~3600 linhas) é o componente mais central. Exporta `FullSheet` e `SheetModal`, mais o tipo `SheetSubject`:
+A ficha foi **modularizada** (ver [REFACTOR_SHEET.md](REFACTOR_SHEET.md), refatoração concluída). Hoje [src/components/Sheet.tsx](src/components/Sheet.tsx) é um **orquestrador fino (~387 linhas)**: monta `FullSheet`/`SheetModal`, decide qual *view* renderizar e re-exporta a API pública. O código pesado vive em [src/components/sheet/](src/components/sheet/).
+
+### Estrutura dos arquivos
+| Arquivo | Conteúdo |
+|---------|----------|
+| `Sheet.tsx` | `FullSheet`, `SheetModal`, switch de `kind` → view; re-exports (`SheetSubject`, `TokenSpawn`, `parseTokenSpawns`). |
+| `sheet/TamerView.tsx` | `TamerView`, `DigiviceInventoryTab`. |
+| `sheet/DigimonView.tsx` | `DigimonStageView`, **`BugView`**, **`SignView`** (Bug/Sign foram incorporados aqui — eram pequenos demais para arquivos próprios). |
+| `sheet/SurvivorView.tsx` | `SurvivorView`, `SurvivorLoreTab`, `SurvivorInventoryTab`. |
+| `sheet/shared/contexts.ts` | `DisplayModeCtx`, `KeywordTipsCtx`. |
+| `sheet/shared/types.ts` | `SheetSubject`, `TokenSpawn` e tipos compartilhados. |
+| `sheet/shared/utils.ts` | `KEYWORD_TIPS`, `parseTokenSpawns` e helpers puros. |
+| `sheet/shared/components.tsx` | UI compartilhada (ex.: `ImageUploadZone`). |
+
+O tipo `SheetSubject` continua sendo o discriminador de assunto:
 
 ```typescript
 type SheetSubject =
@@ -444,30 +528,87 @@ type SheetSubject =
   | { kind: 'survivor'; id }
 ```
 
-O `SheetModal` despacha para a *view* certa: `TamerView`, `DigimonStageView`, `BugView`, `SignView` ou `SurvivorView`.
+`FullSheet` resolve a entidade e despacha para `TamerView`, `DigimonStageView`, `BugView`, `SignView` ou `SurvivorView`.
 
 ### Recursos transversais
-- **DisplayMode** (`number` | `dots`) via Context — atributos/skills/afinidades como número ou bolinhas, sincronizados.
-- **`EffectText` + `KwTooltip`** — parser que converte `[Keyword]` em tooltip posicionado via JS (`getBoundingClientRect`, nunca corta na borda). Dicionário `KEYWORD_TIPS` cobre ~50 termos.
+- **DisplayMode** (`number` | `dots`) via `DisplayModeCtx` — atributos/skills/afinidades como número ou bolinhas, sincronizados.
+- **`EffectText` + tooltip de keyword** (`KeywordTipsCtx` + `KEYWORD_TIPS` em `shared/utils.ts`) — converte `[Keyword]` em tooltip posicionado via JS (`getBoundingClientRect`, nunca corta na borda).
 - **Modo livre** — edição direta de atributos/skills/afinidades sem custo de XP, estado compartilhado entre as grades.
-- **Staging de XP** — `XpConfirmBar` mostra custo total antes de confirmar.
+- **Staging de XP** — barra de confirmação mostra o custo total antes de confirmar.
 - **Toggles de passiva** (`toggleBonus`) — somam bônus a status/condições; algumas com X variável (ex: Shiki 0–2).
 - **Skill Tree** integrada na ficha do tamer (compra via Supabase RPC `buy_skill`, ou local).
-- **Inventário, Merits, MindLink, Lore** para survivors; **Digivice inventory** embutido.
-- **`nameOnly`** restringe a ficha quando a visibilidade é `name` (ver seção 10).
+- **Inventário, Merits, MindLink, Lore** para survivors; **Digivice inventory** embutido (`DigiviceInventoryTab`).
+- **`nameOnly`** restringe a ficha quando a visibilidade é `name` (ver [§10](#10-sistema-de-visibilidade-3-estados)).
 - Modo **horizontal** (preferência) amplia o modal e dispõe seções em colunas.
 
 ---
 
-## 14. Backend Supabase (Schema, RLS, Realtime)
+## 14. Wiki — Lore Colaborativa
+
+Base de conhecimento da campanha em `/wiki` (e `/wiki/:id`). Fontes: [src/pages/WikiPage.tsx](src/pages/WikiPage.tsx), [src/components/wiki/](src/components/wiki/), [src/lib/db/wiki.ts](src/lib/db/wiki.ts) e os tipos em [src/types/wiki.ts](src/types/wiki.ts).
+
+> Requer Supabase: em modo local a Wiki fica vazia (as funções de `wiki.ts` retornam listas vazias sem `isSupabaseReady`).
+
+### Páginas
+Cada página (`wiki_pages`) tem: `title`, `category`, `body` (texto), `avatar_url`, `visibility`, vínculo opcional a uma entidade (`linked_type`/`linked_id`), `owner_tamer_id` (página de PC), `status` e `content` (blocos).
+
+**11 categorias** (`WIKI_CATEGORIES` em [src/types/wiki.ts](src/types/wiki.ts#L109)): Humanos, Agentes, Digimons, Locais, Facções, Eventos, Documentos, Itens, BUGs, SIGNs, Entidades.
+
+### Conteúdo em blocos (`WikiContent`)
+Quando a flag de campanha `wiki_detailed_pages` está ligada (ver [§17](#17-flags-de-campanha--presença)), a página usa um layout em **blocos** numa grade de colunas (`full`/`half`):
+- **infobox** — pares rótulo/valor;
+- **text** — bloco de texto com título;
+- **image** — imagem com legenda;
+- **gallery** — galeria (até `WIKI_GALLERY_MAX` = 6 imagens);
+- **divider** — separador.
+
+Há ainda um **card de música** (YouTube) fixo abaixo do avatar (`WikiMusic`). Campos legados (`infobox`/`gallery`/`sections`) são mantidos para retrocompat e migração automática.
+
+### Links e grafo
+- **Links `[[Nome da Página]]`** no corpo são resolvidos para navegação ([src/components/wiki/wikiLinks](src/components/wiki/)); slugs em `wikiSlug`.
+- **Vínculo a entidades** (`linked_type`/`linked_id`): uma página pode apontar para um tamer/digimon/survivor/bug/sign/item e reaproveitar o retrato/cor da entidade.
+- **Grafo de relações** (`wiki_relations`): arestas rotuladas entre páginas, renderizadas num grafo *force-directed* 2D ([WikiGraph](src/components/wiki/), via `react-force-graph-2d`).
+
+### Visibilidade
+Cada página tem visibilidade `hidden` | `name` | `full`, no mesmo espírito do [§10](#10-sistema-de-visibilidade-3-estados).
+
+### Fluxo colaborativo
+- **GM** cria/edita/aprova qualquer página (status `approved`).
+- **Player** pode **criar** uma página nova → entra como `pending` até o GM aprovar (`submitWikiPage`).
+- **Player** editando a página **de outro** → a edição vai para `wiki_page_edits` (`pending`) para revisão do GM.
+- **Dono** de uma página de PC (`owner_tamer_id`) pode editá-la diretamente.
+
+---
+
+## 15. Mapas Interativos
+
+Mapas da campanha em `/mapas` (bloqueada para o visitante anônimo). Fontes: [src/pages/MapPage.tsx](src/pages/MapPage.tsx), [src/components/map/](src/components/map/), [src/lib/db/maps.ts](src/lib/db/maps.ts) e os tipos em [src/types/map.ts](src/types/map.ts). Renderização via **Leaflet** ([MapCanvas](src/components/map/), `leaflet` + `react-leaflet`).
+
+> Requer Supabase: em modo local a lista de mapas fica vazia.
+
+### Estrutura
+- **Mapa (`maps`)** — imagem de fundo (`bg_url`, `bg_width`, `bg_height`), `title`, `description`, `visibility`.
+- **Camadas (`map_layers`)** — agrupam pins; têm `visible` (toggle do GM) e `order_index`. O GM pode revelar/ocultar uma camada inteira.
+- **Pins (`map_pins`)** — posição em **frações 0..1** da largura/altura (resiliente a zoom/resize), `icon` (7 tipos: `default`/`secret`/`danger`/`npc`/`item`/`dungeon`/`event`), `visibility`, e vínculos: `linked_wiki_id` (abre a página da Wiki) e `linked_map_id` (navega para outro mapa).
+
+Rótulos e cores de ícones em `PIN_ICON_LABELS` / `PIN_ICON_COLORS` ([src/types/map.ts](src/types/map.ts#L44)).
+
+### Visibilidade
+Mapas e pins usam `hidden` | `name` | `full`, alinhado ao [§10](#10-sistema-de-visibilidade-3-estados). O GM edita arrastando pins, alternando camadas e definindo descrições; players e visitantes veem apenas o que está revelado.
+
+---
+
+## 16. Backend Supabase (Schema, RLS, Realtime)
 
 Schema completo em [supabase_schema.sql](supabase_schema.sql).
 
-### Tabelas
+> O schema base (`supabase_schema.sql`) é a fonte da verdade das tabelas centrais; Wiki, Mapas, flags e acesso anônimo entram por migrações incrementais (Wiki/Mapas/`campaign_config`/`supabase_anon_read`). A **ordem de execução** e os detalhes de RLS estão em [MIGRACAO.md](MIGRACAO.md) — esta seção é um resumo.
+
+### Tabelas centrais (schema base)
 | Tabela | Conteúdo |
 |--------|----------|
 | `profiles` | estende `auth.users`: `display_name`, `role`, `tamer_id`, `npc_id`, `active_npc_view`. Trigger cria profile no signup. |
-| `app_state` | `AppState` inteiro como JSONB (campaign `midnight-summer`). |
+| `app_state` | `AppState` inteiro como JSONB (campaign `midnight-summer`). Cada linha é também um snapshot histórico — ver [§17](#17-flags-de-campanha--presença). |
 | `stages` | palcos de combate (round, actor_states, clocks, tokens) — sync independente. |
 | `signs` | SIGNs da Goggle Girl. |
 | `skill_tree_phases` | fases de skill por tamer (available/acquired). |
@@ -475,24 +616,85 @@ Schema completo em [supabase_schema.sql](supabase_schema.sql).
 | `digi_zap_groups` / `digi_zap_messages` | grupos e mensagens do chat. |
 | `gm_notes` / `gm_items` | conteúdo exclusivo do GM (itens revelados sob demanda). |
 
+### Tabelas das migrações incrementais
+| Tabela | Migração | Conteúdo |
+|--------|----------|----------|
+| `wiki_pages` | `wiki_*` | páginas da Wiki (categoria, body, blocos `content`, visibilidade, vínculo, dono, status). |
+| `wiki_relations` | `wiki_migration` | arestas rotuladas do grafo da Wiki. |
+| `wiki_page_edits` | `wiki_collab` (+ `wiki_detailed`) | edições de páginas propostas por players (aprovação do GM). |
+| `maps` / `map_layers` / `map_pins` | `maps_migration` | mapas, camadas e pins (ver [§15](#15-mapas-interativos)). |
+| `campaign_config` | `campaign_config_migration` | flags campaign-wide (`chave → valor jsonb`) — ver [§17](#17-flags-de-campanha--presença). |
+
 ### Segurança (RLS)
 - Helpers: `is_gm()`, `my_character_id()`, `is_participant(group_id)`.
 - Players só leem/escrevem o que lhes pertence (próprio digivice, grupos que participam, fases desbloqueadas do próprio tamer). GM tem acesso amplo.
 - Mensagens são imutáveis (só GM deleta).
+- **Acesso anônimo:** [supabase_anon_read.sql](supabase_anon_read.sql) concede SELECT ao role `anon` em `app_state`/`stages`/`signs` (Wiki e `campaign_config` já são de leitura pública) e **endurece** a escrita das migrações de Wiki/Mapas (que vinham `for all using(true)`) restringindo-a a `authenticated`. Detalhes em [MIGRACAO.md §6.7](MIGRACAO.md).
 
 ### Funções RPC de negócio
+- `update_my_tamer(p_tamer)` — player substitui só o próprio tamer no `app_state` (sem last-write-wins).
+- `update_digimon_line(p_line)` — GM atualiza atomicamente uma linha do `bestiary` (preserva stages do Palco ao salvar `imageKey`).
 - `buy_skill(phase_id, skill_index)` — compra atômica (move skill + debita 3 XP no JSONB).
 - `update_actor_state(...)`, `advance_round(stage_id)`, `reveal_item(item_id)`.
 
 ### Realtime
-Publicação `supabase_realtime` inclui `app_state`, `stages`, `digi_zap_messages`, `digivices`, `skill_tree_phases`. `gm_notes`/`gm_items` ficam de fora por precaução.
+Publicação `supabase_realtime` inclui `app_state`, `stages`, `digi_zap_messages`, `digivices`, `skill_tree_phases` e `campaign_config`. `gm_notes`/`gm_items` ficam de fora por precaução.
 
 ### Storage
 Buckets públicos `portraits` (fotos de tamers/digimons, path `{id}.{ext}`) e `assets` (SIGNs, mapas, records). Policies de leitura pública + escrita autenticada.
 
 ---
 
-## 15. Design System
+## 17. Flags de Campanha & Presença
+
+### Flags de campanha (`campaign_config`)
+Padrão genérico de configuração global que o GM liga/desliga **para todos os clientes**, com propagação em tempo real. Fontes: [src/lib/campaignFlags.tsx](src/lib/campaignFlags.tsx), [src/lib/db/config.ts](src/lib/db/config.ts), [campaign_config_migration.sql](campaign_config_migration.sql).
+
+- Tabela `campaign_config` (`campaign_id`, `key`, `value` jsonb). **Leitura pública**; **escrita só do GM** via `is_gm()`.
+- `CampaignFlagsProvider` carrega no boot e assina mudanças (`subscribeToCampaignConfig`); `useCampaignFlags()` expõe `flags`, `loaded`, `setFlag`. Atualização **otimista** (a UI muda na hora; o realtime confirma).
+- **Flag atual:** `wiki_detailed_pages` (boolean, ausente = `false`) — habilita o layout em blocos da Wiki ([§14](#14-wiki--lore-colaborativa)). O padrão é facilmente extensível para novas flags.
+
+### Presença (usuários online)
+[src/lib/presence.ts](src/lib/presence.ts) implementa `usePresence(profile)` sobre o canal Realtime `presence-midnight-summer`. A navbar mostra um selo **"● N online"** com os nomes ([App.tsx:366-374](src/App.tsx#L366-L374)). Fica oculto em modo local e para o visitante anônimo. O campo opcional `active_stage` existe na estrutura, mas ainda não é populado (ver [ROADMAP.md](ROADMAP.md)).
+
+### Snapshots (histórico de estado)
+[src/lib/db/snapshots.ts](src/lib/db/snapshots.ts) trata as linhas da própria tabela `app_state` como histórico: `listSnapshots`, `createSnapshot` (grava versão *slim*, sem imagens inline), `loadSnapshot`, `deleteSnapshot`. Hoje não há UI dedicada para criar/restaurar (ver [ROADMAP.md](ROADMAP.md)).
+
+---
+
+## 18. PWA, Offline & Service Worker
+
+O app é uma **PWA instalável** que funciona offline. Fontes: [public/sw.js](public/sw.js), [public/manifest.webmanifest](public/manifest.webmanifest), [src/main.tsx](src/main.tsx), `index.html`, `vercel.json`.
+
+### Service Worker — [public/sw.js](public/sw.js)
+- **Manual** (sem Workbox/vite-plugin-pwa) e registrado **apenas em produção** (`import.meta.env.PROD`) no `load` ([main.tsx:19-23](src/main.tsx#L19-L23)).
+- Cache nomeado `survive-cache-v1`; no `activate`, apaga versões de cache antigas.
+- **HTML / navegação → network-first** com fallback ao `index.html` em cache (e `503 Offline` se nada em cache). Isso garante que um deploy novo sempre traga o `index.html` com os hashes atualizados.
+- **Demais assets (com hash imutável) → cache-first**, populando o cache sob demanda.
+
+### Manifest & instalação — [public/manifest.webmanifest](public/manifest.webmanifest)
+`name` "Digimon Survive Companion", `short_name` "Survive", `display: standalone`, `theme_color` `#1a1814`, `background_color` `#f6f2e9`, ícones 192/512 (`any`) e 512 (`maskable`). `index.html` traz as meta tags `apple-mobile-web-app-*` e `viewport-fit=cover` (notch). Ícones em `public/icon-192.png`, `icon-512.png`, `icon-maskable-512.png`.
+
+---
+
+## 19. Mobile, Responsividade & Tema
+
+### Responsividade
+Fontes: [src/App.module.css](src/App.module.css), [src/styles/global.css](src/styles/global.css).
+- **Padding fluido de página:** `--page-pad-x: clamp(16px, 5vw, 56px)` (e variante `-sm`).
+- **Safe-area (iOS notch):** uso de `env(safe-area-inset-*)` na nav e em elementos flutuantes.
+- **Breakpoint principal 768px:** abaixo dele a navbar vira **menu hambúrguer** (`.hamburger` / `.navInner` / `.navInnerOpen` / `.navBackdrop`). O menu fecha ao navegar e ao apertar **Esc** ([App.tsx:125-132](src/App.tsx#L125-L132)).
+- **Acessibilidade:** link "Pular para o conteúdo" (`.skipLink`), `aria-label`/`aria-expanded`/`aria-controls` no botão do menu.
+
+### Tema claro/escuro
+[src/lib/settings.tsx](src/lib/settings.tsx) guarda `theme` (`light`/`dark`) e aplica `document.documentElement.dataset.theme` num `useEffect`. Há um botão flutuante global ([ThemeToggle](src/components/ThemeToggle.tsx)), presente em qualquer tela (login, loading, app). Os tokens de cor invertidos do modo escuro ficam em `global.css` (`:root[data-theme="dark"]`).
+
+### Migração versionada de preferências
+As taglines ficam **ocultas por padrão** em quase todas as páginas (exceto Party/Palco). Para reaplicar esse default **uma vez** a usuários que já tinham `survive_settings` salvo — sem apagar escolhas posteriores — há uma migração versionada: `TAGLINE_DEFAULT_VERSION = 2` gravada em `localStorage['survive_tagline_default_v']` ([settings.tsx:33-52](src/lib/settings.tsx#L33-L52)). Ao subir o número no futuro, o default é reaplicado de novo.
+
+---
+
+## 20. Design System
 
 Tokens em [src/styles/global.css](src/styles/global.css). Estética "papel envelhecido" com textura grain.
 
@@ -509,7 +711,7 @@ Tokens em [src/styles/global.css](src/styles/global.css). Estética "papel envel
 
 ---
 
-## 16. Assets Estáticos
+## 21. Assets Estáticos
 
 - **`/public/tamers/`** — 19 retratos PNG.
 - **`/public/lvl 3/`** — 13 sprites Child; **`/public/lvl 4/`** — 19 sprites Adult/Armor.
@@ -526,7 +728,7 @@ Físico  · Enfraquecer · Resistência · Cura
 
 ---
 
-## 17. Elenco Pré-Carregado
+## 22. Elenco Pré-Carregado
 
 Definido em `buildDefaultState()` ([store.ts:757](src/data/store.ts#L757)).
 
@@ -557,7 +759,7 @@ Silhouette Token (Hibito), Puppet Token e Enhanced Puppet Token (Sachi).
 
 ---
 
-## 18. Como Rodar e Fazer Deploy
+## 23. Como Rodar e Fazer Deploy
 
 **Pré-requisitos:** Node.js ≥ 18, npm ≥ 9.
 
@@ -578,18 +780,18 @@ Sem elas, o app roda em modo local.
 
 ### Setup do Supabase
 1. Criar projeto no Supabase.
-2. Rodar [supabase_schema.sql](supabase_schema.sql) no SQL Editor.
+2. Rodar os scripts SQL **na ordem** descrita em [MIGRACAO.md §3.2](MIGRACAO.md) (começa por [supabase_schema.sql](supabase_schema.sql) e termina por [supabase_anon_read.sql](supabase_anon_read.sql)).
 3. Criar buckets públicos `portraits` e `assets`.
 4. Criar a conta do GM (ou via signup) e promover: `update public.profiles set role='gm' where id='<uuid>';`
 5. Logar no app e usar **⟳ Migrar** (navbar) para enviar os dados locais à nuvem.
-6. (Opcional) Rodar os seeds de grupos do Digi-Zap.
+6. (Opcional) Rodar os seeds de grupos do Digi-Zap e contas de convidado.
 
 ### Deploy (Vercel)
 SPA com `vercel.json` (rewrites para `/index.html`, `index.html` sem cache, `/assets/*` imutável). Definir as variáveis de ambiente no painel da Vercel.
 
 ---
 
-## 19. Como Editar a Base de Dados
+## 24. Como Editar a Base de Dados
 
 A base canônica está em `buildDefaultState()` ([src/data/store.ts](src/data/store.ts)).
 
@@ -604,15 +806,19 @@ A base canônica está em `buildDefaultState()` ([src/data/store.ts](src/data/st
 
 ---
 
-## 20. Decisões de Arquitetura
+## 25. Decisões de Arquitetura
 
-- **AppState como JSONB único:** para ~12 tamers e ~20 digimons, normalizar em 20+ tabelas seria overengineering. O JSONB preserva a estrutura TypeScript e simplifica a migração. Palcos e digivices, que têm sync e RLS próprios, foram extraídos para tabelas dedicadas.
+- **AppState como JSONB único:** para ~12 tamers e ~20 digimons, normalizar em 20+ tabelas seria overengineering. O JSONB preserva a estrutura TypeScript e simplifica a migração. Palcos, digivices, Wiki e Mapas, que têm sync e RLS próprios, foram extraídos para tabelas dedicadas.
 - **Degradação graciosa:** toda função de backend cai para o equivalente local quando `isSupabaseReady` é falso — permite jogar offline e desenvolver sem credenciais.
 - **`mergeWithDefaults`:** separa *conteúdo canônico* (reescrito pelo código) de *runtime do usuário* (preservado). Correções de texto chegam sem destruir progresso.
 - **Anti-eco do realtime + cache de URLs + debounce de save:** três medidas que reduzem re-renders e uso de memória num app que fica aberto por horas durante a sessão.
-- **Visibilidade de 3 estados:** dá ao GM controle narrativo fino — revelar só o nome de um inimigo antes de revelar a ficha inteira.
+- **Visibilidade de 3 estados:** dá ao GM controle narrativo fino — revelar só o nome de um inimigo antes de revelar a ficha inteira. O mesmo modelo se repete em Wiki e Mapas.
 - **Tooltips via JS:** `position: fixed` calculado com `getBoundingClientRect` é a única forma confiável de o tooltip nunca ser cortado pelo overflow do container.
 - **Imagens fora do JSONB:** manter o estado "slim" evita estourar o limite do `localStorage` (~5MB) e mantém os payloads de realtime pequenos.
+- **Visitante anônimo por RLS de SELECT:** expor uma vitrine pública somente-leitura sem distribuir contas — o frontend restringe a navegação e o banco garante que `anon` só lê o permitido ([supabase_anon_read.sql](supabase_anon_read.sql)).
+- **Flags em `campaign_config`:** um par `chave → jsonb` genérico com realtime é mais barato que criar coluna/tabela por feature toggle — o GM liga/desliga para todos instantaneamente.
+- **Service Worker manual (network-first no HTML):** evita servir um `index.html` velho após deploy (que apontaria para chunks com hash inexistente), mantendo os assets imutáveis em cache-first.
+- **Snapshots = histórico natural do `app_state`:** como cada save é uma linha, o histórico de versões sai "de graça" da própria tabela, sem schema extra.
 
 ---
 

@@ -1,5 +1,24 @@
 # Refatoração de Sheet.tsx
 
+> ## ✅ CONCLUÍDO
+> Refatoração finalizada. `src/components/Sheet.tsx` passou de **3594 → ~387 linhas**,
+> agora apenas orquestrador (`FullSheet`/`SheetModal` + switch de view + re-exports).
+> Este documento é mantido como **registro histórico** do processo.
+>
+> **Arquivos resultantes:**
+> - `src/components/Sheet.tsx` — orquestrador + barrel de re-exports
+> - `src/components/sheet/TamerView.tsx` — `TamerView`, `DigiviceInventoryTab`
+> - `src/components/sheet/DigimonView.tsx` — `DigimonStageView`, `BugView`, `SignView`
+> - `src/components/sheet/SurvivorView.tsx` — `SurvivorView`, `SurvivorLoreTab`, `SurvivorInventoryTab`
+> - `src/components/sheet/shared/contexts.ts` — `DisplayModeCtx`, `KeywordTipsCtx`
+> - `src/components/sheet/shared/types.ts` — `SheetSubject`, `TokenSpawn`, tipos compartilhados
+> - `src/components/sheet/shared/utils.ts` — `KEYWORD_TIPS`, `parseTokenSpawns`, helpers
+> - `src/components/sheet/shared/components.tsx` — UI compartilhada (ex.: `ImageUploadZone`)
+>
+> **Desvio do plano original:** `BugView` e `SignView` eram pequenos demais para
+> arquivos próprios (Passo 8), então foram incorporados em `DigimonView.tsx` em vez
+> de virarem `BugView.tsx`/`SignView.tsx`.
+
 **Arquivo-alvo:** `src/components/Sheet.tsx` (3594 linhas)  
 **Objetivo:** Quebrar em módulos separados sem nenhuma mudança funcional.
 
@@ -305,13 +324,13 @@ Depois liste:
 
 ## Progresso
 
-- [ ] Passo 1 — Inventário
-- [ ] Passo 2 — `sheet/shared/contexts.ts`
-- [ ] Passo 3 — `sheet/shared/types.ts`
-- [ ] Passo 4 — `sheet/shared/utils.ts`
-- [ ] Passo 5 — `sheet/TamerView.tsx`
-- [ ] Passo 6 — `sheet/DigimonView.tsx`
-- [ ] Passo 7 — `sheet/SurvivorView.tsx`
-- [ ] Passo 8 — Views menores (condicional)
-- [ ] Passo 9 — Refatorar `Sheet.tsx`
-- [ ] Passo 10 — Verificação final
+- [x] Passo 1 — Inventário
+- [x] Passo 2 — `sheet/shared/contexts.ts`
+- [x] Passo 3 — `sheet/shared/types.ts`
+- [x] Passo 4 — `sheet/shared/utils.ts`
+- [x] Passo 5 — `sheet/TamerView.tsx`
+- [x] Passo 6 — `sheet/DigimonView.tsx`
+- [x] Passo 7 — `sheet/SurvivorView.tsx`
+- [x] Passo 8 — Views menores → **incorporadas em `DigimonView.tsx`** (Bug/Sign pequenos demais)
+- [x] Passo 9 — Refatorar `Sheet.tsx`
+- [x] Passo 10 — Verificação final
