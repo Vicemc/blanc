@@ -17,6 +17,7 @@ import { ImageUploadZone } from './sheet/shared/components'
 import { TamerView, DigiviceInventoryTab } from './sheet/TamerView'
 import { DigimonStageView, BugView, SignView } from './sheet/DigimonView'
 import { SurvivorView, SurvivorLoreTab, SurvivorInventoryTab } from './sheet/SurvivorView'
+import { WikiLinkButton } from './wiki/WikiLinkButton'
 
 // ── Re-exports (API pública preservada) ────────────────────────────
 export type { SheetSubject, TokenSpawn } from './sheet/shared/types'
@@ -374,10 +375,18 @@ export function SheetModal({ subject, state, onSaveState, onClose, editable, isG
     }
   }
 
+  // Vínculo bidirecional com a Wiki: oculto quando a ficha está em modo só-nome.
+  const showWikiLink = !nameOnly
+
   return (
     <div className="modal-back" onClick={onClose}>
       <div className="modal" onClick={e => e.stopPropagation()}
         style={wide ? { maxWidth: '95vw', width: '95vw', padding: 0 } : undefined}>
+        {showWikiLink && (
+          <div style={{ position: 'absolute', top: 14, right: 52, zIndex: 2 }}>
+            <WikiLinkButton subject={subject} state={state} isGM={!!isGM} />
+          </div>
+        )}
         <button className={styles.closeBtn} onClick={onClose} aria-label="Fechar">×</button>
         <FullSheet subject={subject} state={state} onSaveState={onSaveState} onClose={onClose} editable={editable} isGM={isGM} nameOnly={nameOnly} onSpawnToken={onSpawnToken} wide={wide} />
       </div>

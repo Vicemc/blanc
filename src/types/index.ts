@@ -408,6 +408,17 @@ export interface Stage {
   // Quando definida, sobrepõe a ordenação automática por status.
   initiativeOrder?:    InitiativeEntry[];
   activeInitiativeId?: string;
+
+  // ── Linha do tempo de combate ──────────────────────────────────
+  // Snapshot de actorStates no início de cada round (antes do avanço),
+  // para permitir "voltar 1 round" e navegar o combate. Chave = número do round.
+  roundSnapshots?: StageRoundSnapshot[];
+}
+
+export interface StageRoundSnapshot {
+  round:       number;
+  takenAt:     number;
+  actorStates: Record<string, StageActorState>;
 }
 
 // ---------- Image export ----------

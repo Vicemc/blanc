@@ -129,3 +129,107 @@ export async function movePinPosition(id: string, x: number, y: number): Promise
   if (!isSupabaseReady || !supabase) return
   await supabase.from('map_pins').update({ x, y, updated_at: new Date().toISOString() }).eq('id', id)
 }
+
+// ── Export / Import de mapas (backup pontual / reaproveitar entre campanhas) ───
+
+const MAP_EXPORT_VERSION = 1
+
+interface MapExportPackage {
+  kind:    'game-map'
+  version: number
+  map:     GameMap
+  layers:  MapLayer[]
+  pins:    MapPin[]
+}
+
+function downloadJson(filename: string, data: unknown): void {
+  const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' })
+  const url  = URL.createObjectURL(blob)
+  const a    = document.createElement('a')
+  a.href     = url
+  a.download = filename
+  a.click()
+  URL.revokeObjectURL(url)
+}
+
+// Exporta um mapa completo (com suas camadas e pins) para um JSON.
+export async function exportMap(mapId: string): Promise<void> {
+  if (!isSupabaseReady || !supabase) return
+  const { data: map } = await supabase.from('maps').select('*').eq('id', mapId).single()
+  if (!map) return
+  const [layers, pins] = await Promise.all([listLayers(mapId), listPins(mapId)])
+  const pkg: MapExportPackage = {
+    kind: 'game-map', version: MAP_EXPORT_VERSION,
+    map: map as GameMap, layers, pins,
+  }
+  const slug = ((map as GameMap).title || 'mapa').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') || 'mapa'
+  downloadJson(`mapa-${slug}-${new Date().toISOString().slice(0, 10)}.json`, pkg)
+}
+
+// Abre o seletor de arquivos e devolve o pacote do mapa (sem inserir).
+export function pickMapImport(): Promise<MapExportPackage | null> {
+  return new Promise(resolve => {
+    const input  = document.createElement('input')
+    input.type   = 'file'
+    input.accept = '.json'
+    input.onchange = () => {
+      const file = input.files?.[0]
+      if (!file) { resolve(null); return }
+      const reader = new FileReader()
+      reader.onload = e => {
+        try {
+          const parsed = JSON.parse(e.target?.result as string)
+          if (parsed?.kind === 'game-map' && parsed.map) resolve(parsed as MapExportPackage)
+          else resolve(null)
+        } catch { resolve(null) }
+      }
+      reader.readAsText(file)
+    }
+    input.click()
+  })
+}
+
+// Importa um mapa como NOVO mapa, recriando camadas e pins com IDs novos.
+// Remapeia layer_id dos pins; descarta vínculos de wiki/mapa (variam por campanha).
+export async function importMap(pkg: MapExportPackage): Promise<GameMap | null> {
+  if (!isSupabaseReady || !supabase) return null
+  const newMap = await saveMap({
+    title:       `${pkg.map.title} (importado)`,
+    description: pkg.map.description ?? '',
+    bg_url:      pkg.map.bg_url ?? null,
+    bg_width:    pkg.map.bg_width ?? 1000,
+    bg_height:   pkg.map.bg_height ?? 800,
+    visibility:  'hidden',
+  })
+  if (!newMap) return null
+
+  // Recria camadas, mapeando id antigo → id novo
+  const layerIdMap = new Map<string, string>()
+  for (const layer of pkg.layers) {
+    const saved = await saveLayer({
+      map_id:      newMap.id,
+      name:        layer.name,
+      visible:     layer.visible,
+      order_index: layer.order_index,
+    })
+    if (saved) layerIdMap.set(layer.id, saved.id)
+  }
+
+  // Recria pins na camada correspondente (ou na primeira como fallback)
+  const fallbackLayer = layerIdMap.values().next().value as string | undefined
+  for (const pin of pkg.pins) {
+    const layerId = layerIdMap.get(pin.layer_id) ?? fallbackLayer
+    if (!layerId) continue
+    await savePin({
+      map_id:      newMap.id,
+      layer_id:    layerId,
+      label:       pin.label,
+      description: pin.description ?? '',
+      x:           pin.x,
+      y:           pin.y,
+      icon:        pin.icon ?? 'default',
+      visibility:  pin.visibility ?? 'hidden',
+    })
+  }
+  return newMap
+}

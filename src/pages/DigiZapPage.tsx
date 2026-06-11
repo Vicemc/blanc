@@ -8,6 +8,46 @@ import type { UserProfile } from '../lib/auth'
 import { supabase } from '../lib/supabase'
 import { useSettings } from '../lib/settings'
 import { uploadImage } from '../lib/db'
+import { isPushSupported, isPushEnabled, enablePush, disablePush } from '../lib/push'
+
+// Toggle de notificações push (Web Push) para o Digi-Zap.
+function PushToggle({ characterId }: { characterId: string | null }) {
+  const [enabled, setEnabled] = useState(false)
+  const [busy, setBusy] = useState(false)
+  const supported = isPushSupported()
+
+  useEffect(() => {
+    if (supported) isPushEnabled().then(setEnabled)
+  }, [supported])
+
+  if (!supported || !characterId) return null
+
+  const toggle = async () => {
+    setBusy(true)
+    if (enabled) {
+      await disablePush()
+      setEnabled(false)
+    } else {
+      const ok = await enablePush(characterId)
+      setEnabled(ok)
+      if (!ok) alert('Não foi possível ativar as notificações. Verifique a permissão do navegador.')
+    }
+    setBusy(false)
+  }
+
+  return (
+    <button onClick={toggle} disabled={busy}
+      title={enabled ? 'Notificações ativas — clique para desativar' : 'Receber notificações de novas mensagens'}
+      style={{ padding: '5px 14px', borderRadius: 999, cursor: busy ? 'wait' : 'pointer',
+        border: `1px solid ${enabled ? 'var(--teal)' : 'var(--line)'}`,
+        background: enabled ? 'rgba(110,157,112,0.15)' : 'transparent',
+        color: enabled ? 'var(--teal)' : 'var(--ink-mute)',
+        fontFamily: 'var(--font-mono)', fontSize: 10, letterSpacing: '0.08em',
+        textTransform: 'uppercase', whiteSpace: 'nowrap' }}>
+      {enabled ? '🔔 Notificações ativas' : '🔕 Ativar notificações'}
+    </button>
+  )
+}
 
 interface Props {
   state:            AppState
@@ -424,9 +464,12 @@ export default function DigiZapPage({ state, profile, isGM, onUnreadChange }: Pr
             </span>
           )}
         </h1>
-        <div style={{ fontFamily: 'var(--font-serif)', fontStyle: 'italic',
-          fontSize: 16, color: 'var(--ink-soft)', marginBottom: 16 }}>
-          ~ mensagens entre sobreviventes ~
+        <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap', marginBottom: 16 }}>
+          <span style={{ fontFamily: 'var(--font-serif)', fontStyle: 'italic',
+            fontSize: 16, color: 'var(--ink-soft)' }}>
+            ~ mensagens entre sobreviventes ~
+          </span>
+          <PushToggle characterId={myCharId} />
         </div>
 
         {/* GM: seletor de NPC */}

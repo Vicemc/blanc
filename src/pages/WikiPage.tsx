@@ -5,7 +5,7 @@ import { useCampaignFlags } from '../lib/campaignFlags'
 import { useAuth } from '../components/AuthProvider'
 import type { AppState } from '../types'
 import type { WikiPage as WikiPageType, WikiPageEdit, WikiCategory, WikiContent } from '../types/wiki'
-import { WIKI_CATEGORIES, EMPTY_WIKI_CONTENT } from '../types/wiki'
+import { WIKI_CATEGORIES, EMPTY_WIKI_CONTENT, SPOILER_CATEGORIES } from '../types/wiki'
 import { listWikiPages, submitWikiPage, submitWikiPageEdit, saveOwnWikiPageEdit, listMyPendingEdits } from '../lib/db/wiki'
 import { SheetModal } from '../components/Sheet'
 import type { SheetSubject } from '../components/Sheet'
@@ -225,6 +225,8 @@ export default function WikiPage({ state, isGM }: Props) {
   const visible = pages.filter(p => {
     if (isGM) return true
     if (p.status === 'pending') return p.author_id === userId
+    // Modo spoiler: oculta categorias sensíveis dos players.
+    if (flags.spoiler_mode && SPOILER_CATEGORIES.includes(p.category)) return false
     return p.visibility === 'name' || p.visibility === 'full'
   })
 

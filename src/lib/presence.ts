@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { supabase, isSupabaseReady } from './supabase'
 import type { UserProfile } from './auth'
 
@@ -10,8 +10,11 @@ export interface PresenceState {
 }
 
 // Hook de presença em tempo real (Realtime Presence).
-export function usePresence(profile: UserProfile | null): PresenceState[] {
+// `activeStage` (opcional) é o id do palco que o usuário está vendo agora;
+// ao mudar, re-publica a presença para dar co-presença por palco no Teatro.
+export function usePresence(profile: UserProfile | null, activeStage?: string): PresenceState[] {
   const [presences, setPresences] = useState<PresenceState[]>([])
+  const activeStageRef = useRef<string | undefined>(activeStage)
 
   useEffect(() => {
     if (!isSupabaseReady || !supabase || !profile) {
@@ -46,12 +49,29 @@ export function usePresence(profile: UserProfile | null): PresenceState[] {
             user_id: profile.id,
             display_name: profile.display_name,
             joined_at: Date.now(),
+            active_stage: activeStageRef.current,
           } as PresenceState)
         }
       })
 
     return () => { void channel.unsubscribe() }
   }, [profile])
+
+  // Re-publica o palco ativo no canal existente quando `activeStage` muda,
+  // sem recriar o canal (evita flicker de join/leave).
+  useEffect(() => {
+    activeStageRef.current = activeStage
+    if (!isSupabaseReady || !supabase || !profile) return
+    const channel = supabase.getChannels()
+      .find(c => c.topic === 'realtime:presence-midnight-summer')
+    if (!channel) return
+    void channel.track({
+      user_id: profile.id,
+      display_name: profile.display_name,
+      joined_at: Date.now(),
+      active_stage: activeStage,
+    } as PresenceState)
+  }, [activeStage, profile])
 
   return presences
 }

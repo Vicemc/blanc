@@ -117,7 +117,8 @@ export function importStateFromFile(): Promise<AppState | null> {
 // Mescla o estado salvo com os defaults do código.
 // Garante que campos novos (como toggleBonus) adicionados ao código
 // sejam sempre propagados para dados carregados do localStorage.
-function mergeWithDefaults(saved: AppState, defaults: AppState): AppState {
+// Exportado para teste — é a peça mais crítica do carregamento de estado.
+export function mergeWithDefaults(saved: AppState, defaults: AppState): AppState {
   // IDs que existem no código mas não no estado salvo — sempre injetar
   const savedBugIds = new Set(saved.bugs?.map(b => b.id) ?? []);
 

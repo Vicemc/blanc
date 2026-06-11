@@ -106,6 +106,9 @@ export interface WikiRelation {
   label: string
 }
 
+// Categorias ocultadas dos players quando o "modo spoiler" está ativo.
+export const SPOILER_CATEGORIES: WikiCategory[] = ['eventos', 'documentos', 'entidades']
+
 export const WIKI_CATEGORIES: { value: WikiCategory; label: string }[] = [
   { value: 'humanos',    label: 'Humanos' },
   { value: 'agentes',    label: 'Agentes' },

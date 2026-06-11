@@ -5,13 +5,14 @@ import { WIKI_CATEGORIES } from '../../types/wiki'
 import {
   listWikiPages, saveWikiPage, deleteWikiPage, setWikiPageVisibility,
   listPendingEdits, approveWikiEdit, rejectWikiEdit, approveWikiPage, rejectWikiPage,
-  seedWikiPages,
+  seedWikiPages, exportWikiPages, pickWikiImport, importWikiPages,
 } from '../../lib/db/wiki'
 import { uploadImage } from '../../lib/db/storage'
 import { SheetModal } from '../Sheet'
 import type { SheetSubject } from '../Sheet'
 import WikiBlocksEditor from './WikiBlocksEditor'
 import WikiArticle from './WikiArticle'
+import { diffWords } from './textDiff'
 import type { WikiContent } from '../../types/wiki'
 import { EMPTY_WIKI_CONTENT } from '../../types/wiki'
 import { useCampaignFlags } from '../../lib/campaignFlags'
@@ -280,7 +281,33 @@ interface EditReviewModalProps {
   onClose:   () => void
 }
 
+// Linha de mudança de metadado (título/categoria): mostra antes → depois.
+function DiffMetaRow({ label, changed, before, after }: {
+  label: string; changed: boolean; before: string; after: string
+}) {
+  return (
+    <div style={{ display: 'flex', alignItems: 'center', gap: 10,
+      fontFamily: 'var(--font-mono)', fontSize: 12 }}>
+      <span style={{ width: 80, color: 'var(--ink-mute)', fontSize: 10, letterSpacing: '0.1em',
+        textTransform: 'uppercase', flexShrink: 0 }}>{label}</span>
+      {changed ? (
+        <span style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+          <span style={{ background: 'rgba(196,51,33,0.18)', color: 'var(--ink-soft)',
+            textDecoration: 'line-through', padding: '1px 8px', borderRadius: 4 }}>{before || '—'}</span>
+          <span style={{ color: 'var(--ink-mute)' }}>→</span>
+          <span style={{ background: 'rgba(110,157,112,0.22)', color: 'var(--ink)',
+            padding: '1px 8px', borderRadius: 4 }}>{after || '—'}</span>
+        </span>
+      ) : (
+        <span style={{ color: 'var(--ink-soft)' }}>{after || '—'}</span>
+      )}
+    </div>
+  )
+}
+
 function EditReviewModal({ edit, original, allPages, busy, onApprove, onReject, onClose }: EditReviewModalProps) {
+  const [view, setView] = useState<'diff' | 'sidebyside'>('diff')
+
   // Página "proposta" = original com os campos editáveis substituídos pela proposta.
   // Campos não editáveis (avatar, vínculos, visibilidade) são herdados do original.
   const base: WikiPage = original ?? {
@@ -296,6 +323,11 @@ function EditReviewModal({ edit, original, allPages, busy, onApprove, onReject, 
     body:     edit.body,
     content:  edit.content ?? {},
   }
+
+  const titleChanged = base.title !== proposed.title
+  const catChanged   = base.category !== proposed.category
+  const bodyParts    = diffWords(base.body ?? '', proposed.body ?? '')
+  const bodyChanged  = bodyParts.some(p => p.op !== 'equal')
 
   const colTitle = (label: string, color: string) => (
     <div style={{ fontFamily: 'var(--font-mono)', fontSize: 10, letterSpacing: '0.14em',
@@ -323,27 +355,84 @@ function EditReviewModal({ edit, original, allPages, busy, onApprove, onReject, 
             textTransform: 'uppercase', color: 'var(--ink)' }}>
             Revisar edição — {original?.title ?? edit.title}
           </div>
-          <button onClick={onClose}
-            style={{ background: 'none', border: '1px solid var(--line)', borderRadius: 999,
-              cursor: 'pointer', color: 'var(--ink-mute)', fontFamily: 'var(--font-mono)',
-              fontSize: 11, padding: '5px 14px', letterSpacing: '0.08em' }}>
-            Fechar ✕
-          </button>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+            {/* Alternância de modo de revisão */}
+            <div style={{ display: 'flex', border: '1px solid var(--line)', borderRadius: 999, overflow: 'hidden' }}>
+              {(['diff', 'sidebyside'] as const).map(v => (
+                <button key={v} onClick={() => setView(v)}
+                  style={{ border: 'none', cursor: 'pointer', padding: '5px 14px',
+                    fontFamily: 'var(--font-mono)', fontSize: 10, letterSpacing: '0.08em', textTransform: 'uppercase',
+                    background: view === v ? 'var(--ink)' : 'transparent',
+                    color: view === v ? 'var(--paper)' : 'var(--ink-mute)' }}>
+                  {v === 'diff' ? 'Diff' : 'Lado a lado'}
+                </button>
+              ))}
+            </div>
+            <button onClick={onClose}
+              style={{ background: 'none', border: '1px solid var(--line)', borderRadius: 999,
+                cursor: 'pointer', color: 'var(--ink-mute)', fontFamily: 'var(--font-mono)',
+                fontSize: 11, padding: '5px 14px', letterSpacing: '0.08em' }}>
+              Fechar ✕
+            </button>
+          </div>
         </div>
 
-        {/* Comparação lado a lado */}
-        <div style={{ flex: 1, minHeight: 0, display: 'grid', gridTemplateColumns: '1fr 1fr' }}>
-          <div style={{ overflowY: 'auto', borderRight: '1px solid var(--line)', opacity: 0.85 }}>
-            {colTitle('Original (atual)', 'var(--ink-mute)')}
-            <WikiArticle page={base} allPages={allPages} isGM
-              onOpenPage={noop} onBack={noop} />
+        {/* Comparação: diff textual OU lado a lado renderizado */}
+        {view === 'diff' ? (
+          <div style={{ flex: 1, minHeight: 0, overflowY: 'auto', padding: '20px 24px' }}>
+            {/* Mudanças de metadados */}
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginBottom: 18 }}>
+              <DiffMetaRow label="Título" changed={titleChanged} before={base.title} after={proposed.title} />
+              <DiffMetaRow label="Categoria"
+                changed={catChanged}
+                before={WIKI_CATEGORIES.find(c => c.value === base.category)?.label ?? base.category}
+                after={WIKI_CATEGORIES.find(c => c.value === proposed.category)?.label ?? proposed.category} />
+            </div>
+
+            {/* Diff do corpo */}
+            <div style={{ fontFamily: 'var(--font-mono)', fontSize: 10, letterSpacing: '0.14em',
+              textTransform: 'uppercase', color: 'var(--ink-mute)', marginBottom: 10 }}>
+              Corpo {bodyChanged ? '' : '(sem alterações)'}
+            </div>
+            <div style={{ fontFamily: 'var(--font-body)', fontSize: 14, lineHeight: 1.7,
+              color: 'var(--ink)', whiteSpace: 'pre-wrap', wordBreak: 'break-word',
+              padding: '14px 16px', border: '1px solid var(--line-soft)', borderRadius: 10,
+              background: 'var(--paper-deep)' }}>
+              {bodyParts.length === 0
+                ? <span style={{ color: 'var(--ink-mute)', fontStyle: 'italic' }}>~ vazio ~</span>
+                : bodyParts.map((p, i) => (
+                    <span key={i} style={
+                      p.op === 'insert'
+                        ? { background: 'rgba(110,157,112,0.28)', color: 'var(--ink)', borderRadius: 3 }
+                        : p.op === 'delete'
+                          ? { background: 'rgba(196,51,33,0.22)', color: 'var(--ink-soft)', textDecoration: 'line-through', borderRadius: 3 }
+                          : undefined
+                    }>{p.text}</span>
+                  ))
+              }
+            </div>
+
+            {/* Legenda */}
+            <div style={{ display: 'flex', gap: 18, marginTop: 14,
+              fontFamily: 'var(--font-mono)', fontSize: 10, color: 'var(--ink-mute)' }}>
+              <span><span style={{ background: 'rgba(110,157,112,0.28)', padding: '1px 6px', borderRadius: 3 }}>verde</span> adicionado</span>
+              <span><span style={{ background: 'rgba(196,51,33,0.22)', textDecoration: 'line-through', padding: '1px 6px', borderRadius: 3 }}>vermelho</span> removido</span>
+            </div>
           </div>
-          <div style={{ overflowY: 'auto' }}>
-            {colTitle('Proposta (pendente)', 'var(--teal)')}
-            <WikiArticle page={proposed} allPages={allPages} isGM
-              onOpenPage={noop} onBack={noop} />
+        ) : (
+          <div style={{ flex: 1, minHeight: 0, display: 'grid', gridTemplateColumns: '1fr 1fr' }}>
+            <div style={{ overflowY: 'auto', borderRight: '1px solid var(--line)', opacity: 0.85 }}>
+              {colTitle('Original (atual)', 'var(--ink-mute)')}
+              <WikiArticle page={base} allPages={allPages} isGM
+                onOpenPage={noop} onBack={noop} />
+            </div>
+            <div style={{ overflowY: 'auto' }}>
+              {colTitle('Proposta (pendente)', 'var(--teal)')}
+              <WikiArticle page={proposed} allPages={allPages} isGM
+                onOpenPage={noop} onBack={noop} />
+            </div>
           </div>
-        </div>
+        )}
 
         {/* Ações */}
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: 10,
@@ -452,6 +541,24 @@ export default function WikiSection({ state, onUpdate }: Props) {
     setPages(freshPages as WikiPage[])
   }
 
+  const handleExportAll = () => {
+    const toExport = catFilter === 'all' ? pages : filtered
+    if (toExport.length === 0) return
+    exportWikiPages(toExport, catFilter === 'all' ? 'todas' : catFilter)
+  }
+
+  const handleImport = async () => {
+    const imported = await pickWikiImport()
+    if (!imported || imported.length === 0) return
+    if (!confirm(`Importar ${imported.length} página(s) como novas? Vínculos de entidade não são reaproveitados.`)) return
+    const created = await importWikiPages(imported)
+    if (created > 0) {
+      const fresh = await listWikiPages()
+      setPages(fresh as WikiPage[])
+    }
+    alert(`${created} página(s) importada(s).`)
+  }
+
   const pendingPages = pages.filter(p => p.status === 'pending')
   const pendingCount = pendingPages.length + pendingEdits.length
 
@@ -536,6 +643,22 @@ export default function WikiSection({ state, onUpdate }: Props) {
                 cursor: seeding ? 'wait' : 'pointer', letterSpacing: '0.1em',
                 opacity: seeding ? 0.6 : 1 }}>
               {seeding ? 'Inicializando...' : 'Inicializar páginas'}
+            </button>
+            <button onClick={handleExportAll} disabled={filtered.length === 0}
+              title="Exportar as páginas do filtro atual para um arquivo JSON"
+              style={{ padding: '8px 16px', borderRadius: 999, border: '1px solid var(--line)',
+                background: 'transparent', color: 'var(--ink-soft)',
+                fontFamily: 'var(--font-mono)', fontSize: 11, cursor: 'pointer',
+                letterSpacing: '0.1em', opacity: filtered.length === 0 ? 0.5 : 1 }}>
+              ↓ Exportar
+            </button>
+            <button onClick={handleImport}
+              title="Importar páginas de um arquivo JSON"
+              style={{ padding: '8px 16px', borderRadius: 999, border: '1px solid var(--line)',
+                background: 'transparent', color: 'var(--ink-soft)',
+                fontFamily: 'var(--font-mono)', fontSize: 11, cursor: 'pointer',
+                letterSpacing: '0.1em' }}>
+              ↑ Importar
             </button>
             <button onClick={() => setEditing('new')}
               style={{ padding: '8px 20px', borderRadius: 999, border: 'none',
@@ -657,7 +780,12 @@ export default function WikiSection({ state, onUpdate }: Props) {
                     </button>
                   )}
 
-                  {/* Editar / Deletar */}
+                  {/* Exportar / Editar / Deletar */}
+                  <button onClick={() => exportWikiPages([page])} title="Exportar esta página"
+                    style={{ background: 'none', border: 'none', cursor: 'pointer',
+                      color: 'var(--ink-mute)', fontFamily: 'var(--font-mono)', fontSize: 12, padding: '2px 6px' }}>
+                    ↓
+                  </button>
                   <button onClick={() => setEditing(page)}
                     style={{ background: 'none', border: 'none', cursor: 'pointer',
                       color: 'var(--ink-soft)', fontFamily: 'var(--font-mono)', fontSize: 12, padding: '2px 6px' }}>

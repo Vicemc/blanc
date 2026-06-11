@@ -10,6 +10,7 @@ import { SheetModal } from '../components/Sheet'
 import type { SheetSubject, TokenSpawn } from '../components/Sheet'
 import { RulesModal } from '../components/RulesModal'
 import { useSettings } from '../lib/settings'
+import type { PresenceState } from '../lib/presence'
 import styles from './TeatroPage.module.css'
 
 function playRoundChime() {
@@ -32,7 +33,13 @@ function playRoundChime() {
   } catch {}
 }
 
-interface Props { state: AppState; onUpdate: (s: AppState) => void; isGM?: boolean }
+interface Props {
+  state: AppState
+  onUpdate: (s: AppState) => void
+  isGM?: boolean
+  presences?: PresenceState[]
+  onActiveStageChange?: (stageId: string | undefined) => void
+}
 
 // ── Tipos de estado em tempo real do palco ───────────────────────────────────
 
@@ -2106,8 +2113,26 @@ function getInitiative(state: AppState, a: ActorRef): number {
 // Aplica o avanço de Round: restaura Defesa, decai condições e aplica dano de
 // ferimentos "estourados" (Burn/Poison/Bleed). Mecânica simplificada — o GM
 // ainda pode ajustar manualmente.
+// Guarda um snapshot de actorStates rotulado com o round informado, mantendo
+// os últimos MAX_ROUND_SNAPSHOTS. Substitui um snapshot já existente do mesmo round.
+const MAX_ROUND_SNAPSHOTS = 30
+function pushRoundSnapshot(s: Stage, round: number): Stage['roundSnapshots'] {
+  const snap = {
+    round,
+    takenAt: Date.now(),
+    actorStates: JSON.parse(JSON.stringify(s.actorStates ?? {})) as Record<string, ActorState>,
+  }
+  const rest = (s.roundSnapshots ?? []).filter(rs => rs.round !== round)
+  return [...rest, snap]
+    .sort((a, b) => a.round - b.round)
+    .slice(-MAX_ROUND_SNAPSHOTS)
+}
+
 function applyRoundAdvance(s: Stage): Stage {
-  const newRound = (s.roundCurrent ?? 0) + 1
+  const curRound = s.roundCurrent ?? 0
+  const newRound = curRound + 1
+  // Captura o estado do round atual antes de aplicar os ticks do avanço.
+  const roundSnapshots = pushRoundSnapshot(s, curRound)
   const states = s.actorStates ?? {}
   const newActorStates: Record<string, ActorState> = {}
   const extraLogs: string[] = []
@@ -2170,7 +2195,47 @@ function applyRoundAdvance(s: Stage): Stage {
       id: `log-${Date.now().toString(36)}-${i}`, timestamp: Date.now(), kind: 'auto' as const, text: t, round: newRound,
     })),
   ]
-  return { ...s, roundCurrent: newRound, actorStates: newActorStates, log: [...(s.log ?? []), ...logs] }
+  return { ...s, roundCurrent: newRound, actorStates: newActorStates, roundSnapshots, log: [...(s.log ?? []), ...logs] }
+}
+
+// ── Linha do tempo de combate ─────────────────────────────────────────────────
+// Strip de rounds capturados; clicar restaura o estado daquele round.
+function RoundTimeline({ snapshots, current, onRestore }: {
+  snapshots: { round: number; takenAt: number; actorStates: Record<string, ActorState> }[]
+  current: number
+  onRestore: (round: number) => void
+}) {
+  if (snapshots.length === 0) return null
+  return (
+    <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap',
+      margin: '0 0 16px', padding: '8px 14px', borderRadius: 'var(--radius)',
+      background: 'var(--paper-deep)', border: '1px solid var(--line-soft)' }}>
+      <span style={{ fontFamily: 'var(--font-mono)', fontSize: 9, letterSpacing: '0.12em',
+        textTransform: 'uppercase', color: 'var(--ink-mute)', marginRight: 4 }}>
+        Linha do tempo
+      </span>
+      {snapshots.map(snap => {
+        const actorCount = Object.keys(snap.actorStates).length
+        return (
+          <button key={snap.round} onClick={() => onRestore(snap.round)}
+            title={`Voltar ao Round ${snap.round} · ${actorCount} ator(es) · ${new Date(snap.takenAt).toLocaleTimeString('pt-BR')}`}
+            style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 2,
+              padding: '4px 12px', borderRadius: 999, cursor: 'pointer',
+              border: '1px solid var(--line)', background: 'var(--paper)',
+              fontFamily: 'var(--font-mono)', color: 'var(--ink-soft)' }}>
+            <span style={{ fontSize: 13, fontWeight: 700, lineHeight: 1 }}>R{snap.round}</span>
+            <span style={{ fontSize: 8, color: 'var(--ink-mute)' }}>{actorCount}♦</span>
+          </button>
+        )
+      })}
+      <span style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 2,
+        padding: '4px 12px', borderRadius: 999, border: '1px solid var(--ink)',
+        background: 'var(--ink)', color: 'var(--paper)', fontFamily: 'var(--font-mono)' }}>
+        <span style={{ fontSize: 13, fontWeight: 700, lineHeight: 1 }}>R{current}</span>
+        <span style={{ fontSize: 8, opacity: 0.8 }}>agora</span>
+      </span>
+    </div>
+  )
 }
 
 // ── Painel de Ordem de Turno (iniciativa) ─────────────────────────────────────
@@ -2472,8 +2537,9 @@ function TurnOrderPanel({
 
 // ── PalcoView ─────────────────────────────────────────────────────────────────
 
-function PalcoView({ stage, state, onUpdate, onBack, isGM = false }: {
+function PalcoView({ stage, state, onUpdate, onBack, isGM = false, viewers = [] }: {
   stage: Stage; state: AppState; onUpdate: (s: AppState) => void; onBack: () => void; isGM?: boolean
+  viewers?: PresenceState[]
 }) {
   const [open, setOpen]             = useState<SheetSubject | null>(null)
   const [openSide, setOpenSide]     = useState<'allies'|'enemies'>('allies')
@@ -2518,6 +2584,29 @@ function PalcoView({ stage, state, onUpdate, onBack, isGM = false }: {
     setUndoDepth(undoStack.current.length)
     if (prev) onUpdate({ ...state, stages: state.stages.map(s => s.id === stage.id ? prev : s) })
   }, [state, stage.id, onUpdate])
+
+  // Linha do tempo: restaura o estado dos atores de um round anterior.
+  // Vai para o snapshot do round-alvo e define roundCurrent = round-alvo.
+  // Passa pelo mutateStage para entrar na pilha de desfazer.
+  const restoreRound = useCallback((targetRound: number) => {
+    const snap = (stage.roundSnapshots ?? []).find(rs => rs.round === targetRound)
+    if (!snap) return
+    if (!confirm(`Voltar o combate para o Round ${targetRound}? O estado atual dos atores será substituído (pode desfazer).`)) return
+    mutateStage(s => ({
+      ...s,
+      roundCurrent: targetRound,
+      actorStates: JSON.parse(JSON.stringify(snap.actorStates)),
+      log: [...(s.log ?? []), {
+        id: `log-${Date.now().toString(36)}`, timestamp: Date.now(), kind: 'manual' as const,
+        text: `↩ Linha do tempo: combate voltou ao Round ${targetRound}.`, round: targetRound,
+      }],
+    } as Stage))
+  }, [stage.roundSnapshots, mutateStage])
+
+  // Atalho: voltar exatamente 1 round (snapshot do round atual − 1).
+  const stepBackOneRound = useCallback(() => {
+    restoreRound((rt.roundCurrent ?? 0) - 1)
+  }, [restoreRound, rt.roundCurrent])
 
   const _addLog = useCallback((text: string, kind: 'auto' | 'manual' = 'auto') => {
     const entry: PalcoLogEntry = {
@@ -3029,6 +3118,26 @@ function PalcoView({ stage, state, onUpdate, onBack, isGM = false }: {
 
       <button className={styles.backLink} onClick={onBack}>← voltar aos palcos</button>
 
+      {/* Co-presença: quem está vendo este palco agora */}
+      {viewers.length > 0 && (
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap',
+          margin: '0 0 12px', fontFamily: 'var(--font-mono)', fontSize: 11, color: 'var(--ink-mute)' }}
+          title={viewers.map(v => v.display_name).join(', ')}>
+          <span aria-hidden style={{ width: 7, height: 7, borderRadius: '50%',
+            background: 'var(--green)', flexShrink: 0,
+            boxShadow: '0 0 0 3px rgba(110,157,112,0.18)' }} />
+          <span style={{ letterSpacing: '0.08em', textTransform: 'uppercase' }}>
+            Vendo agora:
+          </span>
+          {viewers.map(v => (
+            <span key={v.user_id} style={{ padding: '2px 9px', borderRadius: 999,
+              background: 'var(--paper-deep)', border: '1px solid var(--line-soft)', color: 'var(--ink-soft)' }}>
+              {v.display_name}
+            </span>
+          ))}
+        </div>
+      )}
+
       <div className={styles.palcoHead}>
         <div style={{ flex:1 }}>
           <h2 className={styles.palcoTitle}>
@@ -3044,13 +3153,17 @@ function PalcoView({ stage, state, onUpdate, onBack, isGM = false }: {
           padding:'8px 16px', background:'var(--paper-deep)', border:'1px solid var(--line)',
           borderRadius:'var(--radius)', fontFamily:'var(--font-mono)' }}>
           <button onClick={() => mutateStage(s => ({ ...s, roundCurrent: Math.max(0, (rt.roundCurrent) - 1) } as Stage))}
-            style={btnStyle}>−</button>
+            style={btnStyle} title="Diminuir o contador (sem restaurar estado)">−</button>
           <div style={{ textAlign:'center' }}>
             <div style={{ fontSize:10, letterSpacing:'0.14em', textTransform:'uppercase', color:'var(--ink-mute)' }}>Round</div>
             <div style={{ fontSize:22, fontWeight:700, lineHeight:1 }}>{rt.roundCurrent}</div>
           </div>
           <button onClick={() => mutateStage(s => applyRoundAdvance(s))}
             style={{ ...btnStyle, borderColor:'var(--ink)', color:'var(--ink)' }}>+</button>
+          {(stage.roundSnapshots ?? []).some(rs => rs.round === (rt.roundCurrent ?? 0) - 1) && (
+            <button onClick={stepBackOneRound} style={btnStyle}
+              title="Voltar 1 round (restaura HP/condições do round anterior)">↩R</button>
+          )}
         </div>
         <div style={{ display:'flex', gap:8, flexShrink:0, flexWrap:'wrap' }}>
           <button className={styles.btnGhost} onClick={undo} disabled={undoDepth === 0}
@@ -3070,6 +3183,13 @@ function PalcoView({ stage, state, onUpdate, onBack, isGM = false }: {
           <button className={styles.btnGhost} onClick={importStage}>↑ Importar</button>
         </div>
       </div>
+
+      {/* Linha do tempo de combate — navega entre rounds capturados */}
+      <RoundTimeline
+        snapshots={stage.roundSnapshots ?? []}
+        current={rt.roundCurrent ?? 0}
+        onRestore={restoreRound}
+      />
 
       <DomainPanel domainTamers={domainTamers} jogressConfigs={state.jogressConfigs ?? []} />
 
@@ -3160,10 +3280,17 @@ function PalcoView({ stage, state, onUpdate, onBack, isGM = false }: {
 
 // ── Main ──────────────────────────────────────────────────────────────────────
 
-export default function TeatroPage({ state, onUpdate, isGM = false }: Props) {
+export default function TeatroPage({ state, onUpdate, isGM = false, presences = [], onActiveStageChange }: Props) {
   const [openStage, setOpenStage] = useState<string|null>(null)
   const stage = openStage ? state.stages.find(s => s.id === openStage) ?? null : null
   const location = useLocation()
+
+  // Publica o palco aberto na presença (co-presença por palco).
+  useEffect(() => {
+    onActiveStageChange?.(openStage ?? undefined)
+  }, [openStage, onActiveStageChange])
+  // Ao desmontar, limpa o palco ativo publicado.
+  useEffect(() => () => onActiveStageChange?.(undefined), [onActiveStageChange])
 
   // Deep-link: navegação com state.openStage abre o palco direto
   useEffect(() => {
@@ -3209,7 +3336,10 @@ export default function TeatroPage({ state, onUpdate, isGM = false }: Props) {
     setOpenStage(fresh.id)
   }
 
-  if (stage) return <PalcoView stage={stage} state={state} onUpdate={onUpdate} onBack={() => setOpenStage(null)} isGM={isGM} />
+  if (stage) {
+    const viewers = presences.filter(p => p.active_stage === stage.id)
+    return <PalcoView stage={stage} state={state} onUpdate={onUpdate} onBack={() => setOpenStage(null)} isGM={isGM} viewers={viewers} />
+  }
 
   const templates = [...state.stages].reverse().filter(s => s.isTemplate)
   const liveStages = [...state.stages].reverse().filter(s => !s.isTemplate)

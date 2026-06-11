@@ -8,6 +8,52 @@ import type { UserProfile } from '../lib/auth'
 import { supabase } from '../lib/supabase'
 import { SheetModal } from '../components/Sheet'
 import { GrainFill } from '../components/GrainFill'
+import { listRevealedItemsFor } from '../lib/db'
+import type { GMItem } from '../lib/db'
+
+const GM_ITEM_TYPE_LABELS: Record<string, string> = {
+  item: 'Item', weapon: 'Arma', accessory: 'Acessório', key: 'Chave',
+}
+
+// Itens revelados pelo GM ao dono — exibidos no Digivice (somente leitura).
+function RevealedGMItems({ characterId }: { characterId: string | null }) {
+  const [items, setItems] = useState<GMItem[]>([])
+  useEffect(() => {
+    let alive = true
+    if (!characterId) { setItems([]); return }
+    listRevealedItemsFor(characterId).then(list => { if (alive) setItems(list) })
+    return () => { alive = false }
+  }, [characterId])
+
+  if (items.length === 0) return null
+  return (
+    <div style={{ marginTop: 24 }}>
+      <div style={{ fontFamily: 'var(--font-mono)', fontSize: 10, letterSpacing: '0.14em',
+        textTransform: 'uppercase', color: 'var(--ink-mute)', marginBottom: 10 }}>
+        Itens revelados pelo GM
+      </div>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+        {items.map(it => (
+          <div key={it.id} style={{ border: '1px solid var(--gold)', borderRadius: 8,
+            padding: '10px 14px', background: 'rgba(231,212,163,0.10)' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+              <strong style={{ fontFamily: 'var(--font-display)', fontSize: 14, textTransform: 'uppercase' }}>{it.name}</strong>
+              <span style={{ fontFamily: 'var(--font-mono)', fontSize: 9, letterSpacing: '0.08em',
+                textTransform: 'uppercase', color: 'var(--gold)' }}>
+                {GM_ITEM_TYPE_LABELS[it.item_type] ?? it.item_type}
+              </span>
+            </div>
+            {it.description && (
+              <div style={{ fontFamily: 'var(--font-body)', fontSize: 13, color: 'var(--ink-soft)', marginTop: 4 }}>
+                {it.description}
+              </div>
+            )}
+          </div>
+        ))}
+      </div>
+    </div>
+  )
+}
 
 const MapPage = lazy(() => import('./MapPage'))
 
@@ -1081,11 +1127,14 @@ export default function DigivicePage({ state, onUpdate, profile, isGM }: Props) 
             )}
 
             {tab === 'inventario' && digivice && (
-              <InventoryTab
-                items={digivice.inventory}
-                isGM={canEdit}
-                onSave={items => save({ inventory: items })}
-              />
+              <>
+                <InventoryTab
+                  items={digivice.inventory}
+                  isGM={canEdit}
+                  onSave={items => save({ inventory: items })}
+                />
+                <RevealedGMItems characterId={viewingCharId} />
+              </>
             )}
 
             {tab === 'records' && digivice && (

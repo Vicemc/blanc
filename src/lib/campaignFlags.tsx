@@ -6,10 +6,16 @@ import { getAllCampaignConfig, setCampaignConfig, subscribeToCampaignConfig } fr
 
 export interface CampaignFlags {
   wiki_detailed_pages: boolean
+  digizap_enabled:     boolean   // liga/desliga o Digi-Zap para todos
+  maps_for_players:    boolean   // habilita a aba Mapas para os players
+  spoiler_mode:        boolean   // oculta categorias sensíveis da Wiki dos players
 }
 
 const DEFAULTS: CampaignFlags = {
   wiki_detailed_pages: false,
+  digizap_enabled:     true,   // ligado por padrão (comportamento atual)
+  maps_for_players:    true,   // mapas já visíveis aos players por padrão
+  spoiler_mode:        false,
 }
 
 interface Ctx {
@@ -25,8 +31,15 @@ const Context = createContext<Ctx>({
 })
 
 function coerce(raw: Record<string, unknown>): CampaignFlags {
+  // Para flags que vêm ligadas por padrão, "ausente" deve preservar o default
+  // (só desliga quando explicitamente false no DB).
+  const boolOr = (v: unknown, fallback: boolean) =>
+    v === undefined || v === null ? fallback : v === true
   return {
     wiki_detailed_pages: raw.wiki_detailed_pages === true,
+    digizap_enabled:     boolOr(raw.digizap_enabled, DEFAULTS.digizap_enabled),
+    maps_for_players:    boolOr(raw.maps_for_players, DEFAULTS.maps_for_players),
+    spoiler_mode:        raw.spoiler_mode === true,
   }
 }
 

@@ -13,7 +13,7 @@ import { ThemeToggle } from './components/ThemeToggle'
 import { GlobalSearch } from './components/GlobalSearch'
 import { usePresence } from './lib/presence'
 import { SettingsProvider } from './lib/settings'
-import { CampaignFlagsProvider } from './lib/campaignFlags'
+import { CampaignFlagsProvider, useCampaignFlags } from './lib/campaignFlags'
 import { isSupabaseReady } from './lib/supabase'
 import type { AppState } from './types'
 import styles from './App.module.css'
@@ -120,10 +120,17 @@ function AppInner() {
   const latestRemoteRef = useRef<AppState | null>(null)
 
   const isGuest = !localMode && profile?.role === 'guest'
-  const presences = usePresence(profile)
+  const [activeStage, setActiveStage] = useState<string | undefined>(undefined)
+  const presences = usePresence(profile, activeStage)
+  const { flags } = useCampaignFlags()
 
   // Menu mobile: fecha ao navegar e ao apertar Esc.
   useEffect(() => { setMenuOpen(false) }, [location.pathname])
+
+  // Ao sair do Teatro, deixa de publicar o palco ativo na presença.
+  useEffect(() => {
+    if (location.pathname !== '/teatro') setActiveStage(undefined)
+  }, [location.pathname])
   useEffect(() => {
     if (!menuOpen) return
     const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') setMenuOpen(false) }
@@ -290,11 +297,14 @@ function AppInner() {
 
   // Digivice e DigiZap: apenas GM ou players com tamer vinculado (não guests/visitantes)
   const canSeeDigivice = !isAnon && !isGuest && (localMode || isGM || !!profile?.tamer_id)
+  // Digi-Zap pode ser desligado pelo GM via flag de campanha (GM sempre vê).
   const canSeeDigizap  = !isAnon && !isGuest && (localMode || isGM || !!profile?.tamer_id)
+    && (isGM || flags.digizap_enabled)
   // Teatro é visível para visitantes (somente leitura); apenas guests logados não veem.
   const canSeeTeatro   = !isGuest
   // Visitante anônimo: só Início, Party, Goggle, Sistema, Teatro e Wiki.
-  const canSeeMapas    = !isAnon
+  // Mapas pode ser desligado para players pela flag maps_for_players (GM sempre vê).
+  const canSeeMapas    = !isAnon && (isGM || flags.maps_for_players)
   const canSeeConfig   = !isAnon
 
   const pageFallback = (
@@ -463,7 +473,7 @@ function AppInner() {
             <Route path="/"          element={<HomePage />} />
             <Route path="/party"     element={<PartyPage    state={state} onUpdate={onUpdateLocal} canEdit={canEdit} isGM={isGM} />} />
             <Route path="/goggle"    element={<GogglePage   state={state} onUpdate={onUpdateLocal} canEdit={canEdit} isGM={isGM} />} />
-            <Route path="/teatro"    element={<TeatroPage   state={state} onUpdate={onUpdate}      isGM={isGM} />} />
+            <Route path="/teatro"    element={<TeatroPage   state={state} onUpdate={onUpdate}      isGM={isGM} presences={presences} onActiveStageChange={setActiveStage} />} />
             <Route path="/sistema"   element={<SistemaPage  state={state} onUpdate={onUpdateLocal} isGM={isGM} />} />
             <Route path="/wiki"          element={<WikiPage      state={state} isGM={isGM} />} />
             <Route path="/wiki/:id"      element={<WikiPage      state={state} isGM={isGM} />} />
@@ -473,8 +483,12 @@ function AppInner() {
               <>
                 <Route path="/backstage" element={<BackstagePage state={state} onUpdate={onUpdateLocal} />} />
                 <Route path="/digivice"  element={<DigivicePage  state={state} onUpdate={onUpdateLocal} profile={profile} isGM={isGM} />} />
-                <Route path="/digizap"   element={<DigiZapPage   state={state} profile={profile} isGM={isGM} onUnreadChange={setDigizapUnread} />} />
-                <Route path="/mapas"         element={<MapPage       isGM={isGM} />} />
+                {canSeeDigizap && (
+                  <Route path="/digizap"   element={<DigiZapPage   state={state} profile={profile} isGM={isGM} onUnreadChange={setDigizapUnread} />} />
+                )}
+                {canSeeMapas && (
+                  <Route path="/mapas"         element={<MapPage       isGM={isGM} />} />
+                )}
                 <Route path="/configuracoes" element={<SettingsPage />} />
               </>
             )}

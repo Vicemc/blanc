@@ -9,6 +9,11 @@ export interface HealthCheck {
 const TABLES = [
   'profiles', 'app_state', 'stages', 'signs',
   'digivices', 'digi_zap_groups', 'digi_zap_messages', 'skill_tree_phases',
+  // Wiki, Mapas e configuração de campanha (schema completo — fecha MIGRACAO §10)
+  'wiki_pages', 'wiki_relations', 'wiki_page_edits',
+  'maps', 'map_layers', 'map_pins', 'campaign_config',
+  // Web Push (notificações do Digi-Zap)
+  'push_subscriptions',
 ]
 
 // Diagnóstico do setup do Supabase: tabelas, buckets e seed do Digi-Zap.

@@ -75,6 +75,19 @@ export async function deleteItem(id: string): Promise<void> {
   await supabase.from('gm_items').delete().eq('id', id)
 }
 
+// Itens já revelados atribuídos a um personagem — aparecem no Digivice do dono.
+export async function listRevealedItemsFor(characterId: string): Promise<GMItem[]> {
+  if (!isSupabaseReady || !supabase || !characterId) return []
+  const { data } = await supabase
+    .from('gm_items')
+    .select('*')
+    .eq('campaign', CAMPAIGN)
+    .eq('assigned_to', characterId)
+    .eq('revealed', true)
+    .order('updated_at', { ascending: false })
+  return (data ?? []) as GMItem[]
+}
+
 // Revela o item ao player dono (usa a RPC reveal_item; cai para update direto).
 export async function revealItem(id: string, revealed = true): Promise<void> {
   if (!isSupabaseReady || !supabase) return

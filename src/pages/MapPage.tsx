@@ -2,7 +2,7 @@ import { useState, useEffect, useRef, useCallback } from 'react'
 import { useSettings } from '../lib/settings'
 import type { GameMap, MapLayer, MapPin, MapVisibility } from '../types/map'
 import type { WikiPage } from '../types/wiki'
-import { listMaps, saveMap, deleteMap, listLayers, listPins } from '../lib/db/maps'
+import { listMaps, saveMap, deleteMap, listLayers, listPins, exportMap, pickMapImport, importMap } from '../lib/db/maps'
 import { listWikiPages } from '../lib/db/wiki'
 import { uploadImage } from '../lib/db/storage'
 import MapCanvas from '../components/map/MapCanvas'
@@ -210,6 +210,16 @@ export default function MapPage({ isGM }: Props) {
     setMaps(prev => prev.map(x => x.id === m.id ? m : x))
   }, [])
 
+  const handleImportMap = async () => {
+    const pkg = await pickMapImport()
+    if (!pkg) { alert('Arquivo de mapa inválido.'); return }
+    const created = await importMap(pkg)
+    if (created) {
+      setMaps(prev => [...prev, created])
+      setOpenMapId(created.id)
+    }
+  }
+
   if (loading) return (
     <div style={{ maxWidth: 960, margin: '80px auto', textAlign: 'center',
       fontFamily: 'var(--font-mono)', fontSize: 12, color: 'var(--ink-mute)',
@@ -291,13 +301,23 @@ export default function MapPage({ isGM }: Props) {
                     </div>
                   </div>
                 ) : (
-                  <button onClick={() => setCreating(true)}
-                    style={{ padding: '10px 24px', borderRadius: 999, border: 'none',
-                      background: 'var(--coral)', color: '#fff',
-                      fontFamily: 'var(--font-mono)', fontSize: 11, cursor: 'pointer',
-                      letterSpacing: '0.1em' }}>
-                    + Novo Mapa
-                  </button>
+                  <div style={{ display: 'flex', gap: 10 }}>
+                    <button onClick={() => setCreating(true)}
+                      style={{ padding: '10px 24px', borderRadius: 999, border: 'none',
+                        background: 'var(--coral)', color: '#fff',
+                        fontFamily: 'var(--font-mono)', fontSize: 11, cursor: 'pointer',
+                        letterSpacing: '0.1em' }}>
+                      + Novo Mapa
+                    </button>
+                    <button onClick={handleImportMap}
+                      title="Importar um mapa (com camadas e pins) de um arquivo JSON"
+                      style={{ padding: '10px 20px', borderRadius: 999, border: '1px solid var(--line)',
+                        background: 'transparent', color: 'var(--ink-soft)',
+                        fontFamily: 'var(--font-mono)', fontSize: 11, cursor: 'pointer',
+                        letterSpacing: '0.1em' }}>
+                      ↑ Importar Mapa
+                    </button>
+                  </div>
                 )}
               </div>
             )}
@@ -328,6 +348,12 @@ export default function MapPage({ isGM }: Props) {
                               color: VISIBILITY_COLORS[m.visibility], letterSpacing: '0.1em' }}>
                               {VISIBILITY_LABELS[m.visibility]}
                             </span>
+                            <button onClick={e => { e.stopPropagation(); exportMap(m.id) }}
+                              title="Exportar este mapa"
+                              style={{ background: 'none', border: 'none', cursor: 'pointer',
+                                color: 'var(--ink-mute)', fontSize: 13, padding: '2px 6px' }}>
+                              ↓
+                            </button>
                             <button onClick={e => { e.stopPropagation(); handleDelete(m.id) }}
                               style={{ background: 'none', border: 'none', cursor: 'pointer',
                                 color: 'var(--coral)', fontSize: 13, padding: '2px 6px' }}>

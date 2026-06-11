@@ -1,9 +1,13 @@
 import { useState, useMemo, useEffect, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
 import type { AppState } from '../types'
+import type { WikiPage } from '../types/wiki'
+import type { GameMap } from '../types/map'
 import { SheetModal } from './Sheet'
 import type { SheetSubject } from './Sheet'
 import { BASE_KEYWORDS, BASE_CONDITIONS, ruleSlug } from '../data/rulesData'
+import { listWikiPages } from '../lib/db/wiki'
+import { listMaps } from '../lib/db/maps'
 
 interface Result {
   id:    string
@@ -18,10 +22,22 @@ export function GlobalSearch({ state, isGM = false, className }: {
   const [open, setOpen]   = useState(false)
   const [query, setQuery] = useState('')
   const [sheet, setSheet] = useState<SheetSubject | null>(null)
+  const [wikiPages, setWikiPages] = useState<WikiPage[]>([])
+  const [maps, setMaps]   = useState<GameMap[]>([])
   const navigate = useNavigate()
   const inputRef = useRef<HTMLInputElement>(null)
 
   useEffect(() => { if (open) inputRef.current?.focus() }, [open])
+
+  // Carrega Wiki/Mapas (Supabase) ao abrir pela primeira vez; mantém em cache.
+  useEffect(() => {
+    if (!open || (wikiPages.length > 0 || maps.length > 0)) return
+    Promise.all([listWikiPages(), listMaps()]).then(([w, m]) => {
+      setWikiPages(w as WikiPage[])
+      setMaps(m as GameMap[])
+    })
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open])
 
   // Atalho "/" abre a busca
   useEffect(() => {
@@ -66,8 +82,19 @@ export function GlobalSearch({ state, isGM = false, className }: {
     for (const c of conditions) {
       if (match(c.name)) out.push({ id: `cond-${c.id}`, label: c.name, kind: 'Condição', go: closeAnd(() => navigate(`/sistema?kw=${encodeURIComponent(ruleSlug(c.name))}`)) })
     }
+    // Páginas da Wiki (players só veem o que não está oculto)
+    for (const p of wikiPages) {
+      if (!isGM && p.visibility === 'hidden') continue
+      if (p.status === 'pending') continue
+      if (match(p.title)) out.push({ id: `wiki-${p.id}`, label: p.title, kind: 'Wiki', go: closeAnd(() => navigate(`/wiki/${p.id}`)) })
+    }
+    // Mapas (players só veem o que não está oculto)
+    for (const m of maps) {
+      if (!isGM && m.visibility === 'hidden') continue
+      if (match(m.title)) out.push({ id: `map-${m.id}`, label: m.title, kind: 'Mapa', go: closeAnd(() => navigate('/mapas')) })
+    }
     return out.slice(0, 40)
-  }, [query, state, keywords, conditions, navigate])
+  }, [query, state, keywords, conditions, navigate, wikiPages, maps, isGM])
 
   return (
     <>
@@ -81,7 +108,7 @@ export function GlobalSearch({ state, isGM = false, className }: {
             border: '1px solid var(--line)', borderRadius: 'var(--radius)',
             boxShadow: 'var(--shadow)', overflow: 'hidden' }}>
             <input ref={inputRef} value={query} onChange={e => setQuery(e.target.value)}
-              placeholder="Buscar tamer, digimon, BUG, SIGN, keyword..."
+              placeholder="Buscar tamer, digimon, BUG, SIGN, keyword, Wiki, mapa..."
               style={{ width: '100%', border: 'none', borderBottom: '1px solid var(--line-soft)',
                 padding: '16px 20px', fontFamily: 'var(--font-body)', fontSize: 16,
                 background: 'transparent', color: 'var(--ink)', outline: 'none', boxSizing: 'border-box' }} />

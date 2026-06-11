@@ -222,6 +222,84 @@ export async function deleteWikiRelation(id: string): Promise<void> {
   await supabase.from('wiki_relations').delete().eq('id', id)
 }
 
+// ── Export / Import de páginas (backup pontual / reaproveitar lore) ────────────
+
+const WIKI_EXPORT_VERSION = 1
+
+interface WikiExportPackage {
+  kind:    'wiki-pages'
+  version: number
+  pages:   WikiPage[]
+}
+
+// Dispara o download de um JSON no browser (mesmo padrão de exportStateToFile).
+function downloadJson(filename: string, data: unknown): void {
+  const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' })
+  const url  = URL.createObjectURL(blob)
+  const a    = document.createElement('a')
+  a.href     = url
+  a.download = filename
+  a.click()
+  URL.revokeObjectURL(url)
+}
+
+// Exporta uma ou mais páginas da Wiki para um arquivo JSON.
+export function exportWikiPages(pages: WikiPage[], filenameHint?: string): void {
+  const pkg: WikiExportPackage = { kind: 'wiki-pages', version: WIKI_EXPORT_VERSION, pages }
+  const slug = (filenameHint ?? (pages.length === 1 ? pages[0].title : `${pages.length}-paginas`))
+    .toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') || 'wiki'
+  downloadJson(`wiki-${slug}-${new Date().toISOString().slice(0, 10)}.json`, pkg)
+}
+
+// Abre o seletor de arquivos e devolve as páginas do pacote (sem inserir).
+export function pickWikiImport(): Promise<WikiPage[] | null> {
+  return new Promise(resolve => {
+    const input  = document.createElement('input')
+    input.type   = 'file'
+    input.accept = '.json'
+    input.onchange = () => {
+      const file = input.files?.[0]
+      if (!file) { resolve(null); return }
+      const reader = new FileReader()
+      reader.onload = e => {
+        try {
+          const parsed = JSON.parse(e.target?.result as string)
+          const pages: WikiPage[] = parsed?.kind === 'wiki-pages' && Array.isArray(parsed.pages)
+            ? parsed.pages
+            : Array.isArray(parsed) ? parsed : [parsed]
+          resolve(pages)
+        } catch { resolve(null) }
+      }
+      reader.readAsText(file)
+    }
+    input.click()
+  })
+}
+
+// Insere páginas importadas como NOVAS páginas (ignora id/campaign/timestamps
+// da origem para não colidir nem vazar entre campanhas). Devolve quantas criou.
+export async function importWikiPages(pages: WikiPage[]): Promise<number> {
+  if (!isSupabaseReady || !supabase) return 0
+  let created = 0
+  for (const p of pages) {
+    const saved = await saveWikiPage({
+      title:          p.title,
+      category:       p.category,
+      body:           p.body ?? '',
+      avatar_url:     p.avatar_url ?? null,
+      visibility:     p.visibility ?? 'hidden',
+      // Não reaproveita vínculos de entidade — entidades diferem entre campanhas.
+      linked_type:    null,
+      linked_id:      null,
+      status:         'approved',
+      owner_tamer_id: null,
+      content:        p.content ?? {},
+    })
+    if (saved) created++
+  }
+  return created
+}
+
 // ── Seed de páginas de personagens ────────────────────────────────────────────
 
 const PC_TAMER_IDS = new Set(['t-naoki', 't-mori', 't-miki', 't-yuri', 't-eisuke', 't-sachi'])

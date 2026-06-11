@@ -28,21 +28,32 @@ export async function listSnapshots(limit = 25): Promise<SnapshotRow[]> {
   if (!isSupabaseReady || !supabase) return []
   const { data } = await supabase
     .from('app_state')
-    .select('id, updated_at')
+    .select('id, updated_at, label')
     .eq('campaign', CAMPAIGN)
     .order('updated_at', { ascending: false })
     .limit(limit)
   return (data ?? []) as SnapshotRow[]
 }
 
-export async function createSnapshot(state: AppState): Promise<SnapshotRow | null> {
+export async function createSnapshot(state: AppState, label?: string): Promise<SnapshotRow | null> {
   if (!isSupabaseReady || !supabase) return null
   const { data } = await supabase
     .from('app_state')
-    .insert({ campaign: CAMPAIGN, state: stripImages(state), updated_at: new Date().toISOString() })
-    .select('id, updated_at')
+    .insert({
+      campaign:   CAMPAIGN,
+      state:      stripImages(state),
+      label:      label?.trim() || null,
+      updated_at: new Date().toISOString(),
+    })
+    .select('id, updated_at, label')
     .single()
   return (data ?? null) as SnapshotRow | null
+}
+
+// Renomeia (rotula) um snapshot existente.
+export async function labelSnapshot(id: string, label: string): Promise<void> {
+  if (!isSupabaseReady || !supabase) return
+  await supabase.from('app_state').update({ label: label.trim() || null }).eq('id', id)
 }
 
 export async function loadSnapshot(id: string): Promise<AppState | null> {

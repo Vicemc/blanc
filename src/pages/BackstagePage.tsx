@@ -9,7 +9,7 @@ import { useAuth } from '../components/AuthProvider'
 import { useSettings } from '../lib/settings'
 import type { AppState, ActorRef, SkillTreePhase, TamerSkill, ClimaEntry, KeywordEntry, ConditionEntry, JogressConfig, JogressGroup, JogressSkill, VisibilityLevel } from '../types'
 import { listNotes, saveNote, deleteNote, listItems, saveItem, deleteItem, revealItem,
-  listSnapshots, createSnapshot, loadSnapshot, deleteSnapshot } from '../lib/db'
+  listSnapshots, createSnapshot, loadSnapshot, deleteSnapshot, labelSnapshot } from '../lib/db'
 import type { GMNote, GMItem, SnapshotRow } from '../lib/db'
 import { supabase } from '../lib/supabase'
 import { SheetModal } from '../components/Sheet'
@@ -18,6 +18,9 @@ import { BASE_KEYWORDS, BASE_CONDITIONS, getEffectiveClimas, groupBy } from '../
 import { findTamer, findDigimon, findBug, DIGIMON_DEFAULT_IMAGES, getVisLevel, setVisibility } from '../data/store'
 import { findSurvivor } from '../data/domain'
 import WikiSection from '../components/wiki/WikiSection'
+import { useCampaignFlags } from '../lib/campaignFlags'
+import type { CampaignFlags } from '../lib/campaignFlags'
+import { WIKI_CATEGORIES, SPOILER_CATEGORIES } from '../types/wiki'
 
 interface Props {
   state:    AppState
@@ -1490,6 +1493,8 @@ function GMSection({ state }: { state: AppState }) {
   const [loading, setLoading] = useState(true)
   const [noteDraft, setNoteDraft] = useState<GMNote>({ title: '', content: '' })
   const [itemDraft, setItemDraft] = useState<GMItem>({ name: '', description: '', item_type: 'item', assigned_to: null, revealed: false })
+  const [editingNote, setEditingNote] = useState<GMNote | null>(null)
+  const [noteSearch, setNoteSearch] = useState('')
 
   const charOptions = state.tamers.map(t => ({ id: t.id, name: t.name }))
 
@@ -1517,6 +1522,12 @@ function GMSection({ state }: { state: AppState }) {
     if (!id) return
     await deleteNote(id); setNotes(n => n.filter(x => x.id !== id))
   }
+  const saveEditNote = async () => {
+    if (!editingNote || !editingNote.title.trim()) return
+    const saved = await saveNote(editingNote)
+    if (saved) setNotes(list => list.map(x => x.id === saved.id ? saved : x))
+    setEditingNote(null)
+  }
   const addItem = async () => {
     if (!itemDraft.name.trim()) return
     const saved = await saveItem(itemDraft)
@@ -1538,24 +1549,54 @@ function GMSection({ state }: { state: AppState }) {
     fontFamily: 'var(--font-body)', fontSize: 13, background: 'var(--paper)', color: 'var(--ink)' }
 
   return (
+    <div>
+    <div style={{ fontFamily: 'var(--font-serif)', fontStyle: 'italic', fontSize: 14,
+      color: 'var(--ink-mute)', marginBottom: 20 }}>
+      ~ Diário do GM: anotações privadas da sessão e itens guardados em limbo, revelados aos players sob demanda ~
+    </div>
     <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))', gap: 28 }}>
       {/* Notas */}
       <div>
         <div style={{ fontFamily: 'var(--font-mono)', fontSize: 10, letterSpacing: '0.14em',
-          textTransform: 'uppercase', color: 'var(--ink-mute)', marginBottom: 12 }}>Notas privadas</div>
+          textTransform: 'uppercase', color: 'var(--ink-mute)', marginBottom: 12 }}>Notas privadas da sessão</div>
         <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginBottom: 14 }}>
           <input value={noteDraft.title} onChange={e => setNoteDraft(d => ({ ...d, title: e.target.value }))} placeholder="Título" style={inp} />
           <textarea value={noteDraft.content} onChange={e => setNoteDraft(d => ({ ...d, content: e.target.value }))} placeholder="Conteúdo..." rows={3} style={{ ...inp, resize: 'vertical' }} />
           <button onClick={addNote} style={{ ...inp, cursor: 'pointer', background: 'var(--ink)', color: 'var(--paper)', border: '1px solid var(--ink)', fontWeight: 600 }}>+ Nota</button>
         </div>
+        {notes.length > 4 && (
+          <input value={noteSearch} onChange={e => setNoteSearch(e.target.value)}
+            placeholder="Filtrar notas..." style={{ ...inp, marginBottom: 8 }} />
+        )}
         <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-          {notes.map(n => (
+          {notes
+            .filter(n => {
+              const q = noteSearch.trim().toLowerCase()
+              return !q || n.title.toLowerCase().includes(q) || (n.content ?? '').toLowerCase().includes(q)
+            })
+            .map(n => (
             <div key={n.id} style={{ border: '1px solid var(--line)', borderRadius: 8, padding: '10px 12px', background: 'var(--paper)' }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8 }}>
-                <strong style={{ fontFamily: 'var(--font-body)', fontSize: 14 }}>{n.title}</strong>
-                <button onClick={() => removeNote(n.id)} style={{ background: 'transparent', border: 'none', cursor: 'pointer', color: 'var(--coral)', fontSize: 16 }}>×</button>
-              </div>
-              {n.content && <div style={{ fontFamily: 'var(--font-body)', fontSize: 13, color: 'var(--ink-soft)', marginTop: 4, whiteSpace: 'pre-wrap' }}>{n.content}</div>}
+              {editingNote?.id === n.id ? (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                  <input value={editingNote!.title} onChange={e => setEditingNote(d => d && ({ ...d, title: e.target.value }))} placeholder="Título" style={inp} />
+                  <textarea value={editingNote!.content} onChange={e => setEditingNote(d => d && ({ ...d, content: e.target.value }))} placeholder="Conteúdo..." rows={3} style={{ ...inp, resize: 'vertical' }} />
+                  <div style={{ display: 'flex', gap: 6 }}>
+                    <button onClick={saveEditNote} style={{ ...inp, cursor: 'pointer', background: 'var(--teal)', color: '#f6f2e9', border: '1px solid var(--teal)', fontWeight: 600, padding: '5px 14px' }}>Salvar</button>
+                    <button onClick={() => setEditingNote(null)} style={{ ...inp, cursor: 'pointer', background: 'transparent', color: 'var(--ink-mute)', padding: '5px 12px' }}>Cancelar</button>
+                  </div>
+                </div>
+              ) : (
+                <>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8, alignItems: 'center' }}>
+                    <strong style={{ fontFamily: 'var(--font-body)', fontSize: 14 }}>{n.title}</strong>
+                    <div style={{ display: 'flex', gap: 4 }}>
+                      <button onClick={() => setEditingNote(n)} title="Editar" style={{ background: 'transparent', border: 'none', cursor: 'pointer', color: 'var(--ink-mute)', fontSize: 13 }}>✎</button>
+                      <button onClick={() => removeNote(n.id)} style={{ background: 'transparent', border: 'none', cursor: 'pointer', color: 'var(--coral)', fontSize: 16 }}>×</button>
+                    </div>
+                  </div>
+                  {n.content && <div style={{ fontFamily: 'var(--font-body)', fontSize: 13, color: 'var(--ink-soft)', marginTop: 4, whiteSpace: 'pre-wrap' }}>{n.content}</div>}
+                </>
+              )}
             </div>
           ))}
           {notes.length === 0 && <div style={{ fontFamily: 'var(--font-mono)', fontSize: 11, color: 'var(--ink-mute)' }}>Nenhuma nota.</div>}
@@ -1604,6 +1645,7 @@ function GMSection({ state }: { state: AppState }) {
           {items.length === 0 && <div style={{ fontFamily: 'var(--font-mono)', fontSize: 11, color: 'var(--ink-mute)' }}>Nenhum item.</div>}
         </div>
       </div>
+    </div>
     </div>
   )
 }
@@ -1683,6 +1725,69 @@ function StageActorChip({ portrait, image, title, hp, hpMax, side }: {
   )
 }
 
+// ── Seção: Campanha (flags globais) ───────────────────────────────────────────
+
+const FLAG_META: { key: keyof CampaignFlags; label: string; desc: string }[] = [
+  { key: 'wiki_detailed_pages', label: 'Páginas detalhadas da Wiki',
+    desc: 'Ativa o layout em blocos (infobox, galeria, links) para todos os jogadores.' },
+  { key: 'digizap_enabled', label: 'Digi-Zap ativo',
+    desc: 'Liga/desliga o app de mensagens Digi-Zap para os players.' },
+  { key: 'maps_for_players', label: 'Mapas para players',
+    desc: 'Habilita a aba Mapas para os jogadores (o GM sempre vê).' },
+  { key: 'spoiler_mode', label: 'Modo spoiler',
+    desc: 'Oculta categorias sensíveis da Wiki (Eventos, Documentos, Entidades) dos players.' },
+]
+
+function FlagToggle({ on, onToggle }: { on: boolean; onToggle: () => void }) {
+  return (
+    <button onClick={onToggle}
+      style={{ flexShrink: 0, width: 52, height: 28, borderRadius: 999, border: 'none', cursor: 'pointer',
+        background: on ? 'var(--teal)' : 'var(--line)', position: 'relative', transition: 'background 0.15s' }}>
+      <span style={{ position: 'absolute', top: 3, left: on ? 27 : 3,
+        width: 22, height: 22, borderRadius: '50%', background: '#fff', transition: 'left 0.15s',
+        boxShadow: '0 1px 3px rgba(0,0,0,0.3)' }} />
+    </button>
+  )
+}
+
+function CampaignSection() {
+  const { flags, loaded, setFlag } = useCampaignFlags()
+
+  if (!supabase) {
+    return <div style={{ fontFamily: 'var(--font-serif)', fontStyle: 'italic', fontSize: 16, color: 'var(--ink-mute)' }}>
+      ~ Flags de campanha requerem o Supabase configurado ~
+    </div>
+  }
+
+  return (
+    <div>
+      <div style={{ fontFamily: 'var(--font-mono)', fontSize: 10, color: 'var(--ink-mute)',
+        marginBottom: 16, lineHeight: 1.6 }}>
+        Estes interruptores valem para <b>toda a mesa</b> e são enviados aos players em tempo real.
+        {SPOILER_CATEGORIES.length > 0 && (
+          <> O <b>modo spoiler</b> esconde: {SPOILER_CATEGORIES.map(c =>
+            WIKI_CATEGORIES.find(w => w.value === c)?.label ?? c).join(', ')}.</>
+        )}
+      </div>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 10, opacity: loaded ? 1 : 0.6 }}>
+        {FLAG_META.map(f => (
+          <div key={f.key} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+            gap: 16, padding: '14px 18px', borderRadius: 12,
+            background: 'var(--paper)', border: '1px solid var(--line)' }}>
+            <div>
+              <div style={{ fontFamily: 'var(--font-display)', fontSize: 14, textTransform: 'uppercase',
+                letterSpacing: '-0.01em' }}>{f.label}</div>
+              <div style={{ fontFamily: 'var(--font-serif)', fontStyle: 'italic', fontSize: 13,
+                color: 'var(--ink-mute)', marginTop: 2 }}>{f.desc}</div>
+            </div>
+            <FlagToggle on={flags[f.key]} onToggle={() => setFlag(f.key, !flags[f.key])} />
+          </div>
+        ))}
+      </div>
+    </div>
+  )
+}
+
 // ── Seção: Dashboard (resumo da campanha + snapshots) ─────────────────────────
 function DashboardSection({ state, onUpdate }: { state: AppState; onUpdate: (s: AppState) => void }) {
   const activeStage = [...state.stages].reverse().find(s => s.sides.allies.length + s.sides.enemies.length > 0)
@@ -1708,14 +1813,18 @@ function DashboardSection({ state, onUpdate }: { state: AppState; onUpdate: (s: 
 
   const [snapshots, setSnapshots] = useState<SnapshotRow[]>([])
   const [loadingSnap, setLoadingSnap] = useState(false)
+  const [snapLabel, setSnapLabel] = useState('')
+  const [renamingId, setRenamingId] = useState<string | null>(null)
+  const [renameValue, setRenameValue] = useState('')
   useEffect(() => {
     if (!supabase) return
     listSnapshots(20).then(setSnapshots)
   }, [])
   const doSnapshot = async () => {
     setLoadingSnap(true)
-    const row = await createSnapshot(state)
+    const row = await createSnapshot(state, snapLabel)
     if (row) setSnapshots(s => [row, ...s])
+    setSnapLabel('')
     setLoadingSnap(false)
   }
   const doRestore = async (id: string) => {
@@ -1727,6 +1836,15 @@ function DashboardSection({ state, onUpdate }: { state: AppState; onUpdate: (s: 
     if (!confirm('Apagar este snapshot?')) return
     await deleteSnapshot(id)
     setSnapshots(s => s.filter(x => x.id !== id))
+  }
+  const startRename = (s: SnapshotRow) => { setRenamingId(s.id); setRenameValue(s.label ?? '') }
+  const commitRename = async () => {
+    if (!renamingId) return
+    const id = renamingId
+    const label = renameValue.trim()
+    await labelSnapshot(id, label)
+    setSnapshots(list => list.map(x => x.id === id ? { ...x, label: label || undefined } : x))
+    setRenamingId(null); setRenameValue('')
   }
 
   return (
@@ -1837,31 +1955,60 @@ function DashboardSection({ state, onUpdate }: { state: AppState; onUpdate: (s: 
         </div>
       </div>
 
-      {/* Snapshots */}
+      {/* Backups (snapshots rotulados) */}
       {supabase && (
         <div>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
-            <span style={{ fontFamily: 'var(--font-mono)', fontSize: 10, letterSpacing: '0.14em',
-              textTransform: 'uppercase', color: 'var(--ink-mute)' }}>Snapshots</span>
+          <div style={{ fontFamily: 'var(--font-mono)', fontSize: 10, letterSpacing: '0.14em',
+            textTransform: 'uppercase', color: 'var(--ink-mute)', marginBottom: 8 }}>Backups</div>
+          <div style={{ fontFamily: 'var(--font-mono)', fontSize: 10, color: 'var(--ink-mute)', marginBottom: 10, lineHeight: 1.6 }}>
+            Salve um snapshot rotulado antes de grandes mudanças e restaure com um clique se algo der errado.
+          </div>
+          <div style={{ display: 'flex', gap: 8, marginBottom: 12 }}>
+            <input value={snapLabel} onChange={e => setSnapLabel(e.target.value)}
+              onKeyDown={e => e.key === 'Enter' && !loadingSnap && doSnapshot()}
+              placeholder="Rótulo (ex: antes do boss do cap. 3) — opcional"
+              style={{ flex: 1, border: '1px solid var(--line)', borderRadius: 8, padding: '7px 12px',
+                fontFamily: 'var(--font-body)', fontSize: 13, background: 'var(--paper)', color: 'var(--ink)' }} />
             <button onClick={doSnapshot} disabled={loadingSnap}
-              style={{ padding: '4px 12px', borderRadius: 999, cursor: 'pointer',
+              style={{ padding: '7px 16px', borderRadius: 999, cursor: 'pointer', whiteSpace: 'nowrap',
                 border: '1px solid var(--ink)', background: 'var(--ink)', color: 'var(--paper)',
                 fontFamily: 'var(--font-mono)', fontSize: 10, letterSpacing: '0.08em', textTransform: 'uppercase' }}>
-              {loadingSnap ? '...' : '+ Salvar agora'}
+              {loadingSnap ? '...' : '+ Salvar backup'}
             </button>
           </div>
           {snapshots.length === 0 ? (
-            <div style={{ fontFamily: 'var(--font-mono)', fontSize: 11, color: 'var(--ink-mute)' }}>Nenhum snapshot.</div>
+            <div style={{ fontFamily: 'var(--font-mono)', fontSize: 11, color: 'var(--ink-mute)' }}>Nenhum backup.</div>
           ) : (
             <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
               {snapshots.map((s, i) => (
                 <div key={s.id} style={{ display: 'flex', alignItems: 'center', gap: 12,
                   padding: '6px 12px', border: '1px solid var(--line-soft)', borderRadius: 8,
                   background: i === 0 ? 'rgba(110,157,112,0.10)' : 'var(--paper)' }}>
-                  <span style={{ fontFamily: 'var(--font-mono)', fontSize: 11, color: 'var(--ink-soft)', flex: 1 }}>
-                    {new Date(s.updated_at).toLocaleString('pt-BR')}
-                    {i === 0 && <span style={{ color: 'var(--green)', marginLeft: 8 }}>atual</span>}
-                  </span>
+                  {renamingId === s.id ? (
+                    <input autoFocus value={renameValue} onChange={e => setRenameValue(e.target.value)}
+                      onKeyDown={e => { if (e.key === 'Enter') commitRename(); if (e.key === 'Escape') { setRenamingId(null); setRenameValue('') } }}
+                      onBlur={commitRename}
+                      placeholder="Rótulo do backup"
+                      style={{ flex: 1, border: '1px solid var(--teal)', borderRadius: 6, padding: '4px 8px',
+                        fontFamily: 'var(--font-body)', fontSize: 13, background: 'var(--paper)', color: 'var(--ink)' }} />
+                  ) : (
+                    <span style={{ display: 'flex', flexDirection: 'column', flex: 1, minWidth: 0 }}>
+                      {s.label && (
+                        <span style={{ fontFamily: 'var(--font-body)', fontSize: 13, fontWeight: 600, color: 'var(--ink)',
+                          overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{s.label}</span>
+                      )}
+                      <span style={{ fontFamily: 'var(--font-mono)', fontSize: 11, color: 'var(--ink-soft)' }}>
+                        {new Date(s.updated_at).toLocaleString('pt-BR')}
+                        {i === 0 && <span style={{ color: 'var(--green)', marginLeft: 8 }}>atual</span>}
+                      </span>
+                    </span>
+                  )}
+                  <button onClick={() => startRename(s)} title="Renomear"
+                    style={{ padding: '3px 8px', borderRadius: 999, cursor: 'pointer',
+                      border: '1px solid var(--line)', background: 'transparent', color: 'var(--ink-mute)',
+                      fontFamily: 'var(--font-mono)', fontSize: 9, letterSpacing: '0.08em', textTransform: 'uppercase' }}>
+                    ✎
+                  </button>
                   {i > 0 && (
                     <button onClick={() => doRestore(s.id)}
                       style={{ padding: '3px 10px', borderRadius: 999, cursor: 'pointer',
@@ -1883,7 +2030,7 @@ function DashboardSection({ state, onUpdate }: { state: AppState; onUpdate: (s: 
 
 // ── BackstagePage ─────────────────────────────────────────────────────────────
 
-type Tab = 'dashboard' | 'usuarios' | 'fichas' | 'skilltree' | 'regras' | 'visibilidade' | 'gm' | 'wiki'
+type Tab = 'dashboard' | 'usuarios' | 'fichas' | 'skilltree' | 'regras' | 'visibilidade' | 'gm' | 'wiki' | 'campanha'
 
 export default function BackstagePage({ state, onUpdate }: Props) {
   const { isGM } = useAuth()
@@ -1907,8 +2054,9 @@ export default function BackstagePage({ state, onUpdate }: Props) {
     { id: 'skilltree',   label: 'Skill Tree'   },
     { id: 'regras',      label: 'Regras'       },
     { id: 'visibilidade', label: 'Visibilidade' },
-    { id: 'gm',          label: 'GM'           },
+    { id: 'gm',          label: 'Diário do GM' },
     { id: 'wiki',        label: 'Wiki'         },
+    { id: 'campanha',    label: 'Campanha'     },
   ]
 
   return (
@@ -1953,6 +2101,7 @@ export default function BackstagePage({ state, onUpdate }: Props) {
         {tab === 'visibilidade' && <VisibilitySection state={state} onUpdate={onUpdate} />}
         {tab === 'gm'           && <GMSection         state={state} />}
         {tab === 'wiki'         && <WikiSection       state={state} onUpdate={onUpdate} />}
+        {tab === 'campanha'     && <CampaignSection />}
       </div>
     </div>
   )
