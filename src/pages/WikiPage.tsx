@@ -93,8 +93,7 @@ function PlayerContribModal({ mode, detailed, isOwner, onSubmitEdit, onSubmitNew
 
   return (
     <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.55)', zIndex: 1000,
-      display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16 }}
-      onClick={e => { if (e.target === e.currentTarget) onClose() }}>
+      display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16 }}>
       <div style={{ width: '100%', maxWidth: detailed ? 680 : 560, maxHeight: '88vh', overflowY: 'auto',
         background: 'var(--paper)',
         border: '1px solid var(--line)', borderRadius: 16, padding: 'var(--page-pad-x-sm)',
