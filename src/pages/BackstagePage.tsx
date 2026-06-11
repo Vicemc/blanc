@@ -32,7 +32,7 @@ const TAMER_OPTIONS = [
   { id: 't-naoki',  name: 'Naoki'   },
   { id: 't-eisuke', name: 'Eisuke'  },
   { id: 't-miki',   name: 'Miki'    },
-  { id: 't-yuri',   name: 'Yuri'    },
+  { id: 't-yuri',   name: 'Yurieta' },
   { id: 't-sachi',  name: 'Sachi'   },
   { id: 't-mori',   name: 'Mori'    },
 ]

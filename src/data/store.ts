@@ -1463,7 +1463,7 @@ export function buildDefaultState(): AppState {
 
   const yuri: Tamer = {
     id: 't-yuri',
-    name: 'YURI', surname: 'Miyamoto',
+    name: 'YURIETA', surname: 'Miyamoto',
     portrait: 'black', image: null,
     age: 17, height: 150,
     sign: 'Aquário', birthday: '29 de Janeiro de 2005',

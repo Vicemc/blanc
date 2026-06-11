@@ -11,6 +11,7 @@ import { SheetModal } from '../components/Sheet'
 import type { SheetSubject } from '../components/Sheet'
 import WikiArticle from '../components/wiki/WikiArticle'
 import WikiBlocksEditor from '../components/wiki/WikiBlocksEditor'
+import { WikiPageForm } from '../components/wiki/WikiSection'
 import { renderWikiMarkdown } from '../components/wiki/wikiLinks'
 import { pageSlug, resolvePageParam, looksLikeUuid } from '../components/wiki/wikiSlug'
 
@@ -190,6 +191,31 @@ function PlayerContribModal({ mode, detailed, isOwner, onSubmitEdit, onSubmitNew
   )
 }
 
+// ── Modal de edição do GM (reaproveita o formulário completo do Backstage) ────
+
+function GmEditModal({ page, state, onSave, onClose }: {
+  page: WikiPageType
+  state: AppState
+  onSave: (p: WikiPageType) => void
+  onClose: () => void
+}) {
+  return (
+    <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.55)', zIndex: 1000,
+      display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16 }}
+      onClick={e => { if (e.target === e.currentTarget) onClose() }}>
+      <div style={{ width: '100%', maxWidth: 720, maxHeight: '90vh', overflowY: 'auto',
+        background: 'var(--paper)', border: '1px solid var(--line)', borderRadius: 16,
+        padding: 'var(--page-pad-x-sm)', display: 'flex', flexDirection: 'column', gap: 14 }}>
+        <div style={{ fontFamily: 'var(--font-mono)', fontSize: 10, letterSpacing: '0.14em',
+          textTransform: 'uppercase', color: 'var(--ink-mute)' }}>
+          Editando (GM): {page.title}
+        </div>
+        <WikiPageForm initial={page} state={state} onSave={onSave} onCancel={onClose} />
+      </div>
+    </div>
+  )
+}
+
 export default function WikiPage({ state, isGM }: Props) {
   const { session, profile } = useAuth()
   const { isTaglineHidden } = useSettings()
@@ -203,6 +229,7 @@ export default function WikiPage({ state, isGM }: Props) {
   const [sheetOpen,    setSheetOpen]    = useState<SheetSubject | null>(null)
   const [loading,      setLoading]      = useState(true)
   const [playerModal,  setPlayerModal]  = useState<PlayerModal | null>(null)
+  const [gmEditPage,   setGmEditPage]   = useState<WikiPageType | null>(null)
   const [pendingEdits, setPendingEdits] = useState<WikiPageEdit[]>([])
   const [submitted,    setSubmitted]    = useState(false)
 
@@ -322,6 +349,12 @@ export default function WikiPage({ state, isGM }: Props) {
     }
   }
 
+  // GM: salva a página direto (sem aprovação) usando o mesmo fluxo do Backstage.
+  const handleGmSaved = (page: WikiPageType) => {
+    setPages(prev => prev.map(p => p.id === page.id ? page : p))
+    setGmEditPage(null)
+  }
+
   if (loading) return (
     <div style={{ maxWidth: 960, margin: '0 auto', padding: '80px var(--page-pad-x)',
       fontFamily: 'var(--font-mono)', fontSize: 12, color: 'var(--ink-mute)',
@@ -366,8 +399,12 @@ export default function WikiPage({ state, isGM }: Props) {
           onOpenPage={openPageById}
           onBack={() => navigate('/wiki')}
           onOpenSheet={canEdit || isGM || isFull ? openSheet : undefined}
-          onEdit={canEdit ? () => { setPlayerModal({ kind: 'edit', page }); setSubmitted(false) } : undefined}
-          editLabel={isOwner ? 'Editar página' : 'Sugerir edição'}
+          onEdit={
+            isGM ? () => setGmEditPage(page)
+            : canEdit ? () => { setPlayerModal({ kind: 'edit', page }); setSubmitted(false) }
+            : undefined
+          }
+          editLabel={isGM ? 'Editar página' : isOwner ? 'Editar página' : 'Sugerir edição'}
         />
 
         {playerModal && (
@@ -380,6 +417,11 @@ export default function WikiPage({ state, isGM }: Props) {
             onClose={() => setPlayerModal(null)}
             submitted={submitted}
           />
+        )}
+
+        {gmEditPage && (
+          <GmEditModal page={gmEditPage} state={state}
+            onSave={handleGmSaved} onClose={() => setGmEditPage(null)} />
         )}
 
         {sheetOpen && (
@@ -485,8 +527,13 @@ export default function WikiPage({ state, isGM }: Props) {
                             )}
                           </div>
                         </div>
-                        {canEdit && (
-                          <button onClick={e => { e.stopPropagation(); setPlayerModal({ kind: 'edit', page }); setSubmitted(false) }}
+                        {(isGM || canEdit) && (
+                          <button onClick={e => {
+                            e.stopPropagation()
+                            if (isGM) { setGmEditPage(page) }
+                            else { setPlayerModal({ kind: 'edit', page }); setSubmitted(false) }
+                          }}
+                            title={isGM ? 'Editar página' : undefined}
                             style={{ background: 'none', border: '1px solid var(--line)', borderRadius: 6,
                               cursor: 'pointer', color: 'var(--ink-soft)', fontFamily: 'var(--font-mono)',
                               fontSize: 11, padding: '3px 8px', flexShrink: 0 }}>
@@ -584,6 +631,12 @@ export default function WikiPage({ state, isGM }: Props) {
           onClose={() => setPlayerModal(null)}
           submitted={submitted}
         />
+      )}
+
+      {/* Modal de edição do GM (um clique a partir da Wiki) */}
+      {gmEditPage && (
+        <GmEditModal page={gmEditPage} state={state}
+          onSave={handleGmSaved} onClose={() => setGmEditPage(null)} />
       )}
 
       {/* SheetModal */}

@@ -96,7 +96,7 @@ const DIGIZAP_AVATAR_BY_ID: Record<string, string> = {
   't-sachi':  'Sachi',
   't-mori':   'Mori',
   't-miki':   'Miki',
-  't-yuri':   'Yuri',
+  't-yuri':   'Yurieta',
   't-eisuke': 'Eisuke',
   't-hare':   'Hare',
   't-kanade': 'Kanade',

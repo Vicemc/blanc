@@ -64,7 +64,7 @@ interface EditFormProps {
   state: AppState
 }
 
-function WikiPageForm({ initial, onSave, onCancel, state }: EditFormProps) {
+export function WikiPageForm({ initial, onSave, onCancel, state }: EditFormProps) {
   const [title,      setTitle]      = useState(initial?.title      ?? '')
   const [category,   setCategory]   = useState<WikiCategory>(initial?.category ?? 'humanos')
   const [body,       setBody]       = useState(initial?.body       ?? '')
@@ -244,7 +244,7 @@ function WikiPageForm({ initial, onSave, onCancel, state }: EditFormProps) {
           <option value="t-naoki">Naoki</option>
           <option value="t-mori">Mori</option>
           <option value="t-miki">Miki</option>
-          <option value="t-yuri">Yuri</option>
+          <option value="t-yuri">Yurieta</option>
           <option value="t-eisuke">Eisuke</option>
           <option value="t-sachi">Sachi</option>
         </select>
