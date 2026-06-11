@@ -17,21 +17,28 @@ export function newBlock(type: WikiBlockType): WikiBlock {
   }
 }
 
-// Converte um WikiContent (possivelmente legado) numa lista de blocos.
-// Se já houver blocks, usa-os direto. Senão deriva da estrutura antiga,
-// preservando a ordem do layout fixo anterior (infobox → sobre → seções → galeria).
-export function toBlocks(content: WikiContent | null | undefined, body?: string): WikiBlock[] {
-  if (content?.blocks && content.blocks.length > 0) return content.blocks
+// Bloco de texto sem título derivado do "Sobre" (page.body), exibido como texto
+// puro antes dos demais blocos. Retorna [] se o body estiver vazio.
+function bodyBlock(body?: string): WikiBlock[] {
+  return body && body.trim()
+    ? [{ id: 'wb-body', type: 'text', width: 'full', title: '', body }]
+    : []
+}
 
-  const out: WikiBlock[] = []
+// Converte um WikiContent (possivelmente legado) numa lista de blocos.
+// O "Sobre" (page.body) é sempre renderizado como texto puro (sem cabeçalho)
+// antes dos blocos inseridos pelo usuário. Se já houver blocks, prefixa o body;
+// senão deriva da estrutura antiga (infobox → sobre → seções → galeria).
+export function toBlocks(content: WikiContent | null | undefined, body?: string): WikiBlock[] {
+  if (content?.blocks && content.blocks.length > 0) {
+    return [...bodyBlock(body), ...content.blocks]
+  }
+
+  const out: WikiBlock[] = [...bodyBlock(body)]
 
   const infobox = content?.infobox ?? []
   if (infobox.length > 0) {
     out.push({ id: newBlockId(), type: 'infobox', width: 'full', title: '', fields: infobox })
-  }
-
-  if (body && body.trim()) {
-    out.push({ id: newBlockId(), type: 'text', width: 'full', title: 'Sobre', body })
   }
 
   for (const s of content?.sections ?? []) {
