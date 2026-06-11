@@ -159,7 +159,8 @@ function WikiPageForm({ initial, onSave, onCancel, state }: EditFormProps) {
       <textarea value={body} onChange={e => setBody(e.target.value)}
         placeholder="Sobre (markdown: **negrito**, *itálico*, ## títulos, [[Link interno]])"
         rows={6}
-        style={{ ...fieldStyle, resize: 'vertical', lineHeight: 1.5 }} />
+        style={{ ...fieldStyle, resize: 'vertical', lineHeight: 1.5,
+          minHeight: 140, flexShrink: 0, boxSizing: 'border-box' }} />
 
       {/* Layout em blocos (infobox, texto, imagens, galeria) */}
       <div style={{ borderTop: '1px solid var(--line-soft)', paddingTop: 14 }}>

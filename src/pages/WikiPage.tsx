@@ -136,7 +136,8 @@ function PlayerContribModal({ mode, detailed, isOwner, onSubmitEdit, onSubmitNew
             <textarea value={body} onChange={e => setBody(e.target.value)}
               placeholder="Sobre (markdown: **negrito**, *itálico*, ## título, [[Link interno]])"
               rows={detailed ? 5 : 10}
-              style={{ ...fieldStyle, resize: 'vertical', lineHeight: 1.5 }} />
+              style={{ ...fieldStyle, resize: 'vertical', lineHeight: 1.5,
+                minHeight: detailed ? 120 : 200, flexShrink: 0, boxSizing: 'border-box' }} />
 
             {detailed && (
               <div style={{ borderTop: '1px solid var(--line-soft)', paddingTop: 12 }}>
