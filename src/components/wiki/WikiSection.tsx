@@ -1,11 +1,12 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react'
 import type { AppState } from '../../types'
-import type { WikiPage, WikiPageEdit, WikiCategory, WikiVisibility } from '../../types/wiki'
-import { WIKI_CATEGORIES } from '../../types/wiki'
+import type { WikiPage, WikiPageEdit, WikiCategory, WikiVisibility, WikiSubcat, WikiSubcatMap } from '../../types/wiki'
+import { WIKI_CATEGORIES, HUMANOS_MANUAL_SUBCATS } from '../../types/wiki'
 import {
   listWikiPages, saveWikiPage, deleteWikiPage, setWikiPageVisibility,
   listPendingEdits, approveWikiEdit, rejectWikiEdit, approveWikiPage, rejectWikiPage,
   seedWikiPages, exportWikiPages, pickWikiImport, importWikiPages,
+  getWikiSubcats, setWikiSubcats,
 } from '../../lib/db/wiki'
 import { uploadImage } from '../../lib/db/storage'
 import { SheetModal } from '../Sheet'
@@ -62,11 +63,13 @@ interface EditFormProps {
   onSave:  (page: WikiPage) => void
   onCancel: () => void
   state: AppState
+  gmSubcats?: WikiSubcatMap
 }
 
-export function WikiPageForm({ initial, onSave, onCancel, state }: EditFormProps) {
+export function WikiPageForm({ initial, onSave, onCancel, state, gmSubcats }: EditFormProps) {
   const [title,      setTitle]      = useState(initial?.title      ?? '')
   const [category,   setCategory]   = useState<WikiCategory>(initial?.category ?? 'humanos')
+  const [subcategory, setSubcategory] = useState<string | null>(initial?.subcategory ?? null)
   const [body,       setBody]       = useState(initial?.body       ?? '')
   const [avatarUrl,  setAvatarUrl]  = useState(initial?.avatar_url ?? null as string | null)
   const [visibility, setVisibility] = useState<WikiVisibility>(initial?.visibility ?? 'hidden')
@@ -76,6 +79,13 @@ export function WikiPageForm({ initial, onSave, onCancel, state }: EditFormProps
   const [content,    setContent]    = useState<WikiContent>(initial?.content ?? EMPTY_WIKI_CONTENT)
   const [saving, setSaving] = useState(false)
   const fileRef = useRef<HTMLInputElement>(null)
+
+  // Tamer/Survivor vinculados agrupam pelo vínculo (automático) — sem subcat manual.
+  const isAutoLinked = linkedType === 'tamer' || linkedType === 'survivor'
+  const subcatOptions: WikiSubcat[] = category === 'humanos'
+    ? HUMANOS_MANUAL_SUBCATS
+    : (gmSubcats?.[category] ?? [])
+  const showSubcatSelect = !isAutoLinked && subcatOptions.length > 0
 
   const allTamers:    typeof state.tamers    = state.tamers
   const allDigimons:  typeof state.bestiary  = state.bestiary
@@ -102,6 +112,7 @@ export function WikiPageForm({ initial, onSave, onCancel, state }: EditFormProps
       ...(initial ?? {}),
       title:          title.trim(),
       category,
+      subcategory:    isAutoLinked ? null : subcategory,
       body,
       avatar_url:     avatarUrl,
       visibility,
@@ -154,6 +165,27 @@ export function WikiPageForm({ initial, onSave, onCancel, state }: EditFormProps
           ))}
         </select>
       </div>
+
+      {/* Subcategoria (espaço) — oculto p/ tamer/survivor vinculados (automático) */}
+      {showSubcatSelect && (
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+          <span style={{ fontFamily: 'var(--font-mono)', fontSize: 11, color: 'var(--ink-mute)',
+            letterSpacing: '0.1em', textTransform: 'uppercase', whiteSpace: 'nowrap' }}>
+            SUBCATEGORIA
+          </span>
+          <select value={subcategory ?? ''} onChange={e => setSubcategory(e.target.value || null)}
+            style={{ ...fieldStyle, flex: 1 }}>
+            <option value="">— sem subcategoria —</option>
+            {subcatOptions.map(s => <option key={s.key} value={s.key}>{s.label}</option>)}
+          </select>
+        </div>
+      )}
+      {isAutoLinked && (
+        <div style={{ fontFamily: 'var(--font-mono)', fontSize: 10, color: 'var(--ink-mute)',
+          letterSpacing: '0.08em' }}>
+          Agrupado automaticamente em {linkedType === 'tamer' ? 'Tamers' : 'Survivors'} pelo vínculo.
+        </div>
+      )}
 
       {/* Corpo / Sobre */}
       <textarea value={body} onChange={e => setBody(e.target.value)}
@@ -313,6 +345,7 @@ function EditReviewModal({ edit, original, allPages, busy, onApprove, onReject, 
   // Campos não editáveis (avatar, vínculos, visibilidade) são herdados do original.
   const base: WikiPage = original ?? {
     id: edit.page_id, campaign_id: edit.campaign_id, title: edit.title, category: edit.category,
+    subcategory: edit.subcategory ?? null, sort_order: 0,
     body: '', avatar_url: null, visibility: 'full', linked_type: null, linked_id: null,
     status: 'approved', author_id: null, owner_tamer_id: null, content: null,
     created_at: edit.created_at, updated_at: edit.created_at,
@@ -458,6 +491,134 @@ function EditReviewModal({ edit, original, allPages, busy, onApprove, onReject, 
   )
 }
 
+// ── Gerenciador de subcategorias (GM) ────────────────────────────────────────
+
+const slugify = (s: string) =>
+  s.toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '')
+    .replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '')
+
+function SubcatsManagerModal({ value, onSave, onClose }: {
+  value: WikiSubcatMap
+  onSave: (map: WikiSubcatMap) => void
+  onClose: () => void
+}) {
+  const [cat,   setCat]   = useState<WikiCategory>('locais')
+  const [draft, setDraft] = useState<WikiSubcatMap>(value)
+  const [newLabel, setNewLabel] = useState('')
+
+  const list = draft[cat] ?? []
+  const isHumanos = cat === 'humanos'
+
+  const commit = (next: WikiSubcat[]) => setDraft(prev => ({ ...prev, [cat]: next }))
+
+  const addSubcat = () => {
+    const label = newLabel.trim()
+    if (!label) return
+    const key = slugify(label) || `sub-${Date.now()}`
+    if (list.some(s => s.key === key)) return
+    commit([...list, { key, label }])
+    setNewLabel('')
+  }
+
+  const fieldStyle: React.CSSProperties = {
+    padding: '8px 12px', border: '1px solid var(--line)', borderRadius: 8,
+    background: 'var(--paper)', color: 'var(--ink)', fontFamily: 'var(--font-body)', fontSize: 13,
+  }
+
+  return (
+    <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.55)', zIndex: 1400,
+      display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16 }}
+      onClick={e => { if (e.target === e.currentTarget) onClose() }}>
+      <div style={{ width: '100%', maxWidth: 560, maxHeight: '88vh', overflowY: 'auto',
+        background: 'var(--paper)', border: '1px solid var(--line)', borderRadius: 16,
+        padding: 'var(--page-pad-x-sm)', display: 'flex', flexDirection: 'column', gap: 14 }}>
+
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          <div style={{ fontFamily: 'var(--font-mono)', fontSize: 10, letterSpacing: '0.14em',
+            textTransform: 'uppercase', color: 'var(--ink-mute)' }}>
+            Subcategorias
+          </div>
+          <button onClick={onClose}
+            style={{ background: 'none', border: '1px solid var(--line)', borderRadius: 999,
+              cursor: 'pointer', color: 'var(--ink-mute)', fontFamily: 'var(--font-mono)',
+              fontSize: 11, padding: '4px 12px' }}>Fechar ✕</button>
+        </div>
+
+        {/* Seletor de categoria */}
+        <select value={cat} onChange={e => setCat(e.target.value as WikiCategory)} style={fieldStyle}>
+          {WIKI_CATEGORIES.map(c => <option key={c.value} value={c.value}>{c.label}</option>)}
+        </select>
+
+        {isHumanos && (
+          <div style={{ fontFamily: 'var(--font-serif)', fontStyle: 'italic', fontSize: 12,
+            color: 'var(--ink-mute)', lineHeight: 1.5 }}>
+            Humanos tem espaços fixos: <strong>Tamers</strong> e <strong>Survivors</strong> (automáticos
+            pelo vínculo), além de <strong>Senpais</strong>, <strong>Zaika</strong> e <strong>Outros</strong>.
+            Subcategorias extras criadas aqui aparecem após esses espaços.
+          </div>
+        )}
+
+        {/* Lista editável */}
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+          {list.length === 0 && (
+            <div style={{ fontFamily: 'var(--font-serif)', fontStyle: 'italic',
+              fontSize: 12, color: 'var(--ink-mute)' }}>
+              ~ nenhuma subcategoria nesta categoria ~
+            </div>
+          )}
+          {list.map((s, i) => (
+            <div key={s.key} style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+              <input value={s.label}
+                onChange={e => commit(list.map((x, j) => j === i ? { ...x, label: e.target.value } : x))}
+                style={{ ...fieldStyle, flex: 1 }} />
+              <button onClick={() => commit(list.filter((_, j) => j !== i))}
+                title="Excluir subcategoria"
+                style={{ background: 'none', border: '1px solid var(--line)', borderRadius: 8,
+                  cursor: 'pointer', color: 'var(--coral)', fontFamily: 'var(--font-mono)',
+                  fontSize: 12, padding: '6px 10px' }}>✕</button>
+            </div>
+          ))}
+        </div>
+
+        {/* Adicionar nova */}
+        <div style={{ display: 'flex', gap: 8 }}>
+          <input value={newLabel} onChange={e => setNewLabel(e.target.value)}
+            onKeyDown={e => { if (e.key === 'Enter') addSubcat() }}
+            placeholder="Nova subcategoria..." style={{ ...fieldStyle, flex: 1 }} />
+          <button onClick={addSubcat} disabled={!newLabel.trim()}
+            style={{ padding: '8px 16px', borderRadius: 8, border: 'none', background: 'var(--teal)',
+              color: '#fff', fontFamily: 'var(--font-mono)', fontSize: 11, cursor: 'pointer',
+              letterSpacing: '0.08em', opacity: newLabel.trim() ? 1 : 0.5 }}>
+            + Adicionar
+          </button>
+        </div>
+
+        <div style={{ fontFamily: 'var(--font-mono)', fontSize: 10, color: 'var(--ink-mute)',
+          letterSpacing: '0.06em', lineHeight: 1.5 }}>
+          Renomear é seguro (a chave interna é preservada). Excluir uma subcategoria não apaga
+          páginas — elas só deixam de aparecer naquele espaço.
+        </div>
+
+        {/* Ações */}
+        <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end' }}>
+          <button onClick={onClose}
+            style={{ padding: '8px 20px', border: '1px solid var(--line)', borderRadius: 999,
+              background: 'transparent', fontFamily: 'var(--font-mono)', fontSize: 11,
+              cursor: 'pointer', color: 'var(--ink-mute)', letterSpacing: '0.1em' }}>
+            Cancelar
+          </button>
+          <button onClick={() => onSave(draft)}
+            style={{ padding: '8px 20px', borderRadius: 999, border: 'none', background: 'var(--coral)',
+              color: '#fff', fontFamily: 'var(--font-mono)', fontSize: 11, cursor: 'pointer',
+              letterSpacing: '0.1em' }}>
+            Salvar
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
 // ── WikiSection principal ─────────────────────────────────────────────────────
 
 export default function WikiSection({ state, onUpdate }: Props) {
@@ -473,14 +634,22 @@ export default function WikiSection({ state, onUpdate }: Props) {
   const [seedResult,   setSeedResult]   = useState<{ created: number; skipped: number } | null>(null)
   const [reviewEdit,   setReviewEdit]   = useState<WikiPageEdit | null>(null)
   const [reviewBusy,   setReviewBusy]   = useState(false)
+  const [gmSubcats,    setGmSubcats]    = useState<WikiSubcatMap>({})
+  const [subcatsOpen,  setSubcatsOpen]  = useState(false)
 
   useEffect(() => {
-    Promise.all([listWikiPages(), listPendingEdits()]).then(([p, edits]) => {
+    Promise.all([listWikiPages(), listPendingEdits(), getWikiSubcats()]).then(([p, edits, subs]) => {
       setPages(p as WikiPage[])
       setPendingEdits(edits as WikiPageEdit[])
+      setGmSubcats(subs as WikiSubcatMap)
       setLoading(false)
     })
   }, [])
+
+  const handleSaveSubcats = async (map: WikiSubcatMap) => {
+    setGmSubcats(map)
+    await setWikiSubcats(map)
+  }
 
   const filtered = catFilter === 'all' ? pages : pages.filter(p => p.category === catFilter)
 
@@ -661,6 +830,14 @@ export default function WikiSection({ state, onUpdate }: Props) {
                 letterSpacing: '0.1em' }}>
               ↑ Importar
             </button>
+            <button onClick={() => setSubcatsOpen(true)}
+              title="Gerenciar subcategorias por categoria"
+              style={{ padding: '8px 16px', borderRadius: 999, border: '1px solid var(--line)',
+                background: 'transparent', color: 'var(--ink-soft)',
+                fontFamily: 'var(--font-mono)', fontSize: 11, cursor: 'pointer',
+                letterSpacing: '0.1em' }}>
+              ⛃ Subcategorias
+            </button>
             <button onClick={() => setEditing('new')}
               style={{ padding: '8px 20px', borderRadius: 999, border: 'none',
                 background: 'var(--coral)', color: '#fff',
@@ -688,6 +865,7 @@ export default function WikiSection({ state, onUpdate }: Props) {
                 onSave={handleSaved}
                 onCancel={() => setEditing(null)}
                 state={state}
+                gmSubcats={gmSubcats}
               />
             </div>
           )}
@@ -914,6 +1092,15 @@ export default function WikiSection({ state, onUpdate }: Props) {
         </div>
       )}
 
+
+      {/* Gerenciador de subcategorias do GM */}
+      {subcatsOpen && (
+        <SubcatsManagerModal
+          value={gmSubcats}
+          onSave={async map => { await handleSaveSubcats(map); setSubcatsOpen(false) }}
+          onClose={() => setSubcatsOpen(false)}
+        />
+      )}
 
       {/* Revisão de edição pendente (original vs. proposta) */}
       {reviewEdit && (

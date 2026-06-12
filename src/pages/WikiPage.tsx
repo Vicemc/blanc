@@ -4,9 +4,15 @@ import { useSettings } from '../lib/settings'
 import { useCampaignFlags } from '../lib/campaignFlags'
 import { useAuth } from '../components/AuthProvider'
 import type { AppState } from '../types'
-import type { WikiPage as WikiPageType, WikiPageEdit, WikiCategory, WikiContent } from '../types/wiki'
-import { WIKI_CATEGORIES, EMPTY_WIKI_CONTENT, SPOILER_CATEGORIES } from '../types/wiki'
-import { listWikiPages, submitWikiPage, submitWikiPageEdit, saveOwnWikiPageEdit, listMyPendingEdits } from '../lib/db/wiki'
+import type { WikiPage as WikiPageType, WikiPageEdit, WikiCategory, WikiContent, WikiSubcat, WikiSubcatMap } from '../types/wiki'
+import {
+  WIKI_CATEGORIES, EMPTY_WIKI_CONTENT, SPOILER_CATEGORIES,
+  HUMANOS_AUTO_SPACES, HUMANOS_MANUAL_SUBCATS, HUMANOS_SPACE_ORDER, HUMANOS_SPACE_LABELS,
+} from '../types/wiki'
+import {
+  listWikiPages, submitWikiPage, submitWikiPageEdit, saveOwnWikiPageEdit, listMyPendingEdits,
+  getWikiSubcats, resolveHumanSpace,
+} from '../lib/db/wiki'
 import { SheetModal } from '../components/Sheet'
 import type { SheetSubject } from '../components/Sheet'
 import WikiArticle from '../components/wiki/WikiArticle'
@@ -54,28 +60,95 @@ function AvatarCircle({ url, name, size = 64 }: { url: string | null; name: stri
   )
 }
 
+// ── Espaços (subcategorias) de uma categoria ─────────────────────────────────
+
+// Lista ordenada de espaços de uma categoria (auto + manuais + do GM), para
+// renderizar cabeçalhos de seção. Humanos tem espaços fixos; demais vêm do GM.
+function categorySpaces(category: WikiCategory, gmSubcats: WikiSubcatMap): WikiSubcat[] {
+  if (category === 'humanos') {
+    const ordered = HUMANOS_SPACE_ORDER.map(key => {
+      const found = [...HUMANOS_AUTO_SPACES, ...HUMANOS_MANUAL_SUBCATS].find(s => s.key === key)
+      return found ?? { key, label: HUMANOS_SPACE_LABELS[key] ?? key }
+    })
+    // Subcats extras que o GM tenha criado para Humanos, fora dos fixos.
+    const extra = (gmSubcats.humanos ?? []).filter(s => !HUMANOS_SPACE_ORDER.includes(s.key))
+    return [...ordered, ...extra]
+  }
+  return gmSubcats[category] ?? []
+}
+
+// Espaço a que uma página pertence dentro da sua categoria.
+function pageSpace(page: WikiPageType): string {
+  if (page.category === 'humanos') return resolveHumanSpace(page)
+  return page.subcategory || ''
+}
+
+// Agrupa páginas pelos espaços ordenados; só retorna grupos não vazios.
+// Páginas cuja subcat não bate com nenhum espaço conhecido caem em "Outros"
+// (Humanos) ou num grupo "Sem subcategoria".
+function groupBySpace(
+  pages: WikiPageType[], category: WikiCategory, gmSubcats: WikiSubcatMap,
+): { space: WikiSubcat; pages: WikiPageType[] }[] {
+  const spaces = categorySpaces(category, gmSubcats)
+  if (spaces.length === 0) return [{ space: { key: '', label: '' }, pages }]
+
+  const known = new Set(spaces.map(s => s.key))
+  const fallbackKey = category === 'humanos' ? 'outros' : '__none__'
+  const buckets = new Map<string, WikiPageType[]>()
+
+  for (const p of pages) {
+    let key = pageSpace(p)
+    if (!known.has(key)) key = fallbackKey
+    if (!buckets.has(key)) buckets.set(key, [])
+    buckets.get(key)!.push(p)
+  }
+
+  const ordered = spaces.map(space => ({ space, pages: buckets.get(space.key) ?? [] }))
+  // Grupo de fallback para categorias não-Humanos (sem subcat atribuída).
+  if (fallbackKey === '__none__' && buckets.has('__none__')) {
+    ordered.push({ space: { key: '__none__', label: 'Sem subcategoria' }, pages: buckets.get('__none__')! })
+  }
+  const byOrder = (a: WikiPageType, b: WikiPageType) =>
+    (a.sort_order - b.sort_order) || a.title.localeCompare(b.title)
+  return ordered
+    .filter(g => g.pages.length > 0)
+    .map(g => ({ ...g, pages: [...g.pages].sort(byOrder) }))
+}
+
 // ── Modal de contribuição do player ──────────────────────────────────────────
+
+interface ContribData { title: string; body: string; category: WikiCategory; subcategory: string | null; content: WikiContent }
 
 interface PlayerContribModalProps {
   mode:          PlayerModal
   detailed:      boolean
   isOwner:       boolean
-  onSubmitEdit:  (d: { title: string; body: string; category: WikiCategory; content: WikiContent }) => void
-  onSubmitNew:   (d: { title: string; body: string; category: WikiCategory; content: WikiContent }) => void
+  gmSubcats:     WikiSubcatMap
+  onSubmitEdit:  (d: ContribData) => void
+  onSubmitNew:   (d: ContribData) => void
   onClose:       () => void
   submitted:     boolean
 }
 
-function PlayerContribModal({ mode, detailed, isOwner, onSubmitEdit, onSubmitNew, onClose, submitted }: PlayerContribModalProps) {
+function PlayerContribModal({ mode, detailed, isOwner, gmSubcats, onSubmitEdit, onSubmitNew, onClose, submitted }: PlayerContribModalProps) {
   const isEdit = mode.kind === 'edit'
   // Edição direta (sem aprovação) quando o player é o dono da própria página.
   const directEdit = isEdit && isOwner
   const initial = isEdit ? mode.page : null
   const [title,    setTitle]    = useState(initial?.title    ?? '')
   const [category, setCategory] = useState<WikiCategory>(initial?.category ?? 'humanos')
+  const [subcategory, setSubcategory] = useState<string | null>(initial?.subcategory ?? null)
   const [body,     setBody]     = useState(initial?.body     ?? '')
   const [content,  setContent]  = useState<WikiContent>(initial?.content ?? EMPTY_WIKI_CONTENT)
   const [saving,   setSaving]   = useState(false)
+
+  // Tamer/Survivor vinculados agrupam pelo vínculo (automático) — sem select manual.
+  const isAutoLinked = !!initial && (initial.linked_type === 'tamer' || initial.linked_type === 'survivor')
+  // Subcategorias atribuíveis na categoria atual.
+  const subcatOptions: WikiSubcat[] = category === 'humanos'
+    ? HUMANOS_MANUAL_SUBCATS
+    : (gmSubcats[category] ?? [])
+  const showSubcatSelect = !isAutoLinked && subcatOptions.length > 0
 
   const fieldStyle: React.CSSProperties = {
     width: '100%', padding: '8px 12px', border: '1px solid var(--line)',
@@ -86,7 +159,11 @@ function PlayerContribModal({ mode, detailed, isOwner, onSubmitEdit, onSubmitNew
   const handleSubmit = async () => {
     if (!title.trim()) return
     setSaving(true)
-    const data = { title: title.trim(), body, category, content }
+    // Vinculados não carregam subcat manual (vínculo manda); senão usa o select.
+    const data: ContribData = {
+      title: title.trim(), body, category, content,
+      subcategory: isAutoLinked ? null : subcategory,
+    }
     if (isEdit) await onSubmitEdit(data)
     else        await onSubmitNew(data)
     setSaving(false)
@@ -130,6 +207,27 @@ function PlayerContribModal({ mode, detailed, isOwner, onSubmitEdit, onSubmitNew
                 <select value={category} onChange={e => setCategory(e.target.value as WikiCategory)} style={fieldStyle}>
                   {WIKI_CATEGORIES.map(c => <option key={c.value} value={c.value}>{c.label}</option>)}
                 </select>
+              </div>
+            )}
+
+            {/* Subcategoria (espaço) — só para páginas não vinculadas a entidade. */}
+            {showSubcatSelect && (
+              <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                <span style={{ fontFamily: 'var(--font-mono)', fontSize: 10, color: 'var(--ink-mute)',
+                  letterSpacing: '0.1em', textTransform: 'uppercase', whiteSpace: 'nowrap' }}>
+                  Subcategoria
+                </span>
+                <select value={subcategory ?? ''} onChange={e => setSubcategory(e.target.value || null)}
+                  style={{ ...fieldStyle, flex: 1 }}>
+                  <option value="">— sem subcategoria —</option>
+                  {subcatOptions.map(s => <option key={s.key} value={s.key}>{s.label}</option>)}
+                </select>
+              </div>
+            )}
+            {isAutoLinked && (
+              <div style={{ fontFamily: 'var(--font-mono)', fontSize: 10, color: 'var(--ink-mute)',
+                letterSpacing: '0.08em' }}>
+                Esta página é agrupada automaticamente em {initial?.linked_type === 'tamer' ? 'Tamers' : 'Survivors'} pelo vínculo.
               </div>
             )}
 
@@ -231,6 +329,7 @@ export default function WikiPage({ state, isGM }: Props) {
   const [playerModal,  setPlayerModal]  = useState<PlayerModal | null>(null)
   const [gmEditPage,   setGmEditPage]   = useState<WikiPageType | null>(null)
   const [pendingEdits, setPendingEdits] = useState<WikiPageEdit[]>([])
+  const [gmSubcats,    setGmSubcats]    = useState<WikiSubcatMap>({})
   const [submitted,    setSubmitted]    = useState(false)
 
   const userId = session?.user?.id ?? null
@@ -238,6 +337,10 @@ export default function WikiPage({ state, isGM }: Props) {
   // Player é dono da própria página (ex.: o jogador do Naoki na página do Naoki).
   const ownsPage = (p: WikiPageType | null | undefined) =>
     !!p?.owner_tamer_id && profile?.tamer_id === p.owner_tamer_id
+
+  useEffect(() => {
+    getWikiSubcats().then(setGmSubcats)
+  }, [])
 
   useEffect(() => {
     const loads: Promise<unknown>[] = [listWikiPages()]
@@ -305,7 +408,7 @@ export default function WikiPage({ state, isGM }: Props) {
     if (p) setSelected(p)
   }
 
-  const handlePlayerSubmitEdit = async (data: { title: string; body: string; category: WikiCategory; content: WikiContent }) => {
+  const handlePlayerSubmitEdit = async (data: ContribData) => {
     if (!userId || playerModal?.kind !== 'edit') return
     const page = playerModal.page
 
@@ -315,6 +418,7 @@ export default function WikiPage({ state, isGM }: Props) {
         title:    data.title,
         body:     data.body,
         category: data.category,
+        subcategory: data.subcategory,
         content:  data.content,
       })
       if (updated) {
@@ -330,6 +434,7 @@ export default function WikiPage({ state, isGM }: Props) {
       title:    data.title,
       body:     data.body,
       category: data.category,
+      subcategory: data.subcategory,
       content:  data.content,
     })
     if (edit) {
@@ -339,9 +444,12 @@ export default function WikiPage({ state, isGM }: Props) {
     }
   }
 
-  const handlePlayerSubmitNew = async (data: { title: string; body: string; category: WikiCategory; content: WikiContent }) => {
+  const handlePlayerSubmitNew = async (data: ContribData) => {
     if (!userId) return
-    const page = await submitWikiPage(userId, data)
+    const page = await submitWikiPage(userId, {
+      title: data.title, category: data.category,
+      subcategory: data.subcategory, body: data.body, content: data.content,
+    })
     if (page) {
       setPages(prev => [...prev, page])
       setSubmitted(true)
@@ -354,6 +462,85 @@ export default function WikiPage({ state, isGM }: Props) {
     setPages(prev => prev.map(p => p.id === page.id ? page : p))
     setGmEditPage(null)
   }
+
+  // Card de uma página na lista (reutilizado pelos grupos de subcategoria).
+  const renderCard = (page: WikiPageType) => {
+    const isFull = page.visibility === 'full' || isGM
+    const isPending = page.status === 'pending'
+    const hasPendingEdit = !isGM && hasPendingEditFor(page.id)
+    const ownerOk = page.owner_tamer_id
+      ? profile?.tamer_id === page.owner_tamer_id
+      : true
+    const canEdit = !isGM && userId && !isPending && isFull && !hasPendingEdit && ownerOk
+    return (
+      <div key={page.id}
+        style={{ display: 'flex', flexDirection: 'column', gap: 12,
+          padding: 16, background: 'var(--paper-deep)',
+          border: `1px solid ${selected?.id === page.id ? 'var(--coral)' : isPending ? 'var(--wheat)' : 'var(--line-soft)'}`,
+          borderRadius: 12, opacity: isPending ? 0.75 : 1,
+          transition: 'border-color 0.15s, box-shadow 0.15s',
+          boxShadow: selected?.id === page.id ? '0 0 0 2px var(--coral)' : 'none' }}>
+        <div style={{ display: 'flex', gap: 12, alignItems: 'center',
+          cursor: isFull && !isPending ? 'pointer' : 'default' }}
+          onClick={() => isFull && !isPending ? openPage(page) : undefined}>
+          <AvatarCircle url={page.avatar_url} name={page.title} size={48} />
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <div style={{ fontFamily: 'var(--font-display)', fontSize: 14,
+              textTransform: 'uppercase', letterSpacing: '0.02em',
+              overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+              {page.title}
+            </div>
+            <div style={{ fontFamily: 'var(--font-mono)', fontSize: 10,
+              color: 'var(--ink-mute)', letterSpacing: '0.1em', marginTop: 3 }}>
+              {WIKI_CATEGORIES.find(c => c.value === page.category)?.label ?? page.category}
+              {isGM && (
+                <span style={{ marginLeft: 8, color: page.visibility === 'hidden' ? 'var(--coral)' : page.visibility === 'name' ? 'var(--wheat)' : 'var(--teal)' }}>
+                  · {page.visibility}
+                </span>
+              )}
+            </div>
+          </div>
+          {(isGM || canEdit) && (
+            <button onClick={e => {
+              e.stopPropagation()
+              if (isGM) { setGmEditPage(page) }
+              else { setPlayerModal({ kind: 'edit', page }); setSubmitted(false) }
+            }}
+              title={isGM ? 'Editar página' : undefined}
+              style={{ background: 'none', border: '1px solid var(--line)', borderRadius: 6,
+                cursor: 'pointer', color: 'var(--ink-soft)', fontFamily: 'var(--font-mono)',
+                fontSize: 11, padding: '3px 8px', flexShrink: 0 }}>
+              ✎
+            </button>
+          )}
+        </div>
+
+        {isPending && (
+          <div style={{ fontFamily: 'var(--font-mono)', fontSize: 10,
+            color: 'var(--wheat)', letterSpacing: '0.1em', textAlign: 'center',
+            background: 'rgba(217,185,116,0.08)', borderRadius: 6, padding: '4px 0' }}>
+            aguardando aprovação do GM
+          </div>
+        )}
+        {hasPendingEdit && (
+          <div style={{ fontFamily: 'var(--font-mono)', fontSize: 10,
+            color: 'var(--wheat)', letterSpacing: '0.1em', textAlign: 'center',
+            background: 'rgba(217,185,116,0.08)', borderRadius: 6, padding: '4px 0' }}>
+            edição aguardando aprovação
+          </div>
+        )}
+        {!isFull && !isPending && (
+          <div style={{ fontFamily: 'var(--font-serif)', fontStyle: 'italic',
+            fontSize: 12, color: 'var(--ink-mute)', textAlign: 'center' }}>
+            ~ informações restritas ~
+          </div>
+        )}
+      </div>
+    )
+  }
+
+  // Espaços (subcategorias) com páginas, na ordem de exibição.
+  const spaceGroups = catFilter ? groupBySpace(filtered, catFilter, gmSubcats) : []
 
   if (loading) return (
     <div style={{ maxWidth: 960, margin: '0 auto', padding: '80px var(--page-pad-x)',
@@ -412,6 +599,7 @@ export default function WikiPage({ state, isGM }: Props) {
             mode={playerModal}
             detailed={detailed}
             isOwner={ownsPage(playerModal.kind === 'edit' ? playerModal.page : null)}
+            gmSubcats={gmSubcats}
             onSubmitEdit={handlePlayerSubmitEdit}
             onSubmitNew={handlePlayerSubmitNew}
             onClose={() => setPlayerModal(null)}
@@ -489,82 +677,27 @@ export default function WikiPage({ state, isGM }: Props) {
                 color: 'var(--ink-mute)', textAlign: 'center', padding: '60px 0' }}>
                 ~ nenhuma página disponível ~
               </div>
-            ) : (
+            ) : spaceGroups.length <= 1 ? (
+              // Categoria sem subcategorias (ou um único grupo): grade única.
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(260px,1fr))', gap: 14 }}>
-                {filtered.map(page => {
-                  const isFull = page.visibility === 'full' || isGM
-                  const isPending = page.status === 'pending'
-                  const hasPendingEdit = !isGM && hasPendingEditFor(page.id)
-                  const ownerOk = page.owner_tamer_id
-                    ? profile?.tamer_id === page.owner_tamer_id
-                    : true
-                  const canEdit = !isGM && userId && !isPending && isFull && !hasPendingEdit && ownerOk
-                  return (
-                    <div key={page.id}
-                      style={{ display: 'flex', flexDirection: 'column', gap: 12,
-                        padding: 16, background: 'var(--paper-deep)',
-                        border: `1px solid ${selected?.id === page.id ? 'var(--coral)' : isPending ? 'var(--wheat)' : 'var(--line-soft)'}`,
-                        borderRadius: 12, opacity: isPending ? 0.75 : 1,
-                        transition: 'border-color 0.15s, box-shadow 0.15s',
-                        boxShadow: selected?.id === page.id ? '0 0 0 2px var(--coral)' : 'none' }}>
-                      <div style={{ display: 'flex', gap: 12, alignItems: 'center',
-                        cursor: isFull && !isPending ? 'pointer' : 'default' }}
-                        onClick={() => isFull && !isPending ? openPage(page) : undefined}>
-                        <AvatarCircle url={page.avatar_url} name={page.title} size={48} />
-                        <div style={{ flex: 1, minWidth: 0 }}>
-                          <div style={{ fontFamily: 'var(--font-display)', fontSize: 14,
-                            textTransform: 'uppercase', letterSpacing: '0.02em',
-                            overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                            {page.title}
-                          </div>
-                          <div style={{ fontFamily: 'var(--font-mono)', fontSize: 10,
-                            color: 'var(--ink-mute)', letterSpacing: '0.1em', marginTop: 3 }}>
-                            {WIKI_CATEGORIES.find(c => c.value === page.category)?.label ?? page.category}
-                            {isGM && (
-                              <span style={{ marginLeft: 8, color: page.visibility === 'hidden' ? 'var(--coral)' : page.visibility === 'name' ? 'var(--wheat)' : 'var(--teal)' }}>
-                                · {page.visibility}
-                              </span>
-                            )}
-                          </div>
-                        </div>
-                        {(isGM || canEdit) && (
-                          <button onClick={e => {
-                            e.stopPropagation()
-                            if (isGM) { setGmEditPage(page) }
-                            else { setPlayerModal({ kind: 'edit', page }); setSubmitted(false) }
-                          }}
-                            title={isGM ? 'Editar página' : undefined}
-                            style={{ background: 'none', border: '1px solid var(--line)', borderRadius: 6,
-                              cursor: 'pointer', color: 'var(--ink-soft)', fontFamily: 'var(--font-mono)',
-                              fontSize: 11, padding: '3px 8px', flexShrink: 0 }}>
-                            ✎
-                          </button>
-                        )}
-                      </div>
-
-                      {isPending && (
-                        <div style={{ fontFamily: 'var(--font-mono)', fontSize: 10,
-                          color: 'var(--wheat)', letterSpacing: '0.1em', textAlign: 'center',
-                          background: 'rgba(217,185,116,0.08)', borderRadius: 6, padding: '4px 0' }}>
-                          aguardando aprovação do GM
-                        </div>
-                      )}
-                      {hasPendingEdit && (
-                        <div style={{ fontFamily: 'var(--font-mono)', fontSize: 10,
-                          color: 'var(--wheat)', letterSpacing: '0.1em', textAlign: 'center',
-                          background: 'rgba(217,185,116,0.08)', borderRadius: 6, padding: '4px 0' }}>
-                          edição aguardando aprovação
-                        </div>
-                      )}
-                      {!isFull && !isPending && (
-                        <div style={{ fontFamily: 'var(--font-serif)', fontStyle: 'italic',
-                          fontSize: 12, color: 'var(--ink-mute)', textAlign: 'center' }}>
-                          ~ informações restritas ~
-                        </div>
-                      )}
+                {filtered.map(renderCard)}
+              </div>
+            ) : (
+              // Categoria com espaços: cabeçalho de seção + grade por espaço.
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 28 }}>
+                {spaceGroups.map(group => (
+                  <div key={group.space.key}>
+                    <div style={{ fontFamily: 'var(--font-mono)', fontSize: 11,
+                      letterSpacing: '0.14em', textTransform: 'uppercase', color: 'var(--ink-soft)',
+                      borderBottom: '1px solid var(--line-soft)', paddingBottom: 8, marginBottom: 14 }}>
+                      {group.space.label}
+                      <span style={{ color: 'var(--ink-mute)', marginLeft: 8 }}>({group.pages.length})</span>
                     </div>
-                  )
-                })}
+                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(260px,1fr))', gap: 14 }}>
+                      {group.pages.map(renderCard)}
+                    </div>
+                  </div>
+                ))}
               </div>
             )}
 
@@ -626,6 +759,7 @@ export default function WikiPage({ state, isGM }: Props) {
           mode={playerModal}
           detailed={detailed}
           isOwner={ownsPage(playerModal.kind === 'edit' ? playerModal.page : null)}
+          gmSubcats={gmSubcats}
           onSubmitEdit={handlePlayerSubmitEdit}
           onSubmitNew={handlePlayerSubmitNew}
           onClose={() => setPlayerModal(null)}

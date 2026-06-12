@@ -1,8 +1,31 @@
 import { supabase, isSupabaseReady } from '../supabase'
-import type { WikiPage, WikiPageEdit, WikiRelation, WikiCategory, WikiVisibility, WikiLinkedType, WikiContent } from '../../types/wiki'
+import type { WikiPage, WikiPageEdit, WikiRelation, WikiCategory, WikiVisibility, WikiLinkedType, WikiContent, WikiSubcatMap } from '../../types/wiki'
 import type { AppState } from '../../types'
+import { getCampaignConfig, setCampaignConfig } from './config'
 
 const CAMPAIGN = 'midnight-summer'
+
+// ── Subcategorias / espaços ───────────────────────────────────────────────────
+
+// Resolve o espaço de exibição de uma página de Humanos.
+// Prioridade: vínculo de entidade (automático) → subcategoria manual → 'outros'.
+export function resolveHumanSpace(page: Pick<WikiPage, 'linked_type' | 'subcategory'>): string {
+  if (page.linked_type === 'tamer')    return 'tamers'
+  if (page.linked_type === 'survivor') return 'survivors'
+  return page.subcategory || 'outros'
+}
+
+export const WIKI_SUBCATS_KEY = 'wiki_subcategories'
+
+// Subcategorias gerenciadas pelo GM (por categoria), persistidas em campaign_config.
+export async function getWikiSubcats(): Promise<WikiSubcatMap> {
+  const raw = await getCampaignConfig<WikiSubcatMap>(WIKI_SUBCATS_KEY)
+  return raw ?? {}
+}
+
+export async function setWikiSubcats(map: WikiSubcatMap): Promise<void> {
+  await setCampaignConfig(WIKI_SUBCATS_KEY, map)
+}
 
 // ── Páginas da Wiki ───────────────────────────────────────────────────────────
 
@@ -23,6 +46,8 @@ export async function saveWikiPage(page: Partial<WikiPage> & { title: string; ca
   const payload: Record<string, unknown> = {
     title:       page.title,
     category:    page.category,
+    subcategory: page.subcategory ?? null,
+    sort_order:  page.sort_order ?? 0,
     body:        page.body ?? '',
     avatar_url:  page.avatar_url ?? null,
     visibility:  page.visibility ?? 'hidden',
@@ -55,7 +80,7 @@ export async function saveWikiPage(page: Partial<WikiPage> & { title: string; ca
 // Player cria nova página — fica como 'pending' até o GM aprovar
 export async function submitWikiPage(
   authorId: string,
-  page: { title: string; category: WikiCategory; body: string; content?: WikiContent }
+  page: { title: string; category: WikiCategory; subcategory?: string | null; body: string; content?: WikiContent }
 ): Promise<WikiPage | null> {
   if (!isSupabaseReady || !supabase) return null
   const { data } = await supabase
@@ -64,6 +89,7 @@ export async function submitWikiPage(
       campaign_id: CAMPAIGN,
       title:       page.title,
       category:    page.category,
+      subcategory: page.subcategory ?? null,
       body:        page.body,
       content:     page.content ?? {},
       avatar_url:  null,
@@ -81,7 +107,7 @@ export async function submitWikiPage(
 // Player submete edição de página existente
 export async function submitWikiPageEdit(
   authorId: string,
-  edit: { page_id: string; title: string; body: string; category: WikiCategory; content?: WikiContent }
+  edit: { page_id: string; title: string; body: string; category: WikiCategory; subcategory?: string | null; content?: WikiContent }
 ): Promise<WikiPageEdit | null> {
   if (!isSupabaseReady || !supabase) return null
   const { data } = await supabase
@@ -93,6 +119,7 @@ export async function submitWikiPageEdit(
       title:       edit.title,
       body:        edit.body,
       category:    edit.category,
+      subcategory: edit.subcategory ?? null,
       content:     edit.content ?? {},
       status:      'pending',
     })
@@ -105,7 +132,7 @@ export async function submitWikiPageEdit(
 // Atualiza APENAS a linha em wiki_pages; não toca em app_state / fichas / palco.
 export async function saveOwnWikiPageEdit(
   pageId: string,
-  edit: { title: string; body: string; category: WikiCategory; content?: WikiContent }
+  edit: { title: string; body: string; category: WikiCategory; subcategory?: string | null; content?: WikiContent }
 ): Promise<WikiPage | null> {
   if (!isSupabaseReady || !supabase) return null
   const { data } = await supabase
@@ -114,6 +141,7 @@ export async function saveOwnWikiPageEdit(
       title:      edit.title,
       body:       edit.body,
       category:   edit.category,
+      subcategory: edit.subcategory ?? null,
       content:    edit.content ?? {},
       updated_at: new Date().toISOString(),
     })
@@ -141,7 +169,11 @@ export async function approveWikiEdit(edit: WikiPageEdit): Promise<WikiPage | nu
   const [{ data: page }] = await Promise.all([
     supabase
       .from('wiki_pages')
-      .update({ title: edit.title, body: edit.body, category: edit.category, content: edit.content ?? {}, updated_at: new Date().toISOString() })
+      .update({
+        title: edit.title, body: edit.body, category: edit.category,
+        ...(edit.subcategory !== undefined ? { subcategory: edit.subcategory } : {}),
+        content: edit.content ?? {}, updated_at: new Date().toISOString(),
+      })
       .eq('id', edit.page_id)
       .select('*')
       .single(),
@@ -304,6 +336,21 @@ export async function importWikiPages(pages: WikiPage[]): Promise<number> {
 
 const PC_TAMER_IDS = new Set(['t-naoki', 't-mori', 't-miki', 't-yuri', 't-eisuke', 't-sachi'])
 
+// Ordem fixa de exibição dentro dos espaços de Humanos (sort_order semeado).
+const TAMER_ORDER: string[] = [
+  't-naoki', 't-eisuke', 't-miki', 't-yuri', 't-sachi', 't-mori',
+  't-hare', 't-kanade', 't-shinra', 't-kumo', 't-emi', 't-hibito',
+]
+// Survivors: a maioria são páginas soltas (sem entidade), então ordena por
+// primeiro nome do título. Ausentes caem no fim (999), depois alfabético.
+const SURVIVOR_NAME_ORDER: string[] = [
+  'yahiro', 'mei', 'hino', 'yui', 'makoto', 'kimimaro', 'ellen',
+]
+const orderFromList = (list: string[], key: string): number => {
+  const i = list.indexOf(key)
+  return i < 0 ? 999 : i
+}
+
 export async function seedWikiPages(state: AppState): Promise<{ created: number; skipped: number }> {
   if (!isSupabaseReady || !supabase) return { created: 0, skipped: 0 }
 
@@ -339,6 +386,7 @@ export async function seedWikiPages(state: AppState): Promise<{ created: number;
         campaign_id:    CAMPAIGN,
         title:          `${tamer.name} ${tamer.surname}`.trim(),
         category:       'humanos',
+        sort_order:     orderFromList(TAMER_ORDER, tamer.id),
         body:           '',
         avatar_url:     avatarUrl,
         visibility:     'full',
@@ -393,6 +441,7 @@ export async function seedWikiPages(state: AppState): Promise<{ created: number;
         campaign_id:    CAMPAIGN,
         title:          `${survivor.name}${survivor.surname ? ' ' + survivor.surname : ''}`.trim(),
         category:       'humanos',
+        sort_order:     orderFromList(SURVIVOR_NAME_ORDER, survivor.name.toLowerCase()),
         body:           '',
         avatar_url:     avatarUrl,
         visibility:     'full',

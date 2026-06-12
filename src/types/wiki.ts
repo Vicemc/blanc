@@ -72,6 +72,8 @@ export interface WikiPage {
   campaign_id: string
   title: string
   category: WikiCategory
+  subcategory: string | null   // espaço manual dentro da categoria (ex.: 'senpais')
+  sort_order: number           // ordem dentro do espaço (menor = primeiro)
   body: string
   avatar_url: string | null
   visibility: WikiVisibility
@@ -93,6 +95,7 @@ export interface WikiPageEdit {
   title: string
   body: string
   category: WikiCategory
+  subcategory?: string | null
   content: WikiContent | null
   status: 'pending' | 'approved' | 'rejected'
   created_at: string
@@ -122,3 +125,37 @@ export const WIKI_CATEGORIES: { value: WikiCategory; label: string }[] = [
   { value: 'signs',     label: 'SIGNs' },
   { value: 'entidades', label: 'Entidades' },
 ]
+
+// ── Subcategorias (espaços dentro de uma categoria) ───────────────────────────
+
+export interface WikiSubcat { key: string; label: string }
+
+// categoria → lista de subcategorias gerenciadas pelo GM (campaign_config).
+export type WikiSubcatMap = Record<string, WikiSubcat[]>
+
+// Espaços de Humanos derivados do vínculo de entidade (não atribuíveis à mão).
+export const HUMANOS_AUTO_SPACES: WikiSubcat[] = [
+  { key: 'tamers',    label: 'Tamers'    },
+  { key: 'survivors', label: 'Survivors' },
+]
+
+// Subcategorias manuais padrão de Humanos (atribuíveis pelo editor).
+// 'survivors' entra aqui como rede de segurança para survivors sem entidade.
+export const HUMANOS_MANUAL_SUBCATS: WikiSubcat[] = [
+  { key: 'survivors', label: 'Survivors' },
+  { key: 'senpais',   label: 'Senpais'   },
+  { key: 'zaika',     label: 'Zaika'     },
+  { key: 'outros',    label: 'Outros'    },
+]
+
+// Ordem de exibição dos espaços de Humanos na página pública.
+export const HUMANOS_SPACE_ORDER = ['tamers', 'survivors', 'senpais', 'zaika', 'outros']
+
+// Rótulos conhecidos de espaços de Humanos (auto + manuais), p/ cabeçalhos.
+export const HUMANOS_SPACE_LABELS: Record<string, string> = {
+  tamers:    'Tamers',
+  survivors: 'Survivors',
+  senpais:   'Senpais',
+  zaika:     'Zaika',
+  outros:    'Outros',
+}
