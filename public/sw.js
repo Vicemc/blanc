@@ -6,7 +6,7 @@
 // gravados já no primeiro acesso, para o app abrir offline sem depender de
 // visitas anteriores. Falhas individuais não abortam a instalação.
 
-const CACHE = 'survive-cache-v2'
+const CACHE = 'survive-cache-v3'
 
 // Assets críticos same-origin garantidos no primeiro acesso.
 const PRECACHE_URLS = [
