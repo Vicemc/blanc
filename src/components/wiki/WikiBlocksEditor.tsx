@@ -196,7 +196,7 @@ function BlockEditor({ block, idx, total, imagesFull, uploadKey, onMove, onRemov
           <input value={block.title ?? ''} onChange={e => onPatch(block.id, { title: e.target.value } as Partial<WikiBlock>)}
             placeholder="Título da seção (opcional)" style={{ ...fieldStyle, fontFamily: 'var(--font-display)' }} />
           <textarea value={block.body} onChange={e => onPatch(block.id, { body: e.target.value } as Partial<WikiBlock>)}
-            placeholder="Texto (markdown: **negrito**, *itálico*, [[Link]])"
+            placeholder="Texto (markdown: **negrito**, *itálico*, [[Link interno]], [texto](url) externo)"
             rows={4} style={{ ...fieldStyle, resize: 'vertical', lineHeight: 1.5 }} />
         </>
       )}

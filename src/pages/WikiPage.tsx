@@ -232,7 +232,7 @@ function PlayerContribModal({ mode, detailed, isOwner, gmSubcats, onSubmitEdit, 
             )}
 
             <textarea value={body} onChange={e => setBody(e.target.value)}
-              placeholder="Sobre (markdown: **negrito**, *itálico*, ## título, [[Link interno]])"
+              placeholder="Sobre (markdown: **negrito**, *itálico*, ## título, [[Link interno]], [texto](url) externo)"
               rows={detailed ? 5 : 10}
               style={{ ...fieldStyle, resize: 'vertical', lineHeight: 1.5,
                 minHeight: detailed ? 120 : 200, flexShrink: 0, boxSizing: 'border-box' }} />

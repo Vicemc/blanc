@@ -189,7 +189,7 @@ export function WikiPageForm({ initial, onSave, onCancel, state, gmSubcats }: Ed
 
       {/* Corpo / Sobre */}
       <textarea value={body} onChange={e => setBody(e.target.value)}
-        placeholder="Sobre (markdown: **negrito**, *itálico*, ## títulos, [[Link interno]])"
+        placeholder="Sobre (markdown: **negrito**, *itálico*, ## títulos, [[Link interno]], [texto](url) externo)"
         rows={6}
         style={{ ...fieldStyle, resize: 'vertical', lineHeight: 1.5,
           minHeight: 140, flexShrink: 0, boxSizing: 'border-box' }} />
