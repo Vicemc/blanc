@@ -77,6 +77,9 @@
 .weaknessVal { color: var(--ink); font-weight: 600; font-size: 14px; }
 
 .affinityGrid { font-size: 14px; }
+.affinityCells { display: grid; grid-template-columns: repeat(4, 1fr); gap: 4px 16px; }
+@media (max-width: 768px) { .affinityCells { grid-template-columns: repeat(2, 1fr); } .affinitySpacer { display: none; } }
+@media (max-width: 480px) { .affinityCells { grid-template-columns: 1fr; } }
 .affinityRow { display: flex; justify-content: space-between; align-items: center; padding: 4px 0; border-bottom: 1px dotted var(--line-soft); gap: 4px; }
 
 /* ── Skill card ── */

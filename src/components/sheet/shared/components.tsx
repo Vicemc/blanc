@@ -389,9 +389,9 @@ export function AffinityGrid({ affinity, editable, freeMode, onChange, pending, 
           ...ALL.slice(10),
         ]
         return (
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(72px, 1fr))', gap: '4px 16px' }}>
+          <div className={styles.affinityCells}>
             {cells.map((k, i) =>
-              k ? renderCell(k) : <div key={`e-${i}`} />
+              k ? renderCell(k) : <div key={`e-${i}`} className={styles.affinitySpacer} />
             )}
           </div>
         )
