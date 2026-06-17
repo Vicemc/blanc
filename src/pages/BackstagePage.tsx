@@ -1706,7 +1706,7 @@ function StageActorChip({ portrait, image, title, hp, hpMax, side }: {
         border: `1px solid ${sideColor}`, background: 'var(--paper)' }}>
       <div style={{ width: 26, height: 26, borderRadius: '50%', overflow: 'hidden', position: 'relative', flexShrink: 0 }}>
         <span className={`fill-${portrait}`} style={{ position: 'absolute', inset: 0 }} />
-        {image && <img src={image} alt={title}
+        {image && <img src={image} alt={title} loading="lazy" decoding="async"
           style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'cover' }} />}
       </div>
       <div style={{ display: 'flex', flexDirection: 'column', gap: 2, minWidth: 0 }}>

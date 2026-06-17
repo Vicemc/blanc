@@ -765,7 +765,7 @@ function MapsTab({ maps, isGM, onSave }: {
             onMouseLeave={e => { e.currentTarget.style.borderColor = 'var(--line)' }}>
             {m.image_path ? (
               <>
-                <img src={m.image_path} alt={m.title}
+                <img src={m.image_path} alt={m.title} loading="lazy" decoding="async"
                   style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
                 <div style={{ position: 'absolute', bottom: 0, left: 0, right: 0,
                   background: 'linear-gradient(to top, rgba(26,24,20,0.85) 0%, transparent 100%)',

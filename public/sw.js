@@ -6,7 +6,7 @@
 // gravados já no primeiro acesso, para o app abrir offline sem depender de
 // visitas anteriores. Falhas individuais não abortam a instalação.
 
-const CACHE = 'survive-cache-v3'
+const CACHE = 'survive-cache-v4'
 
 // Assets críticos same-origin garantidos no primeiro acesso.
 const PRECACHE_URLS = [
@@ -17,12 +17,12 @@ const PRECACHE_URLS = [
   '/icon-512.png',
   '/icon-maskable-512.png',
   // Sprites do elenco principal (PCs) — abrem a Party offline de cara.
-  '/tamers/Naoki.png',
-  '/tamers/Eisuke.png',
-  '/tamers/Miki.png',
-  '/tamers/Mori.png',
-  '/tamers/Sachi.png',
-  '/tamers/Yurieta.png',
+  '/tamers/Naoki.webp',
+  '/tamers/Eisuke.webp',
+  '/tamers/Miki.webp',
+  '/tamers/Mori.webp',
+  '/tamers/Sachi.webp',
+  '/tamers/Yurieta.webp',
 ]
 
 self.addEventListener('install', event => {

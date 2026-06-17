@@ -14,6 +14,7 @@ export function GrainFill({ color, invert = false, className = '', image }: Grai
 
   if (image && imgOk) {
     return <img src={image} alt="" className={`${styles.fill} ${className}`}
+      loading="lazy" decoding="async"
       style={{ objectFit: 'cover', width: '100%', height: '100%' }}
       onError={() => setImgOk(false)} />
   }

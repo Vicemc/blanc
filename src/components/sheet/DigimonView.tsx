@@ -474,7 +474,7 @@ export function DigimonStageView({ line, stageIdx, tamer, editable, isGM, onSave
               const imgKey = `${line.id}:${stageIdx}`
               const defaultImg = DIGIMON_DEFAULT_IMAGES[imgKey] ?? null
               const img: string | null = stage.image ?? defaultImg ?? line.image ?? null
-              return img ? <img src={img} alt={stage.stageName} style={{ position:'absolute', inset:0, width:'100%', height:'100%', objectFit:'cover' }} /> : null
+              return img ? <img src={img} alt={stage.stageName} loading="lazy" decoding="async" style={{ position:'absolute', inset:0, width:'100%', height:'100%', objectFit:'cover' }} /> : null
             })()}
           </div>
           {editable && (

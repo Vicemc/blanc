@@ -780,7 +780,7 @@ function ActorChip({ actor, state, actorSt, onOpen, onRemove, onChange, onEvolve
         style={{ position: 'relative', cursor: 'pointer', overflow: 'hidden' }}
         onClick={onOpen}>
         {r.image
-          ? <img src={r.image} alt={r.title}
+          ? <img src={r.image} alt={r.title} loading="lazy" decoding="async"
               style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'cover' }} />
           : <div className="grain" />}
       </div>
@@ -981,7 +981,7 @@ function PAvatarMini({ portrait, image, name, size = 36, overlap = false }: {
       style={{ position: 'relative', overflow: 'hidden', width: size, height: size,
         borderRadius: 8, flexShrink: 0, ...(overlap ? { boxShadow: '0 0 0 2px var(--paper)' } : {}) }}>
       {image
-        ? <img src={image} alt={name} style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'cover' }} />
+        ? <img src={image} alt={name} loading="lazy" decoding="async" style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'cover' }} />
         : <div className="grain" />}
     </div>
   )
