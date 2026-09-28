@@ -61,7 +61,15 @@ Deno.serve(async (req) => {
       .single()
     const tamers = (stateRow?.state?.tamers ?? []) as { id: string; name: string }[]
     const survivors = (stateRow?.state?.survivors ?? []) as { id: string; name: string }[]
-    const match = [...tamers, ...survivors].find((t) => t.id === sender_id)
+    // Contatos extras do Digi-Zap cadastrados pelo GM (campaign_config)
+    const { data: contactsRow } = await supabase
+      .from('campaign_config')
+      .select('value')
+      .eq('key', 'digizap_contacts')
+      .limit(1)
+      .maybeSingle()
+    const contacts = (Array.isArray(contactsRow?.value) ? contactsRow.value : []) as { id: string; name: string }[]
+    const match = [...contacts, ...tamers, ...survivors].find((t) => t.id === sender_id)
     if (match) senderName = match.name
 
     // Inscrições dos destinatários

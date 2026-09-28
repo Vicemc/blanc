@@ -3,11 +3,17 @@
 // Grupos: SURVIVORS, Sanbaka, Kurumizawa Girls (pré-criados), e bilaterais (PC ↔ NPC).
 
 import { useState, useEffect, useRef, useCallback } from 'react'
-import type { AppState } from '../types'
+import type { CSSProperties } from 'react'
+import type { AppState, Portrait } from '../types'
+import { PORTRAIT_LIST } from '../types'
 import type { UserProfile } from '../lib/auth'
 import { supabase } from '../lib/supabase'
 import { useSettings } from '../lib/settings'
-import { uploadImage } from '../lib/db'
+import {
+  uploadImage, subscribeToCampaignConfig,
+  getDigiZapContacts, setDigiZapContacts, newDigiZapContactId,
+} from '../lib/db'
+import type { DigiZapContact } from '../lib/db'
 import { isPushSupported, isPushEnabled, enablePush, disablePush } from '../lib/push'
 
 // Toggle de notificações push (Web Push) para o Digi-Zap.
@@ -49,6 +55,146 @@ function PushToggle({ characterId }: { characterId: string | null }) {
   )
 }
 
+const Thumb = ({ src, color, size = 28 }: { src: string | null; color: string; size?: number }) => (
+  <div style={{ width: size, height: size, borderRadius: 7, overflow: 'hidden', position: 'relative', flexShrink: 0 }}>
+    {src
+      ? <img src={src} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover', objectPosition: 'top', display: 'block' }} />
+      : <><div className={`fill-${color}`} style={{ position: 'absolute', inset: 0 }} />
+          <div className="grain" style={{ position: 'absolute', inset: 0 }} /></>}
+  </div>
+)
+
+// Painel do GM para cadastrar contatos extras do Digi-Zap (NPCs fora da Party).
+function ContactsManager({ contacts, onChange }: {
+  contacts: DigiZapContact[]
+  onChange: (next: DigiZapContact[]) => void
+}) {
+  const [editingId, setEditingId] = useState<string | null>(null)
+  const [name,      setName]      = useState('')
+  const [portrait,  setPortrait]  = useState<Portrait>('sage')
+  const [avatar,    setAvatar]    = useState<string | null>(null)   // url salva ou dataURL novo
+  const [busy,      setBusy]      = useState(false)
+  const [error,     setError]     = useState<string | null>(null)
+
+  const reset = () => { setEditingId(null); setName(''); setPortrait('sage'); setAvatar(null); setError(null) }
+
+  const startEdit = (c: DigiZapContact) => {
+    setEditingId(c.id); setName(c.name); setPortrait(c.portrait); setAvatar(c.avatar_url); setError(null)
+  }
+
+  const save = async () => {
+    if (!name.trim()) return
+    setBusy(true); setError(null)
+    const id = editingId ?? newDigiZapContactId(name)
+    let avatarUrl = avatar
+    if (avatar?.startsWith('data:')) {
+      avatarUrl = await uploadImage(avatar, `digizap/contacts/${id}-${Date.now().toString(36)}`, 'assets')
+      if (!avatarUrl) { setError('Falha ao enviar o avatar.'); setBusy(false); return }
+    }
+    const entry: DigiZapContact = { id, name: name.trim(), portrait, avatar_url: avatarUrl }
+    const next = editingId
+      ? contacts.map(c => c.id === editingId ? { ...c, ...entry } : c)
+      : [...contacts, entry]
+    const res = await setDigiZapContacts(next)
+    setBusy(false)
+    if (!res.ok) { setError(res.error ?? 'Erro ao salvar.'); return }
+    onChange(next)
+    reset()
+  }
+
+  const setArchived = async (c: DigiZapContact, archived: boolean) => {
+    const next = contacts.map(x => x.id === c.id ? { ...x, archived } : x)
+    const res = await setDigiZapContacts(next)
+    if (!res.ok) { setError(res.error ?? 'Erro ao salvar.'); return }
+    onChange(next)
+    if (editingId === c.id) reset()
+  }
+
+  const label: CSSProperties = { fontFamily: 'var(--font-mono)', fontSize: 10, letterSpacing: '0.1em',
+    textTransform: 'uppercase', color: 'var(--ink-mute)', marginBottom: 6 }
+  const field: CSSProperties = { border: '1px solid var(--line)', borderRadius: 7, padding: '6px 10px',
+    fontFamily: 'var(--font-body)', fontSize: 13, background: 'var(--paper)', color: 'var(--ink)' }
+  const ghostBtn: CSSProperties = { padding: '3px 10px', borderRadius: 7, cursor: 'pointer',
+    border: '1px solid var(--line)', background: 'transparent', color: 'var(--ink-soft)',
+    fontFamily: 'var(--font-body)', fontSize: 12 }
+
+  const active   = contacts.filter(c => !c.archived)
+  const archived = contacts.filter(c => c.archived)
+
+  return (
+    <div style={{ marginBottom: 12, padding: '14px 16px', border: '1px solid var(--line)',
+      borderRadius: 10, background: 'var(--paper-deep)' }}>
+      <div style={label}>Contatos do Digi-Zap</div>
+      <div style={{ fontFamily: 'var(--font-serif)', fontStyle: 'italic', fontSize: 13,
+        color: 'var(--ink-mute)', marginBottom: 10 }}>
+        NPCs que existem só no Digi-Zap — não aparecem na Party.
+      </div>
+
+      {active.length === 0 && (
+        <div style={{ fontFamily: 'var(--font-mono)', fontSize: 11, color: 'var(--ink-mute)', marginBottom: 10 }}>
+          Nenhum contato cadastrado.
+        </div>
+      )}
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginBottom: 12 }}>
+        {active.map(c => (
+          <div key={c.id} style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+            <Thumb src={c.avatar_url} color={c.portrait} />
+            <span style={{ fontFamily: 'var(--font-body)', fontSize: 13, flex: 1, minWidth: 100 }}>{c.name}</span>
+            <button style={ghostBtn} onClick={() => startEdit(c)}>Editar</button>
+            <button style={ghostBtn} onClick={() => setArchived(c, true)}
+              title="Some das listas; mensagens antigas continuam com o nome">Arquivar</button>
+          </div>
+        ))}
+      </div>
+
+      <div style={label}>{editingId ? 'Editar contato' : 'Novo contato'}</div>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', marginBottom: 8 }}>
+        <label style={{ cursor: 'pointer' }} title="Enviar avatar">
+          <Thumb src={avatar} color={portrait} size={40} />
+          <input type="file" accept="image/*" style={{ display: 'none' }} onChange={e => {
+            const f = e.target.files?.[0]; if (!f) return
+            const r = new FileReader(); r.onload = ev => setAvatar(ev.target?.result as string); r.readAsDataURL(f)
+            e.target.value = ''
+          }} />
+        </label>
+        <input value={name} onChange={e => setName(e.target.value)} placeholder="Nome *"
+          onKeyDown={e => { if (e.key === 'Enter') save() }}
+          style={{ ...field, flex: 1, minWidth: 140 }} />
+        <select value={portrait} onChange={e => setPortrait(e.target.value as Portrait)} style={field}
+          title="Cor usada quando não há avatar">
+          {PORTRAIT_LIST.map(p => <option key={p} value={p}>{p}</option>)}
+        </select>
+        {avatar && <button style={ghostBtn} onClick={() => setAvatar(null)}>Remover avatar</button>}
+      </div>
+      <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+        <button onClick={save} disabled={busy || !name.trim()}
+          style={{ padding: '6px 16px', borderRadius: 8, cursor: 'pointer', border: '1px solid var(--ink)',
+            background: 'var(--ink)', color: 'var(--paper)', fontFamily: 'var(--font-body)',
+            fontWeight: 600, fontSize: 13, opacity: (busy || !name.trim()) ? 0.4 : 1 }}>
+          {busy ? 'Salvando...' : editingId ? 'Salvar' : 'Adicionar'}
+        </button>
+        {editingId && <button style={ghostBtn} onClick={reset}>Cancelar</button>}
+        {error && <span style={{ fontFamily: 'var(--font-mono)', fontSize: 11, color: 'var(--coral)' }}>{error}</span>}
+      </div>
+
+      {archived.length > 0 && (
+        <details style={{ marginTop: 12 }}>
+          <summary style={{ ...label, cursor: 'pointer', marginBottom: 0 }}>Arquivados ({archived.length})</summary>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginTop: 8 }}>
+            {archived.map(c => (
+              <div key={c.id} style={{ display: 'flex', alignItems: 'center', gap: 10, opacity: 0.7 }}>
+                <Thumb src={c.avatar_url} color={c.portrait} />
+                <span style={{ fontFamily: 'var(--font-body)', fontSize: 13, flex: 1 }}>{c.name}</span>
+                <button style={ghostBtn} onClick={() => setArchived(c, false)}>Restaurar</button>
+              </div>
+            ))}
+          </div>
+        </details>
+      )}
+    </div>
+  )
+}
+
 interface Props {
   state:            AppState
   profile:          UserProfile | null
@@ -81,12 +227,16 @@ interface DigiZapMessage {
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
-function tamerName(state: AppState, characterId: string): string {
+function tamerName(state: AppState, characterId: string, contacts: DigiZapContact[] = []): string {
+  const c = contacts.find(c => c.id === characterId)
+  if (c) return c.name
   const t = state.tamers.find(t => t.id === characterId)
   return t?.name ?? characterId
 }
 
-function tamerPortrait(state: AppState, characterId: string): string {
+function tamerPortrait(state: AppState, characterId: string, contacts: DigiZapContact[] = []): string {
+  const c = contacts.find(c => c.id === characterId)
+  if (c) return c.portrait
   const t = state.tamers.find(t => t.id === characterId)
   return t?.portrait ?? 'sage'
 }
@@ -106,7 +256,9 @@ const DIGIZAP_AVATAR_BY_ID: Record<string, string> = {
   't-hibito': 'Hibito',
 }
 
-function tamerAvatar(_state: AppState, characterId: string): string | null {
+function tamerAvatar(_state: AppState, characterId: string, contacts: DigiZapContact[] = []): string | null {
+  const c = contacts.find(c => c.id === characterId)
+  if (c) return c.avatar_url
   const name = DIGIZAP_AVATAR_BY_ID[characterId]
   return name ? `/digizap%20avatar/${name}.png` : null
 }
@@ -205,8 +357,26 @@ export default function DigiZapPage({ state, profile, isGM, onUnreadChange }: Pr
     ? (npcView || null)
     : (profile?.tamer_id ?? null)
 
+  // ── Contatos extras (GM) ─────────────────────────────────────────────────
+  const [contacts,       setContacts]       = useState<DigiZapContact[]>([])
+  const [showContacts,   setShowContacts]   = useState(false)
+
+  useEffect(() => {
+    const refresh = () => { getDigiZapContacts().then(setContacts) }
+    refresh()
+    return subscribeToCampaignConfig(refresh)
+  }, [])
+
+  const charName     = (id: string) => tamerName(state, id, contacts)
+  const charPortrait = (id: string) => tamerPortrait(state, id, contacts)
+  const charAvatar   = (id: string) => tamerAvatar(state, id, contacts)
+
   const npcIds    = ['t-hare', 't-kanade', 't-shinra', 't-kumo', 't-emi', 't-hibito']
-  const allCharIds = [...npcIds, ...state.tamers.map(t => t.id)]
+  const allCharIds = [...new Set([
+    ...npcIds,
+    ...contacts.filter(c => !c.archived).map(c => c.id),
+    ...state.tamers.map(t => t.id),
+  ])]
 
   // ── Computar total de não-lidos ──────────────────────────────────────────
 
@@ -398,7 +568,7 @@ export default function DigiZapPage({ state, profile, isGM, onUnreadChange }: Pr
     )
     if (existing) { setActiveGroupId(existing.id); return }
 
-    const name = `${tamerName(state, myCharId)} ↔ ${tamerName(state, npcId)}`
+    const name = `${charName(myCharId)} ↔ ${charName(npcId)}`
     const { data } = await supabase.from('digi_zap_groups')
       .insert({ kind: 'bilateral', name, participants: [myCharId, npcId].sort() })
       .select('*').single()
@@ -487,7 +657,7 @@ export default function DigiZapPage({ state, profile, isGM, onUnreadChange }: Pr
                 color: 'var(--ink)', flex: 1 }}>
               <option value="">— GM (observador) —</option>
               {allCharIds.map(id => (
-                <option key={id} value={id}>{tamerName(state, id)}</option>
+                <option key={id} value={id}>{charName(id)}</option>
               ))}
             </select>
             <button onClick={() => setShowCreateGroup(p => !p)}
@@ -499,7 +669,21 @@ export default function DigiZapPage({ state, profile, isGM, onUnreadChange }: Pr
                 whiteSpace: 'nowrap' }}>
               + Novo Grupo
             </button>
+            <button onClick={() => setShowContacts(p => !p)}
+              style={{ padding: '5px 14px', borderRadius: 8, cursor: 'pointer',
+                border: `1px solid ${showContacts ? 'var(--ink)' : 'var(--line)'}`,
+                background: showContacts ? 'var(--ink)' : 'transparent',
+                color: showContacts ? 'var(--paper)' : 'var(--ink-soft)',
+                fontFamily: 'var(--font-body)', fontSize: 12, fontWeight: 600,
+                whiteSpace: 'nowrap' }}>
+              Contatos
+            </button>
           </div>
+        )}
+
+        {/* Gerenciar contatos extras (GM) */}
+        {isGM && showContacts && (
+          <ContactsManager contacts={contacts} onChange={setContacts} />
         )}
 
         {/* Modal de criação de grupo (GM) */}
@@ -534,7 +718,7 @@ export default function DigiZapPage({ state, profile, isGM, onUnreadChange }: Pr
                       border: `1px solid ${selected ? 'var(--ink)' : 'var(--line)'}`,
                       background: selected ? 'var(--ink)' : 'transparent',
                       color: selected ? 'var(--paper)' : 'var(--ink-soft)' }}>
-                    {tamerName(state, id)}
+                    {charName(id)}
                   </button>
                 )
               })}
@@ -642,7 +826,7 @@ export default function DigiZapPage({ state, profile, isGM, onUnreadChange }: Pr
                     transition: 'all 0.12s' }}
                   onMouseEnter={e => { e.currentTarget.style.borderColor = 'var(--ink)'; e.currentTarget.style.color = 'var(--ink)' }}
                   onMouseLeave={e => { e.currentTarget.style.borderColor = 'var(--line)'; e.currentTarget.style.color = 'var(--ink-mute)' }}>
-                  + {tamerName(state, id)}
+                  + {charName(id)}
                 </button>
               ))}
             </>
@@ -697,9 +881,9 @@ export default function DigiZapPage({ state, profile, isGM, onUnreadChange }: Pr
             )}
             {messages.map(msg => {
               const isMe    = msg.sender_id === myCharId
-              const senderName = tamerName(state, msg.sender_id)
-              const portrait   = tamerPortrait(state, msg.sender_id)
-              const avatar     = tamerAvatar(state, msg.sender_id)
+              const senderName = charName(msg.sender_id)
+              const portrait   = charPortrait(msg.sender_id)
+              const avatar     = charAvatar(msg.sender_id)
 
               return (
                 <div key={msg.id} style={{ display: 'flex', gap: 10,
@@ -737,7 +921,7 @@ export default function DigiZapPage({ state, profile, isGM, onUnreadChange }: Pr
                         <div style={{ padding: '4px 10px', marginBottom: 4, borderLeft: '3px solid var(--coral)',
                           background: 'var(--paper-deep)', borderRadius: 6,
                           fontFamily: 'var(--font-mono)', fontSize: 9, color: 'var(--ink-mute)' }}>
-                          ↩ {tamerName(state, ref.sender_id)}: <span style={{ fontFamily: 'var(--font-body)', fontSize: 11, color: 'var(--ink-soft)' }}>{ref.content.slice(0, 80)}{ref.content.length > 80 ? '…' : ''}</span>
+                          ↩ {charName(ref.sender_id)}: <span style={{ fontFamily: 'var(--font-body)', fontSize: 11, color: 'var(--ink-soft)' }}>{ref.content.slice(0, 80)}{ref.content.length > 80 ? '…' : ''}</span>
                         </div>
                       )
                     })()}
@@ -828,7 +1012,7 @@ export default function DigiZapPage({ state, profile, isGM, onUnreadChange }: Pr
                 <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8,
                   padding: '6px 10px', background: 'var(--paper-deep)', borderLeft: '3px solid var(--coral)', borderRadius: 6 }}>
                   <span style={{ fontFamily: 'var(--font-mono)', fontSize: 9, color: 'var(--ink-mute)' }}>
-                    ↩ {tamerName(state, replyTo.sender_id)}:
+                    ↩ {charName(replyTo.sender_id)}:
                   </span>
                   <span style={{ fontFamily: 'var(--font-body)', fontSize: 11, color: 'var(--ink-soft)',
                     overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flex: 1 }}>
@@ -851,7 +1035,7 @@ export default function DigiZapPage({ state, profile, isGM, onUnreadChange }: Pr
               {/* Indicador "digitando" */}
               {Object.keys(typingMap).length > 0 && (
                 <div style={{ fontFamily: 'var(--font-mono)', fontSize: 9, color: 'var(--ink-mute)', marginBottom: 4 }}>
-                  {Object.keys(typingMap).map(id => tamerName(state, id)).join(', ')} {Object.keys(typingMap).length > 1 ? 'estão' : 'está'} digitando...
+                  {Object.keys(typingMap).map(id => charName(id)).join(', ')} {Object.keys(typingMap).length > 1 ? 'estão' : 'está'} digitando...
                 </div>
               )}
 
@@ -866,7 +1050,7 @@ export default function DigiZapPage({ state, profile, isGM, onUnreadChange }: Pr
                 </label>
                 <textarea value={input} onChange={e => { setInput(e.target.value); broadcastTyping() }}
                   onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendMessage() } }}
-                  placeholder={`Mensagem como ${tamerName(state, myCharId)}... (Enter para enviar)`}
+                  placeholder={`Mensagem como ${charName(myCharId)}... (Enter para enviar)`}
                   rows={2}
                   style={{ flex: 1, border: '1px solid var(--line)', borderRadius: 10,
                     padding: '10px 14px', fontFamily: 'var(--font-body)', fontSize: 14,

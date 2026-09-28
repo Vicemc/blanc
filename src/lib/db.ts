@@ -10,3 +10,5 @@ export { listNotes, saveNote, deleteNote, listItems, saveItem, deleteItem, revea
 export type { GMNote, GMItem } from './db/gmContent'
 export { listSnapshots, createSnapshot, loadSnapshot, deleteSnapshot, labelSnapshot } from './db/snapshots'
 export type { SnapshotRow } from './db/snapshots'
+export { getDigiZapContacts, setDigiZapContacts, newDigiZapContactId, DIGIZAP_CONTACTS_KEY } from './db/digizapContacts'
+export type { DigiZapContact } from './db/digizapContacts'
